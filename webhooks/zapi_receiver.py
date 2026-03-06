@@ -110,8 +110,34 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
         conversation_provider_id=tenant.conversation_provider_id,
         contact_id=contact_id,
     )
+
+    # Detecção de contato deletado no GHL manualmente pelo usuário
+    if resp and isinstance(resp, dict) and resp.get("error"):
+        if resp.get("status_code") == 400 and "Contact not found/deleted" in str(resp.get("body", {})):
+            logger.warning(f"Contato {contact_id} deletado no GHL. Limpando cache e recriando...")
+            token_manager.delete_contact_mapping(location_id, phone)
+            
+            # Recria o contato do zero
+            sender_name = payload.get("senderName") or payload.get("participantName") or ""
+            if not sender_name and "@lid" in phone:
+                sender_name = "Lead do WhatsApp (Anúncio)"
+                
+            new_contact = await ghl_service.create_contact(location_id, phone, name=sender_name)
+            if new_contact and "id" in new_contact:
+                contact_id = new_contact["id"]
+                token_manager.save_contact_mapping(location_id, phone, contact_id)
+                
+                # Tenta enviar de novo
+                resp = await ghl_service.send_inbound_message(
+                    location_id=location_id,
+                    phone=phone,
+                    message=content_message,
+                    attachments=attachments,
+                    conversation_provider_id=tenant.conversation_provider_id,
+                    contact_id=contact_id,
+                )
     
-    if resp:
+    if resp and not resp.get("error"):
         logger.info(f"Sucesso ao registrar inbound ({phone}) no GHL para tenant {location_id}.")
     else:
         logger.error(f"Falha ao transferir inbound ({phone}) para GHL no tenant {location_id}.")

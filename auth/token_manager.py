@@ -227,6 +227,19 @@ class TokenManager:
         finally:
             db.close()
 
+    def delete_contact_mapping(self, location_id: str, phone_or_lid: str):
+        """Remove o mapeamento em caso de contato deletado no GHL."""
+        from data.models import ContactMapping
+        db = SessionLocal()
+        try:
+            mapping_id = f"{location_id}_{phone_or_lid}"
+            db.query(ContactMapping).filter_by(id=mapping_id).delete()
+            db.commit()
+        except Exception as e:
+            logger.error(f"Erro ao deletar mapping de contato DB: {e}")
+        finally:
+            db.close()
+
 
 # Instância global
 token_manager = TokenManager()

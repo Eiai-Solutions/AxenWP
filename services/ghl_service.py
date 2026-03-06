@@ -87,15 +87,21 @@ class GHLService:
                     )
                     return data
                 else:
+                    body_data = {}
+                    try:
+                        body_data = response.json()
+                    except:
+                        body_data = {"text": response.text}
+
                     logger.error(
                         f"Erro ao registrar inbound no GHL: "
                         f"status={response.status_code}, body={response.text}"
                     )
-                    return None
+                    return {"error": True, "status_code": response.status_code, "body": body_data}
 
         except Exception as e:
             logger.error(f"Exceção ao enviar inbound para GHL: {e}")
-            return None
+            return {"error": True, "status_code": 500, "body": {"message": str(e)}}
 
     async def update_message_status(
         self,
