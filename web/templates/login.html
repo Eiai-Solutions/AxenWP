@@ -1,30 +1,121 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Axen WP - Admin Login</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;600&display=swap"
+        rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Space Grotesk"', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        gray: {
+                            850: '#1f2937',
+                            900: '#111827',
+                            950: '#030712',
+                        },
+                        brand: {
+                            red: '#e11d48', // Rose 600
+                            darkred: '#be123c', // Rose 700
+                            glow: 'rgba(225, 29, 72, 0.4)'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #030712;
+            background-image: radial-gradient(circle at top right, rgba(225, 29, 72, 0.15), transparent 40%),
+                radial-gradient(circle at bottom left, rgba(17, 24, 39, 1), transparent 40%);
+        }
+
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(225, 29, 72, 0.1);
+        }
+
+        .glow-input:focus {
+            box-shadow: 0 0 0 2px rgba(225, 29, 72, 0.5), 0 0 20px rgba(225, 29, 72, 0.2);
+            border-color: #e11d48;
+        }
+
+        .btn-glow:hover {
+            box-shadow: 0 0 25px rgba(225, 29, 72, 0.5);
+            text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+        }
+    </style>
 </head>
-<body class="bg-gray-50 flex items-center justify-center min-h-screen">
-    <div class="bg-white p-8 rounded-lg shadow-md w-96">
-        <h1 class="text-2xl font-bold mb-6 text-center text-gray-800">Axen WP Admin</h1>
-        <form action="/admin/login" method="POST">
+
+<body
+    class="flex items-center justify-center min-h-screen text-gray-300 antialiased selection:bg-brand-red selection:text-white">
+
+    <div
+        class="glass-panel p-10 rounded-2xl w-[420px] relative overflow-hidden transition-all duration-500 hover:border-brand-red/30">
+        <!-- Decorative subtle accent -->
+        <div
+            class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-brand-red to-transparent opacity-70">
+        </div>
+
+        <div class="mb-10 text-center">
+            <h1 class="font-display text-4xl font-extrabold tracking-tight text-white mb-2 uppercase">Axen<span
+                    class="text-brand-red">WP</span></h1>
+            <p class="text-gray-400 text-sm tracking-widest uppercase opacity-80 font-semibold">Central Admin Gateway
+            </p>
+        </div>
+
+        <form action="/admin/login" method="POST" class="space-y-6">
             {% if error %}
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
-                <span class="block sm:inline">{{ error }}</span>
+            <div
+                class="bg-brand-red/10 border border-brand-red/50 text-red-400 px-4 py-3 rounded-lg flex items-start gap-3 text-sm animate-[pulse_2s_ease-in-out_infinite]">
+                <svg class="h-5 w-5 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span class="block leading-tight mt-0.5">{{ error }}</span>
             </div>
             {% endif %}
-            
-            <div class="mb-4">
-                <label for="password" class="block text-gray-700 text-sm font-bold mb-2">Senha do Painel</label>
-                <input type="password" id="password" name="password" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
+
+            <div class="group">
+                <label for="password"
+                    class="block text-gray-400 text-xs font-bold mb-2 uppercase tracking-wider group-focus-within:text-brand-red transition-colors">Credential
+                    Key</label>
+                <input type="password" id="password" name="password"
+                    class="glow-input bg-gray-900 border border-gray-700 text-white rounded-lg w-full py-3 px-4 leading-tight focus:outline-none transition-all duration-300 placeholder-gray-600 font-mono tracking-widest"
+                    placeholder="••••••••" required>
             </div>
-            
-            <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded w-full focus:outline-none focus:shadow-outline">
-                Entrar
+
+            <button type="submit"
+                class="btn-glow w-full bg-brand-red hover:bg-brand-darkred text-white font-bold py-3 px-4 rounded-lg focus:outline-none transition-all duration-300 flex justify-center items-center gap-2 mt-4 uppercase tracking-widest text-sm">
+                <span>Authorize</span>
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3">
+                    </path>
+                </svg>
             </button>
         </form>
+
+        <div class="mt-8 text-center border-t border-gray-800 pt-6">
+            <p class="text-xs text-gray-500 font-mono">&copy; 2026 Eiai Solutions. Restricted Access.</p>
+        </div>
     </div>
+
 </body>
+
 </html>
