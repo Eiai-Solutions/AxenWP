@@ -7,6 +7,8 @@ este webhook recebe a mensagem e a repassa para a Z-API.
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
+import re
+import urllib.parse
 
 from utils.logger import logger
 from auth.token_manager import token_manager
@@ -143,16 +145,58 @@ async def process_outbound_message(payload: GHLOutboundPayload):
             # (Opcional) se houver múltiplos anexos, poderia fazer um forloop
             success = bool(resp)
 
-        # Se não tem anexos, é texto simples
+        # Se não tem anexos, é texto simples (Mas pode ser um Link do GHL para arquivo grande)
         elif message_text:
-            resp = await zapi_service.send_text(
-                instance_id=tenant.zapi_instance_id,
-                token=tenant.zapi_token,
-                phone=phone,
-                message=message_text,
-                client_token=tenant.zapi_client_token,
-            )
-            success = bool(resp)
+            # GHL envia arquivos pesados (>5MB) como links no corpo do texto. Ex: https://api.leadconnectorhq.com/l/YE...
+            # Vamos procurar se a mensagem inteira é apenas um link ou se contém um link de arquivo
+            url_pattern = r'(https?://(?:api\.leadconnectorhq\.com|storage\.googleapis\.com)[^\s]+)'
+            match = re.search(url_pattern, message_text)
+            
+            if match:
+                file_url = match.group(1)
+                
+                # Se a mensagem for APENAS o link (GHL envia nativamente assim)
+                if file_url == message_text.strip():
+                    # Extrai um possivel nome do link, ou joga genérico
+                    parsed_url = urllib.parse.urlparse(file_url)
+                    filename = "documento"
+                    if parsed_url.path:
+                         filename = parsed_url.path.split('/')[-1]
+                    
+                    # Sem extensão? Força uma
+                    if "." not in filename:
+                         filename += ".pdf"
+                         
+                    resp = await zapi_service.send_document(
+                        instance_id=tenant.zapi_instance_id,
+                        token=tenant.zapi_token,
+                        phone=phone,
+                        document_url=file_url,
+                        filename=filename,
+                        client_token=tenant.zapi_client_token,
+                    )
+                    success = bool(resp)
+                else:
+                    # Se tiver texto misturado, manda os dois (Texto e Link) como texto normal 
+                    # ou poderia mandar preview de link. Por precaução mantemos texto.
+                    resp = await zapi_service.send_text(
+                        instance_id=tenant.zapi_instance_id,
+                        token=tenant.zapi_token,
+                        phone=phone,
+                        message=message_text,
+                        client_token=tenant.zapi_client_token,
+                    )
+                    success = bool(resp)
+            else:
+                # Texto 100% normal sem links do GHL
+                resp = await zapi_service.send_text(
+                    instance_id=tenant.zapi_instance_id,
+                    token=tenant.zapi_token,
+                    phone=phone,
+                    message=message_text,
+                    client_token=tenant.zapi_client_token,
+                )
+                success = bool(resp)
 
         # Atualiza status no GHL
         if success:
