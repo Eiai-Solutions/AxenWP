@@ -57,8 +57,27 @@ async def process_outbound_message(payload: GHLOutboundPayload):
         )
         return
 
+    phone = payload.phone
+    
+    if not phone and payload.contactId:
+        logger.info(f"Telefone não enviado no payload. Buscando contato {payload.contactId} no GHL...")
+        contact_data = await ghl_service.get_contact(location_id, payload.contactId)
+        if contact_data:
+            # GHL armazena os telefones em contact_data.get("phone") ou "phone" normal, ou "phoneDnc"
+            phone = contact_data.get("phone") or contact_data.get("phone1")
+            
+    if not phone:
+        logger.error(f"GHL Outbound abortado: Telefone não encontrado para o contato {payload.contactId}.")
+        await ghl_service.update_message_status(
+            location_id, payload.messageId, status="failed", error_message="Telefone do contato inválido ou não encontrado."
+        )
+        return
+        
+    payload_dict = payload.dict()
+    message_text = payload.message or payload_dict.get("body", "")
+
     logger.info(
-        f"Enviando via Z-API para {tenant.company_name}: phone={payload.phone}, msg_id={payload.messageId}"
+        f"Enviando via Z-API para {tenant.company_name}: phone={phone}, msg_id={payload.messageId}"
     )
 
     success = False
@@ -73,16 +92,16 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                 resp = await zapi_service.send_image(
                     instance_id=tenant.zapi_instance_id,
                     token=tenant.zapi_token,
-                    phone=payload.phone,
+                    phone=phone,
                     image_url=attachment_url,
-                    caption=payload.message or "",  # Msg de texto vira caption
+                    caption=message_text,  # Msg de texto vira caption
                     client_token=tenant.zapi_client_token,
                 )
             else:
                 resp = await zapi_service.send_document(
                     instance_id=tenant.zapi_instance_id,
                     token=tenant.zapi_token,
-                    phone=payload.phone,
+                    phone=phone,
                     document_url=attachment_url,
                     filename=attachment_url.split("/")[-1] or "arquivo",
                     client_token=tenant.zapi_client_token,
@@ -92,12 +111,12 @@ async def process_outbound_message(payload: GHLOutboundPayload):
             success = bool(resp)
 
         # Se não tem anexos, é texto simples
-        elif payload.message:
+        elif message_text:
             resp = await zapi_service.send_text(
                 instance_id=tenant.zapi_instance_id,
                 token=tenant.zapi_token,
-                phone=payload.phone,
-                message=payload.message,
+                phone=phone,
+                message=message_text,
                 client_token=tenant.zapi_client_token,
             )
             success = bool(resp)

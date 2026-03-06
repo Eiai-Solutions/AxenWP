@@ -110,10 +110,11 @@ class GHLService:
             return False
 
         payload = {"status": status}
-        if error_code:
-            payload["errorCode"] = error_code
-        if error_message:
-            payload["errorMessage"] = error_message
+        if error_code or error_message:
+            payload["error"] = {
+                "code": error_code or "API_ERROR",
+                "message": error_message or "Unknown error"
+            }
 
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
@@ -138,6 +139,34 @@ class GHLService:
         except Exception as e:
             logger.error(f"Exceção ao atualizar status de mensagem: {e}")
             return False
+
+    async def get_contact(self, location_id: str, contact_id: str) -> dict | None:
+        """
+        Busca um contato pelo ID para descobrir o telefone.
+        GET /contacts/{contactId}
+        """
+        headers = await self._get_headers(location_id)
+        if not headers:
+            return None
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    f"{self.BASE_URL}/contacts/{contact_id}",
+                    headers=headers,
+                )
+
+                if response.status_code == 200:
+                    data = response.json()
+                    return data.get("contact", {})
+                else:
+                    logger.warning(
+                        f"Busca de contato por ID retornou status {response.status_code}: {response.text}"
+                    )
+                    return None
+        except Exception as e:
+            logger.error(f"Exceção ao buscar contato por ID: {e}")
+            return None
 
     async def search_contact_by_phone(
         self, location_id: str, phone: str
