@@ -79,7 +79,7 @@ class GHLService:
                     headers=headers,
                 )
 
-                if response.status_code == 200:
+                if response.status_code in (200, 201):
                     data = response.json()
                     logger.info(
                         f"Mensagem inbound registrada no GHL: "
