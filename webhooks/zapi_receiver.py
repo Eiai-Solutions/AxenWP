@@ -70,6 +70,22 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
     if not content_message and isinstance(payload.get("text"), str):
         content_message = payload["text"]
 
+    # Buscar contato existente para obter o contactId obrigatório
+    contact = await ghl_service.search_contact_by_phone(location_id, phone)
+    contact_id = None
+    if contact and "id" in contact:
+        contact_id = contact["id"]
+    else:
+        logger.info(f"Contato {phone} não encontrado. Criando novo no GHL...")
+        sender_name = payload.get("senderName") or payload.get("participantName") or ""
+        new_contact = await ghl_service.create_contact(location_id, phone, name=sender_name)
+        if new_contact and "id" in new_contact:
+            contact_id = new_contact["id"]
+
+    if not contact_id:
+        logger.error(f"Impossível registrar inbound: Falha ao obter/criar contactId para o telefone {phone}")
+        return
+
     # Registrar no CRM
     resp = await ghl_service.send_inbound_message(
         location_id=location_id,
@@ -77,6 +93,7 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
         message=content_message,
         attachments=attachments,
         conversation_provider_id=tenant.conversation_provider_id,
+        contact_id=contact_id,
     )
     
     if resp:

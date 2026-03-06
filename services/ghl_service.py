@@ -34,6 +34,7 @@ class GHLService:
         message: str,
         attachments: list[str] | None = None,
         conversation_provider_id: str = "",
+        contact_id: str | None = None,
     ) -> dict | None:
         """
         Registra uma mensagem inbound (recebida do WhatsApp) no CRM.
@@ -60,6 +61,9 @@ class GHLService:
             "message": message,
             "direction": "inbound",
         }
+
+        if contact_id:
+            payload["contactId"] = contact_id
 
         if provider_id:
             payload["conversationProviderId"] = provider_id
@@ -201,6 +205,48 @@ class GHLService:
 
         except Exception as e:
             logger.error(f"Exceção ao buscar contato: {e}")
+            return None
+
+    async def create_contact(
+        self, location_id: str, phone: str, name: str = "", email: str = ""
+    ) -> dict | None:
+        """
+        Cria um novo contato no GHL.
+        POST /contacts/
+        """
+        headers = await self._get_headers(location_id)
+        if not headers:
+            return None
+
+        formatted_phone = phone.strip()
+        if not formatted_phone.startswith("+"):
+            formatted_phone = f"+{formatted_phone}"
+
+        first_name = name or formatted_phone
+        payload = {
+            "locationId": location_id,
+            "phone": formatted_phone,
+            "firstName": first_name,
+        }
+        if email:
+            payload["email"] = email
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.BASE_URL}/contacts/",
+                    json=payload,
+                    headers=headers,
+                )
+                if response.status_code in (200, 201):
+                    data = response.json()
+                    logger.info(f"Novo contato criado no GHL: {formatted_phone}")
+                    return data.get("contact", {})
+                else:
+                    logger.error(f"Erro ao criar contato {formatted_phone}: {response.text}")
+                    return None
+        except Exception as e:
+            logger.error(f"Exceção ao criar contato: {e}")
             return None
 
 
