@@ -4,6 +4,8 @@ Ponto de entrada do servidor FastAPI do Axen WP.
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 import uvicorn
 from contextlib import asynccontextmanager
 
@@ -76,6 +78,13 @@ app.include_router(ghl_webhook_router)
 app.include_router(zapi_webhook_router)
 app.include_router(admin_router)
 
+
+# Montagem de arquivos estáticos
+app.mount("/static", StaticFiles(directory="web/static"), name="static")
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return FileResponse("web/static/favicon.svg", media_type="image/svg+xml")
 
 @app.get("/", tags=["Health"])
 async def root():
