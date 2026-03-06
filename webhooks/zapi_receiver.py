@@ -70,17 +70,32 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
     if not content_message and isinstance(payload.get("text"), str):
         content_message = payload["text"]
 
-    # Buscar contato existente para obter o contactId obrigatório
-    contact = await ghl_service.search_contact_by_phone(location_id, phone)
-    contact_id = None
-    if contact and "id" in contact:
-        contact_id = contact["id"]
-    else:
-        logger.info(f"Contato {phone} não encontrado. Criando novo no GHL...")
-        sender_name = payload.get("senderName") or payload.get("participantName") or ""
-        new_contact = await ghl_service.create_contact(location_id, phone, name=sender_name)
-        if new_contact and "id" in new_contact:
-            contact_id = new_contact["id"]
+    # 1. Tentar achar o mapeamento no banco de dados local primeiro (útil para @lid e velocidade)
+    contact_id = token_manager.get_mapped_contact_id(location_id, phone)
+    
+    if not contact_id:
+        # Se é um @lid e não está no banco, nem adianta pesquisar na API Oficial porque a API do GHL não busca lid.
+        # Mas se for telefone normal, tentamos achar lá pra ver se já existe.
+        if "@lid" not in phone:
+            contact = await ghl_service.search_contact_by_phone(location_id, phone)
+            if contact and "id" in contact:
+                contact_id = contact["id"]
+        
+        # Se ainda não temos um contact_id, criamos um novo
+        if not contact_id:
+            logger.info(f"Contato {phone} não encontrado. Criando novo no GHL...")
+            sender_name = payload.get("senderName") or payload.get("participantName") or ""
+            # Se vier só o lid, criamos o nome como "Lead do WhatsApp" para não ficar feio no CRM
+            if not sender_name and "@lid" in phone:
+                sender_name = "Lead do WhatsApp (Anúncio)"
+                
+            new_contact = await ghl_service.create_contact(location_id, phone, name=sender_name)
+            if new_contact and "id" in new_contact:
+                contact_id = new_contact["id"]
+        
+        # 2. Se agora temos um contact_id (achado ou recém-criado), SALVAMOS no banco local
+        if contact_id:
+            token_manager.save_contact_mapping(location_id, phone, contact_id)
 
     if not contact_id:
         logger.error(f"Impossível registrar inbound: Falha ao obter/criar contactId para o telefone {phone}")

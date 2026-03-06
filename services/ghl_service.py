@@ -237,22 +237,26 @@ class GHLService:
     ) -> dict | None:
         """
         Cria um novo contato no GHL.
+        Se for um @lid, não enviamos como "phone" para não dar erro de formatação na API.
         POST /contacts/
         """
         headers = await self._get_headers(location_id)
         if not headers:
             return None
 
-        formatted_phone = phone.strip()
-        if not formatted_phone.startswith("+"):
-            formatted_phone = f"+{formatted_phone}"
-
-        first_name = name or formatted_phone
+        first_name = name or phone
         payload = {
             "locationId": location_id,
-            "phone": formatted_phone,
             "firstName": first_name,
         }
+        
+        # Só envia 'phone' se for um número de verdade
+        if "@lid" not in phone:
+            formatted_phone = phone.strip()
+            if not formatted_phone.startswith("+"):
+                formatted_phone = f"+{formatted_phone}"
+            payload["phone"] = formatted_phone
+
         if email:
             payload["email"] = email
 
@@ -265,10 +269,10 @@ class GHLService:
                 )
                 if response.status_code in (200, 201):
                     data = response.json()
-                    logger.info(f"Novo contato criado no GHL: {formatted_phone}")
+                    logger.info(f"Novo contato criado no GHL: {phone}")
                     return data.get("contact", {})
                 else:
-                    logger.error(f"Erro ao criar contato {formatted_phone}: {response.text}")
+                    logger.error(f"Erro ao criar contato {phone}: {response.text}")
                     return None
         except Exception as e:
             logger.error(f"Exceção ao criar contato: {e}")

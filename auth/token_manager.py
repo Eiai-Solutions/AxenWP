@@ -190,6 +190,43 @@ class TokenManager:
         finally:
             db.close()
 
+    # --- CONTACT MAPPING FUNCS ---
+    def get_mapped_contact_id(self, location_id: str, phone_or_lid: str) -> Optional[str]:
+        """Tenta achar um ID de contato do GHL associado a um telefone_ou_lid no banco local."""
+        from data.models import ContactMapping
+        db = SessionLocal()
+        try:
+            mapping = db.query(ContactMapping).filter_by(
+                location_id=location_id, 
+                phone_or_lid=phone_or_lid
+            ).first()
+            return mapping.ghl_contact_id if mapping else None
+        finally:
+            db.close()
+
+    def save_contact_mapping(self, location_id: str, phone_or_lid: str, ghl_contact_id: str):
+        """Salva a associação entre o numero do WhatsApp (@lid) e o ID real do GHL."""
+        from data.models import ContactMapping
+        db = SessionLocal()
+        try:
+            mapping_id = f"{location_id}_{phone_or_lid}"
+            mapping = db.query(ContactMapping).filter_by(id=mapping_id).first()
+            if not mapping:
+                mapping = ContactMapping(
+                    id=mapping_id,
+                    location_id=location_id,
+                    phone_or_lid=phone_or_lid,
+                    ghl_contact_id=ghl_contact_id
+                )
+                db.add(mapping)
+            else:
+                mapping.ghl_contact_id = ghl_contact_id
+            db.commit()
+        except Exception as e:
+            logger.error(f"Erro ao salvar mapping de contato DB: {e}")
+        finally:
+            db.close()
+
 
 # Instância global
 token_manager = TokenManager()

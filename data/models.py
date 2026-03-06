@@ -36,3 +36,19 @@ class Tenant(Base):
             return datetime.now(timezone.utc) >= (expires - margin)
         except (ValueError, TypeError):
             return True
+
+
+class ContactMapping(Base):
+    """
+    Tabela auxiliar para mapear números bizarros (como o @lid do WhatsApp gerado por anúncios da Meta)
+    ou telefones normais para seus respectivos `contact_id` no GoHighLevel.
+    Isso evita criar campos customizados no GHL e duplicidade na busca.
+    """
+    __tablename__ = "contact_mappings"
+
+    id = Column(String, primary_key=True, index=True) # Ex: location_id + phone
+    location_id = Column(String, index=True)
+    phone_or_lid = Column(String, index=True) # O identificador que a Z-API nos manda (ex: 5511999999999 ou 12345678@lid)
+    ghl_contact_id = Column(String, index=True) # O ID real do contato no GHL
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+
