@@ -91,6 +91,33 @@ async def process_outbound_message(payload: GHLOutboundPayload):
 
     success = False
 
+    def _generate_clean_filename(url: str, caption: str) -> str:
+        parsed = urllib.parse.urlparse(url)
+        base_name = parsed.path.split('/')[-1] if parsed.path else "documento"
+        ext = base_name.split('.')[-1] if '.' in base_name else "pdf"
+        
+        # Consider a name "ugly" if it's very long (like a GHL UUID)
+        is_ugly = len(base_name) > 25
+        
+        # If user typed a short message like "segue cnpj", use it!
+        if caption and len(caption) < 60:
+            clean_caption = re.sub(r'[^\w\s-]', '', caption).strip()
+            if clean_caption:
+                return f"{clean_caption}.{ext}"
+                
+        # If it's a UUID and there's no caption, use nice defaults
+        if is_ugly:
+            if ext.lower() in ['pdf', 'doc', 'docx', 'txt']:
+                return f"Documento.{ext}"
+            elif ext.lower() in ['xls', 'xlsx', 'csv']:
+                return f"Planilha.{ext}"
+            elif ext.lower() in ['png', 'jpg', 'jpeg']:
+                return f"Imagem.{ext}"
+            else:
+                return f"Arquivo.{ext}"
+                
+        return base_name
+
     try:
         # Se tiver anexos, priorizamos o envio do primeiro anexo.
         # Caso clássico: envio de imagem com caption.
@@ -129,7 +156,7 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                     token=tenant.zapi_token,
                     phone=phone,
                     document_url=attachment_url,
-                    filename=attachment_url.split("/")[-1] or "arquivo",
+                    filename=_generate_clean_filename(attachment_url, message_text),
                     client_token=tenant.zapi_client_token,
                 )
                 # Se tinha texto junto, manda
@@ -157,15 +184,7 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                 
                 # Se a mensagem for APENAS o link (GHL envia nativamente assim)
                 if file_url == message_text.strip():
-                    # Extrai um possivel nome do link, ou joga genérico
-                    parsed_url = urllib.parse.urlparse(file_url)
-                    filename = "documento"
-                    if parsed_url.path:
-                         filename = parsed_url.path.split('/')[-1]
-                    
-                    # Sem extensão? Força uma
-                    if "." not in filename:
-                         filename += ".pdf"
+                    filename = _generate_clean_filename(file_url, "")
                          
                     resp = await zapi_service.send_document(
                         instance_id=tenant.zapi_instance_id,
