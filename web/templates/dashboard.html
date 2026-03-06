@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Axen WP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        function openZAPIModal(locationId, companyName, instanceId, token) {
+            document.getElementById('zapi_location_id').value = locationId;
+            document.getElementById('zapi_company_name').innerText = companyName;
+            document.getElementById('zapi_instance_id').value = instanceId || '';
+            document.getElementById('zapi_token').value = token || '';
+            document.getElementById('form_zapi').action = '/admin/tenant/' + locationId + '/zapi';
+            document.getElementById('zapiModal').classList.remove('hidden');
+        }
+
+        function closeZAPIModal() {
+            document.getElementById('zapiModal').classList.add('hidden');
+        }
+
+        function openNewCompanyModal() {
+            document.getElementById('newCompanyModal').classList.remove('hidden');
+        }
+
+        function closeNewCompanyModal() {
+            document.getElementById('newCompanyModal').classList.add('hidden');
+        }
+    </script>
+</head>
+
+<body class="bg-gray-100 font-sans leading-normal tracking-normal min-h-screen">
+
+    <!-- Navbar -->
+    <nav class="bg-gray-800 p-4 shadow-md">
+        <div class="container mx-auto flex justify-between items-center">
+            <div class="text-white font-bold text-xl">
+                Axen WP <span class="font-normal text-sm text-gray-400">GHL ↔ Z-API Hub</span>
+            </div>
+            <div>
+                <a href="/admin/logout" class="text-gray-300 hover:text-white text-sm font-semibold">Sair</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto mt-8 px-4">
+
+        {% if message %}
+        <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative mb-6 shadow-sm">
+            <span class="block sm:inline">{{ message }}</span>
+        </div>
+        {% endif %}
+
+        {% if error_msg %}
+        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-6 shadow-sm">
+            <span class="block sm:inline">{{ error_msg }}</span>
+        </div>
+        {% endif %}
+
+        <!-- Header e Botões -->
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-800 border-b-2 border-blue-500 pb-2 inline-block">Empresas
+                Conectadas</h2>
+            <button onclick="openNewCompanyModal()"
+                class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded shadow">
+                + Nova Instalação
+            </button>
+        </div>
+
+        <!-- Tabela de Clientes -->
+        <div class="bg-white shadow-md rounded-lg overflow-hidden border border-gray-200">
+            <table class="min-w-full leading-normal">
+                <thead>
+                    <tr>
+                        <th
+                            class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Empresa
+                        </th>
+                        <th
+                            class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Location ID
+                        </th>
+                        <th
+                            class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Token GHL
+                        </th>
+                        <th
+                            class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Z-API Instância
+                        </th>
+                        <th
+                            class="px-5 py-3 border-b-2 border-gray-200 bg-gray-50 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Ações
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tenant in tenants %}
+                    <tr>
+                        <td class="px-5 py-4 border-b border-gray-200 bg-white text-sm font-medium text-gray-900">
+                            {{ tenant.company_name }}
+                        </td>
+                        <td class="px-5 py-4 border-b border-gray-200 bg-white text-sm text-gray-500 font-mono">
+                            {{ tenant.location_id }}
+                        </td>
+                        <td class="px-5 py-4 border-b border-gray-200 bg-white text-sm text-center">
+                            {% if tenant.is_token_expired %}
+                            <span class="relative inline-block px-3 py-1 font-semibold text-red-900 leading-tight">
+                                <span aria-hidden class="absolute inset-0 bg-red-200 opacity-50 rounded-full"></span>
+                                <span class="relative">Expirando</span>
+                            </span>
+                            {% else %}
+                            <span class="relative inline-block px-3 py-1 font-semibold text-green-900 leading-tight">
+                                <span aria-hidden class="absolute inset-0 bg-green-200 opacity-50 rounded-full"></span>
+                                <span class="relative">Ativo</span>
+                            </span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-4 border-b border-gray-200 bg-white text-sm text-center">
+                            {% if tenant.zapi_instance_id and tenant.zapi_token %}
+                            <span class="text-green-600 font-semibold" title="{{ tenant.zapi_instance_id }}">Configurado
+                                ✓</span>
+                            {% else %}
+                            <span class="text-yellow-600 font-semibold">Pendente ⚠️</span>
+                            {% endif %}
+                        </td>
+                        <td class="px-5 py-4 border-b border-gray-200 bg-white text-sm text-right">
+                            <button
+                                onclick="openZAPIModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.zapi_instance_id }}', '{{ tenant.zapi_token }}')"
+                                class="text-blue-600 hover:text-blue-900 font-semibold">
+                                Editar Z-API
+                            </button>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5"
+                            class="px-5 py-8 border-b border-gray-200 bg-white text-sm text-center text-gray-500">
+                            Nenhuma empresa configurada ainda. Clique em "Nova Instalação".
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+    </div>
+
+    <!-- Modais -->
+
+    <!-- Modal Z-API -->
+    <div id="zapiModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg leading-6 font-medium text-gray-900 border-b pb-2">Configurar Z-API</h3>
+                <p class="text-sm text-gray-500 mt-2">Empresa: <strong id="zapi_company_name"></strong></p>
+                <form id="form_zapi" method="POST" class="mt-4">
+                    <input type="hidden" id="zapi_location_id" name="location_id">
+
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">ID da Instância (Z-API)</label>
+                        <input type="text" id="zapi_instance_id" name="instance_id"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none"
+                            required>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Token (Z-API)</label>
+                        <input type="text" id="zapi_token" name="token"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none"
+                            required>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <button type="button" onclick="closeZAPIModal()"
+                            class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded focus:outline-none">Cancelar</button>
+                        <button type="submit"
+                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none">Salvar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Nova Empresa -->
+    <div id="newCompanyModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+        <div class="relative top-20 mx-auto p-5 border w-full max-w-md shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg leading-6 font-medium text-gray-900 border-b pb-2">Instalar Nova Empresa</h3>
+                <p class="text-sm text-gray-600 mt-2 mb-4">Adicione uma nova "Client Key" no Marketplace do GHL para
+                    este app e cole aqui.</p>
+
+                <form action="/admin/onboard" method="POST">
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Nome de Identificação (Ex: Imobiliária
+                            X)</label>
+                        <input type="text" name="company_name"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none"
+                            required>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Client ID (Adicionado no GHL)</label>
+                        <input type="text" name="client_id"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none font-mono"
+                            required>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Client Secret</label>
+                        <input type="password" name="client_secret"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none font-mono"
+                            required>
+                    </div>
+
+                    <div class="flex items-center justify-between">
+                        <button type="button" onclick="closeNewCompanyModal()"
+                            class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded focus:outline-none">Cancelar</button>
+                        <button type="submit"
+                            class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none">Conectar
+                            com GHL</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

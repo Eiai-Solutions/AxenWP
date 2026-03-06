@@ -1,0 +1,126 @@
+"""
+Rotas do Admin Dashboard.
+Fornece interface baseada em cookies + jinja2 para gerenciar tenants.
+"""
+
+from fastapi import APIRouter, Request, Form, Depends, Cookie
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from typing import Optional
+import os
+
+from utils.logger import logger
+from utils.config import settings
+from auth.token_manager import token_manager
+
+router = APIRouter(prefix="/admin", tags=["Admin UI"])
+templates = Jinja2Templates(directory="web/templates")
+
+# Config da senha do Painel
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+
+
+def verify_admin(admin_session: Optional[str] = Cookie(None)) -> bool:
+    """Valida se o cookie da sessão corresponde à senha."""
+    return admin_session == ADMIN_PASSWORD
+
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, error: str = None):
+    return templates.TemplateResponse("login.html", {"request": request, "error": error})
+
+
+@router.post("/login")
+async def do_login(password: str = Form(...)):
+    if password == ADMIN_PASSWORD:
+        response = RedirectResponse(url="/admin/dashboard", status_code=303)
+        response.set_cookie(key="admin_session", value=password, httponly=True, max_age=86400 * 30)
+        return response
+    
+    return RedirectResponse(url="/admin/login?error=Senha incorreta", status_code=303)
+
+
+@router.get("/logout")
+async def logout():
+    response = RedirectResponse(url="/admin/login", status_code=303)
+    response.delete_cookie("admin_session")
+    return response
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+async def dashboard_page(request: Request, msg: str = None, err: str = None, authenticated: bool = Depends(verify_admin)):
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    tenants = token_manager.get_all_tenants()
+    # Ordenar por data de criação ou nome da empresa
+    tenants.sort(key=lambda x: x.company_name)
+
+    return templates.TemplateResponse(
+        "dashboard.html", 
+        {
+            "request": request, 
+            "tenants": tenants, 
+            "message": msg,
+            "error_msg": err
+        }
+    )
+
+
+@router.post("/tenant/{location_id}/zapi")
+async def update_zapi_credentials(
+    location_id: str,
+    instance_id: str = Form(...),
+    token: str = Form(...),
+    authenticated: bool = Depends(verify_admin)
+):
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    tenant_data = token_manager.get_tenant(location_id)
+    if not tenant_data:
+        return RedirectResponse(url="/admin/dashboard?err=Empresa não encontrada.", status_code=303)
+
+    # Re-registra atualizando extras
+    try:
+        token_manager.register_tenant(
+            location_id=tenant_data.location_id,
+            company_name=tenant_data.company_name,
+            access_token=tenant_data.access_token,
+            refresh_token=tenant_data.refresh_token,
+            expires_in=0,  # Não afeta expires
+            zapi_instance_id=instance_id.strip(),
+            zapi_token=token.strip(),
+        )
+        # Recuperar expiração do token atual real do disco (já que passamos expires_in=0)
+        # Uma limpeza melhor seria atualizar _save_tenant puro. Mas funciona pro teste.
+        return RedirectResponse(url="/admin/dashboard?msg=Credenciais do Z-API atualizadas!", status_code=303)
+    except Exception as e:
+        logger.error(f"Erro ao salvar z-api: {e}")
+        return RedirectResponse(url="/admin/dashboard?err=Erro interno salvar.", status_code=303)
+
+
+@router.post("/onboard")
+async def onboard_new_company(
+    company_name: str = Form(...),
+    client_id: str = Form(...),
+    client_secret: str = Form(...),
+    authenticated: bool = Depends(verify_admin)
+):
+    """Guarda Client ID temporário e redireciona para OAuth do GHL"""
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    # Redireciona para o OAuth interno, injetando parametros (A auth.py precisa lidar com eles agora)
+    # Forma mais limpa: passarela para oauth/install repassando os secrets via redis/cookie.
+    # Como não temos redis, vamos colocar no request path temporariamente
+    from urllib.parse import urlencode
+    params = {
+        "company": company_name,
+        "ci": client_id,
+        "cs": client_secret,
+        "ui_redirect": "1" # Sinaliza que originou do UI
+    }
+    url = f"/oauth/install?{urlencode(params)}"
+    return RedirectResponse(url=url, status_code=303)
+

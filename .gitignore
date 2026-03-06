@@ -1,0 +1,26 @@
+# Environment
+.env
+
+# Tenant data (contém tokens e credenciais)
+data/tenants/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

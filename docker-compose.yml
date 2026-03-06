@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  axenwp-api:
+    build: .
+    container_name: axenwp_server
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/tenants:/app/data/tenants # Montagem vital: Persiste arquivos JSON de tokens
+      # - ./.env:/app/.env                 # Para ler as env vars na VPS (descomente em produção)
+    env_file:
+      - .env
+    environment:
+      - HOST=0.0.0.0
+      - PORT=8000
