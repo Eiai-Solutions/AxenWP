@@ -110,6 +110,7 @@ class ZAPIService:
         payload = {
             "phone": self._format_phone(phone),
             "audio": audio_url,
+            "recordAudio": True,
         }
 
         return await self._post(url, payload, client_token)
