@@ -203,26 +203,28 @@ class GHLService:
                 logger.error(f"Exceção ao buscar contato ({query_phone}): {e}")
                 return None
 
-        # 1. Tenta a busca exata com o número recebido
-        clean_phone = phone.replace("+", "").strip()
+        # 1. Garante que o número comece com '+' para a API do GHL entender que é um telefone
+        clean_phone = phone.strip()
+        if not clean_phone.startswith("+"):
+            clean_phone = f"+{clean_phone}"
+
         contact = await _do_search(clean_phone)
         if contact:
             return contact
 
-        # 2. Se for Brasil (55), tenta a variação do 9º dígito
-        if clean_phone.startswith("55") and len(clean_phone) in (12, 13):
-            # Formatos esperados: 
-            # 55 + DDD (2) + Número (8 ou 9)
-            ddd = clean_phone[2:4]
-            numero = clean_phone[4:]
+        # 2. Se for Brasil (+55), tenta a variação do 9º dígito
+        if clean_phone.startswith("+55") and len(clean_phone) in (13, 14):
+            # +55 (3 chars) + DDD (2 chars) + Número (8 ou 9 chars)
+            ddd = clean_phone[3:5]
+            numero = clean_phone[5:]
             
             alt_phone = None
             if len(numero) == 9 and numero.startswith("9"):
                 # Tem 9, vamos buscar sem o 9
-                alt_phone = f"55{ddd}{numero[1:]}"
+                alt_phone = f"+55{ddd}{numero[1:]}"
             elif len(numero) == 8:
                 # Não tem 9, vamos buscar com o 9
-                alt_phone = f"55{ddd}9{numero}"
+                alt_phone = f"+55{ddd}9{numero}"
 
             if alt_phone:
                 logger.info(f"Contato não encontrado com {clean_phone}. Tentando variação BR: {alt_phone}")
