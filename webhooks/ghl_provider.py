@@ -21,13 +21,16 @@ class GHLOutboundPayload(BaseModel):
     """Schema do payload recebido do GHL (Conversation Provider)."""
 
     contactId: Optional[str] = None
-    locationId: str
-    messageId: str
-    type: str  # Geralmente "SMS"
-    phone: str
+    locationId: str = ""
+    messageId: str = ""
+    type: Optional[str] = None
+    phone: Optional[str] = None # Tornando phone opcional para evitar o erro 422
     message: Optional[str] = ""
     attachments: Optional[List[str]] = []
     userId: Optional[str] = None
+    
+    class Config:
+        extra = "allow"
 
 
 async def process_outbound_message(payload: GHLOutboundPayload):
@@ -117,12 +120,22 @@ async def process_outbound_message(payload: GHLOutboundPayload):
 
 
 @router.post("/outbound")
-async def ghl_outbound_webhook(payload: GHLOutboundPayload, background_tasks: BackgroundTasks):
+async def ghl_outbound_webhook(request: Request, background_tasks: BackgroundTasks):
     """
     Endpoint que o GHL chama quando uma mensagem é enviada pela interface utilizando
     o provedor customizado.
     Sempre retornamos 200 rápido e processamos no background para evitar timeouts da UI do GHL.
     """
+    try:
+        payload_dict = await request.json()
+        logger.info(f"PAYLOAD BRUTO RECEBIDO DO GHL: {payload_dict}")
+        
+        # Faz parse ignorando erros super estritos
+        payload = GHLOutboundPayload(**payload_dict)
+    except Exception as e:
+        logger.error(f"Erro ao capturar JSON do GHL: {e}")
+        return {"success": False, "error": str(e)}
+
     logger.info(f"Recebido GHL Outbound (location={payload.locationId}, phone={payload.phone})")
     
     # Enfileira a tarefa
