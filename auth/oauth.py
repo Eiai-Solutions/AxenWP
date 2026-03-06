@@ -173,9 +173,8 @@ async def oauth_callback(
             "message": f"Empresa registrada com sucesso!",
             "location_id": tenant.location_id,
             "instructions": (
-                "Agora edite o arquivo data/tenants/{location_id}.json "
-                "e preencha: zapi_instance_id, zapi_token, "
-                "conversation_provider_id e company_name"
+                "Empresa conectada ao banco de dados! "
+                "Agora configure o Z-API pelo painel administrativo."
             ),
         },
     )

@@ -28,11 +28,17 @@ async def refresh_tokens_job():
     logger.info("Executando job periódico de refresh de tokens...")
     await token_manager.refresh_all_tokens()
 
+from data.database import Base, engine
+
 # =============================================================================
 # Ciclo de Vida do FastAPI (Start/Shutdown)
 # =============================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Inicializa banco de dados
+    Base.metadata.create_all(bind=engine)
+    logger.info("Tabelas do banco de dados verificadas/criadas.")
+
     # Inicializa scheduler de token refresh a cada 12 horas (proteção)
     # E roda imediatamente na subida
     logger.info("Axen WP Server iniciando...")

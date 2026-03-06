@@ -81,19 +81,13 @@ async def update_zapi_credentials(
     if not tenant_data:
         return RedirectResponse(url="/admin/dashboard?err=Empresa não encontrada.", status_code=303)
 
-    # Re-registra atualizando extras
+    # Atualiza pelo TokenManager direto ao banco
     try:
-        token_manager.register_tenant(
+        token_manager.update_zapi_credentials(
             location_id=tenant_data.location_id,
-            company_name=tenant_data.company_name,
-            access_token=tenant_data.access_token,
-            refresh_token=tenant_data.refresh_token,
-            expires_in=0,  # Não afeta expires
-            zapi_instance_id=instance_id.strip(),
-            zapi_token=token.strip(),
+            instance_id=instance_id.strip(),
+            token=token.strip()
         )
-        # Recuperar expiração do token atual real do disco (já que passamos expires_in=0)
-        # Uma limpeza melhor seria atualizar _save_tenant puro. Mas funciona pro teste.
         return RedirectResponse(url="/admin/dashboard?msg=Credenciais do Z-API atualizadas!", status_code=303)
     except Exception as e:
         logger.error(f"Erro ao salvar z-api: {e}")

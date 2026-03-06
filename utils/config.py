@@ -20,6 +20,11 @@ class Settings(BaseSettings):
         default="", description="ID do Conversation Provider Axen WP"
     )
 
+    database_url: str = Field(
+        default="sqlite:///./data/axenwp.db",
+        description="URL de conexão com o banco de dados (ex: postgresql://...)"
+    )
+
     # Servidor
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
