@@ -44,9 +44,9 @@ async def process_outbound_message(payload: GHLOutboundPayload):
     location_id = payload.locationId
     tenant = token_manager.get_tenant(location_id)
 
-    # GHL enviará 2 webhooks: um "pending" (quando criamos) e um "delivered" (quando atualizamos a msg). 
-    # Só processamos o "pending".
-    if payload.status and payload.status.lower() != "pending":
+    # GHL enviará múltiplos webhooks: "pending", "sent" (quando criamos) e "delivered" (quando atualizamos a msg). 
+    # Só processamos as mensagens novas que precisam ir para a Z-API.
+    if payload.status and payload.status.lower() not in ["pending", "sent"]:
         logger.debug(f"Ignorando GHL Outbound (status={payload.status}) - ID: {payload.messageId}")
         return
 
