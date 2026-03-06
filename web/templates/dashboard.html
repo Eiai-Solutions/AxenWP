@@ -54,12 +54,34 @@
             document.getElementById('zapiModal').classList.add('hidden');
         }
 
-        function openNewCompanyModal() {
-            document.getElementById('newCompanyModal').classList.remove('hidden');
-        }
-
         function closeNewCompanyModal() {
             document.getElementById('newCompanyModal').classList.add('hidden');
+        }
+
+        async function openQRModal(locationId, companyName) {
+            document.getElementById('qr_company_name').innerText = companyName;
+            const qrContainer = document.getElementById('qr_image_container');
+            qrContainer.innerHTML = '<div class="animate-pulse w-48 h-48 bg-gray-800 rounded-xl flex items-center justify-center border border-gray-700 mx-auto"><span class="text-xs text-brand-red font-mono uppercase tracking-widest animate-bounce">Loading...</span></div>';
+            document.getElementById('qrModal').classList.remove('hidden');
+
+            try {
+                const response = await fetch(`/admin/tenant/${locationId}/qrcode`);
+                const data = await response.json();
+
+                if (data.qrcode) {
+                    qrContainer.innerHTML = `<img src="${data.qrcode}" alt="Scan to connect" class="mx-auto rounded-xl w-64 h-64 border-2 border-brand-red/50 shadow-[0_0_30px_rgba(225,29,72,0.2)]">`;
+                } else {
+                    qrContainer.innerHTML = `<div class="w-48 h-48 bg-gray-900 rounded-xl flex flex-col gap-2 items-center justify-center border border-brand-red/50 mx-auto p-4 text-center"><svg class="w-8 h-8 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><span class="text-xs text-gray-400 font-mono focus:outline-none focus:ring-1">${data.error || 'Failed to load code'}</span></div>`;
+                }
+            } catch (err) {
+                qrContainer.innerHTML = '<div class="text-xs text-red-500 font-mono">Connection error</div>';
+            }
+        }
+
+        function closeQRModal() {
+            document.getElementById('qrModal').classList.add('hidden');
+            // Refresh to update the UI connectivity status
+            setTimeout(() => window.location.reload(), 500);
         }
     </script>
     <style>
@@ -240,7 +262,7 @@
                                 {% endif %}
                             </td>
                             <td class="px-6 py-5 text-center">
-                                {% if tenant.zapi_instance_id and tenant.zapi_token %}
+                                {% if tenant.zapi_connection_status == 'CONNECTED' %}
                                 <span class="text-gray-300 font-medium text-xs flex items-center justify-center gap-2"
                                     title="{{ tenant.zapi_instance_id }}">
                                     <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor"
@@ -248,11 +270,21 @@
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                             d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                                     </svg>
-                                    Active
+                                    Connected
+                                </span>
+                                {% elif tenant.zapi_connection_status == 'DISCONNECTED' %}
+                                <span
+                                    class="text-yellow-500/80 font-medium text-xs flex items-center justify-center gap-2"
+                                    title="WhatsApp Desktop offline or disconnected">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238L5.3 5.3m0 0L4.586 4.586m0 0L2.1 2.1">
+                                        </path>
+                                    </svg>
+                                    Disconnected
                                 </span>
                                 {% else %}
-                                <span
-                                    class="text-yellow-500/80 font-medium text-xs flex items-center justify-center gap-2">
+                                <span class="text-gray-600 font-medium text-xs flex items-center justify-center gap-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                             d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
@@ -262,10 +294,21 @@
                                 </span>
                                 {% endif %}
                             </td>
-                            <td class="px-6 py-5 text-right">
+                            <td class="px-6 py-5 text-right flex items-center justify-end gap-4 h-full">
+                                {% if tenant.zapi_connection_status == 'DISCONNECTED' %}
+                                <button onclick="openQRModal('{{ tenant.location_id }}', '{{ tenant.company_name }}')"
+                                    class="text-brand-red hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-1.5 bg-brand-red/10 px-2.5 py-1.5 rounded-md border border-brand-red/30">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z">
+                                        </path>
+                                    </svg>
+                                    Scan QR
+                                </button>
+                                {% endif %}
                                 <button
-                                    onclick="openZAPIModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.zapi_instance_id or '' }}', '{{ tenant.zapi_token or '' }}', '{{ tenant.zapi_client_token or '' }}')"
-                                    class="text-gray-400 hover:text-white hover:underline decoration-brand-red underline-offset-4 text-xs font-semibold uppercase tracking-widest transition-colors font-mono">
+                                    onclick="openZAPIModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.zapi_instance_id | default('', true) }}', '{{ tenant.zapi_token | default('', true) }}', '{{ tenant.zapi_client_token | default('', true) }}')"
+                                    class="text-gray-400 hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-semibold uppercase tracking-widest transition-colors font-mono mt-0.5">
                                     Configure Z-API
                                 </button>
                             </td>
@@ -453,6 +496,37 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Reconnect QR Code -->
+    <div id="qrModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-md" onclick="closeQRModal()"></div>
+
+        <div
+            class="relative w-full max-w-sm bg-gray-900 border border-gray-800 rounded-3xl shadow-[0_0_80px_rgba(225,29,72,0.2)] overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-red to-brand-darkred"></div>
+
+            <div class="p-8 text-center">
+                <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight mb-2">Connect Device</h3>
+                <p class="text-xs text-gray-500 font-mono mb-8 uppercase tracking-widest">Instance: <span
+                        id="qr_company_name" class="text-brand-red"></span></p>
+
+                <div id="qr_image_container" class="mb-8 min-h-[12rem] flex items-center justify-center">
+                    <!-- Base64 Image Injected Here -->
+                </div>
+
+                <p class="text-[10px] text-gray-500 font-mono leading-relaxed px-4">
+                    Open WhatsApp on the device and scan the code above to restore communications.
+                </p>
+
+                <div class="mt-8 border-t border-gray-800 pt-6">
+                    <button type="button" onclick="closeQRModal()"
+                        class="px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-gray-800 hover:bg-gray-700 w-full transition-colors">
+                        Done / Close
+                    </button>
+                </div>
             </div>
         </div>
     </div>

@@ -184,6 +184,40 @@ class ZAPIService:
         """
         return "".join(c for c in phone if c.isdigit())
 
+    async def get_status(
+        self, instance_id: str, token: str, client_token: str = ""
+    ) -> dict | None:
+        """
+        Retorna o status de conexão da instância (CONNECTED, DISCONNECTED, etc).
+        GET /instances/{id}/token/{token}/status
+        """
+        url = self._build_url(instance_id, token, "status")
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(url, headers=self._get_headers(client_token))
+                if response.status_code == 200:
+                    return response.json()
+        except Exception as e:
+            logger.error(f"Erro ao buscar status Z-API: {e}")
+        return None
+
+    async def get_qr_code(
+        self, instance_id: str, token: str, client_token: str = ""
+    ) -> dict | None:
+        """
+        Solicita um novo QR Code para reconexão.
+        GET /instances/{id}/token/{token}/qr-code/image
+        """
+        url = self._build_url(instance_id, token, "qr-code/image")
+        try:
+            async with httpx.AsyncClient(timeout=15.0) as client:
+                response = await client.get(url, headers=self._get_headers(client_token))
+                if response.status_code == 200:
+                    return response.json() # Retorna {"value": "data:image/png;base64,..."}
+        except Exception as e:
+            logger.error(f"Erro ao buscar QR Code Z-API: {e}")
+        return None
+
 
 # Instância global
 zapi_service = ZAPIService()

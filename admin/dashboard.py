@@ -12,6 +12,7 @@ import os
 from utils.logger import logger
 from utils.config import settings
 from auth.token_manager import token_manager
+from services.zapi_service import zapi_service
 
 router = APIRouter(prefix="/admin", tags=["Admin UI"])
 templates = Jinja2Templates(directory="web/templates")
@@ -55,6 +56,15 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
     tenants = token_manager.get_all_tenants()
     # Ordenar por data de criação ou nome da empresa
     tenants.sort(key=lambda x: x.company_name)
+    
+    # Busca status online da Z-API para exibir no painel
+    for t in tenants:
+        setattr(t, "zapi_connection_status", "NOT_CONFIGURED")
+        if t.zapi_instance_id and t.zapi_token:
+            status_data = await zapi_service.get_status(t.zapi_instance_id, t.zapi_token, t.zapi_client_token)
+            if status_data:
+                # Retorno do z-api status é {"connected": true, "session": "CONNECTED"}
+                t.zapi_connection_status = "CONNECTED" if status_data.get("connected") else "DISCONNECTED"
 
     return templates.TemplateResponse(
         "dashboard.html", 
@@ -94,6 +104,26 @@ async def update_zapi_credentials(
     except Exception as e:
         logger.error(f"Erro ao salvar z-api: {e}")
         return RedirectResponse(url="/admin/dashboard?err=Erro interno salvar.", status_code=303)
+
+
+@router.get("/tenant/{location_id}/qrcode")
+async def get_tenant_qrcode(location_id: str, authenticated: bool = Depends(verify_admin)):
+    """Retorna o base64 do QR code da Z-API para reconexão via painel."""
+    if not authenticated:
+        return {"error": "Unauthorized"}
+        
+    tenant = token_manager.get_tenant(location_id)
+    if not tenant or not tenant.zapi_instance_id:
+        return {"error": "Tenant ou Z-API não configurados"}
+        
+    qr_data = await zapi_service.get_qr_code(
+        tenant.zapi_instance_id, tenant.zapi_token, tenant.zapi_client_token
+    )
+    
+    if qr_data and "value" in qr_data:
+        return {"qrcode": qr_data["value"]}
+        
+    return {"error": "Não foi possível gerar QR Code"}
 
 
 @router.post("/onboard")
