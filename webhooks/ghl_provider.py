@@ -143,13 +143,15 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                 )
                 # Se tinha texto junto com o áudio GHL (raro, mas pode ocorrer), enviamos logo depois
                 if message_text:
-                    await zapi_service.send_text(
+                    resp_text = await zapi_service.send_text(
                         instance_id=tenant.zapi_instance_id,
                         token=tenant.zapi_token,
                         phone=phone,
                         message=message_text,
                         client_token=tenant.zapi_client_token,
                     )
+                    if hasattr(resp_text, "get") and resp_text.get("zapiMessageId"):
+                        token_manager.save_message_mapping(resp_text["zapiMessageId"], payload.messageId, location_id)
             else:
                 resp = await zapi_service.send_document(
                     instance_id=tenant.zapi_instance_id,
@@ -161,16 +163,20 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                 )
                 # Se tinha texto junto, manda
                 if message_text:
-                    await zapi_service.send_text(
+                    resp_text = await zapi_service.send_text(
                         instance_id=tenant.zapi_instance_id,
                         token=tenant.zapi_token,
                         phone=phone,
                         message=message_text,
                         client_token=tenant.zapi_client_token,
                     )
+                    if hasattr(resp_text, "get") and resp_text.get("zapiMessageId"):
+                        token_manager.save_message_mapping(resp_text["zapiMessageId"], payload.messageId, location_id)
             
             # (Opcional) se houver múltiplos anexos, poderia fazer um forloop
             success = bool(resp)
+            if success and hasattr(resp, "get") and resp.get("zapiMessageId"):
+                token_manager.save_message_mapping(resp["zapiMessageId"], payload.messageId, location_id)
 
         # Se não tem anexos, é texto simples (Mas pode ser um Link do GHL para arquivo grande)
         elif message_text:
@@ -195,6 +201,8 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                         client_token=tenant.zapi_client_token,
                     )
                     success = bool(resp)
+                    if success and hasattr(resp, "get") and resp.get("zapiMessageId"):
+                        token_manager.save_message_mapping(resp["zapiMessageId"], payload.messageId, location_id)
                 else:
                     # Se tiver texto misturado, manda os dois (Texto e Link) como texto normal 
                     # ou poderia mandar preview de link. Por precaução mantemos texto.
@@ -206,6 +214,8 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                         client_token=tenant.zapi_client_token,
                     )
                     success = bool(resp)
+                    if success and hasattr(resp, "get") and resp.get("zapiMessageId"):
+                        token_manager.save_message_mapping(resp["zapiMessageId"], payload.messageId, location_id)
             else:
                 # Texto 100% normal sem links do GHL
                 resp = await zapi_service.send_text(
@@ -216,6 +226,8 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                     client_token=tenant.zapi_client_token,
                 )
                 success = bool(resp)
+                if success and hasattr(resp, "get") and resp.get("zapiMessageId"):
+                    token_manager.save_message_mapping(resp["zapiMessageId"], payload.messageId, location_id)
 
         # Atualiza status no GHL
         if success:

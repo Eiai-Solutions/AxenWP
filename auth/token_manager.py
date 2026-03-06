@@ -240,6 +240,42 @@ class TokenManager:
         finally:
             db.close()
 
+    # --- MESSAGE MAPPING FUNCS ---
+    def save_message_mapping(self, zapi_message_id: str, ghl_message_id: str, location_id: str):
+        """Salva a associação entre o ID da mensagem na Z-API e no GHL."""
+        from data.models import MessageMapping
+        db = SessionLocal()
+        try:
+            mapping = db.query(MessageMapping).filter_by(zapi_message_id=zapi_message_id).first()
+            if not mapping:
+                mapping = MessageMapping(
+                    zapi_message_id=zapi_message_id,
+                    ghl_message_id=ghl_message_id,
+                    location_id=location_id
+                )
+                db.add(mapping)
+            else:
+                mapping.ghl_message_id = ghl_message_id
+            db.commit()
+        except Exception as e:
+            logger.error(f"Erro ao salvar mapping de mensagem DB: {e}")
+        finally:
+            db.close()
+
+    def get_ghl_message_id_by_zapi(self, zapi_message_id: str) -> Optional[dict]:
+        """Tenta achar o ID da mensagem no GHL pelo ID da Z-API."""
+        from data.models import MessageMapping
+        db = SessionLocal()
+        try:
+            mapping = db.query(MessageMapping).filter_by(zapi_message_id=zapi_message_id).first()
+            if mapping:
+                return {
+                    "ghl_message_id": mapping.ghl_message_id,
+                    "location_id": mapping.location_id
+                }
+            return None
+        finally:
+            db.close()
 
 # Instância global
 token_manager = TokenManager()

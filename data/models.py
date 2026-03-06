@@ -52,3 +52,18 @@ class ContactMapping(Base):
     ghl_contact_id = Column(String, index=True) # O ID real do contato no GHL
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
+
+class MessageMapping(Base):
+    """
+    Tabela para mapear o messageId do GHL com o zapiMessageId.
+    Isso é necessário para atualizar o status (entregue, lido, falhou) no GHL
+    quando recebemos o webhook de status da Z-API.
+    """
+    __tablename__ = "message_mappings"
+
+    zapi_message_id = Column(String, primary_key=True, index=True) # O ID gerado pela Z-API
+    ghl_message_id = Column(String, index=True) # O ID original do GHL (payload.messageId)
+    location_id = Column(String, index=True)
+    status = Column(String, default="pending")
+    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+

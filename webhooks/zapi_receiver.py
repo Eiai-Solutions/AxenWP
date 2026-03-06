@@ -175,3 +175,61 @@ async def zapi_inbound_webhook(
     
     # Se o GHL exigir 200 sempre, Z-API também precisa para parar de reenviar
     return {"success": True}
+
+
+async def process_status_update(location_id: str, payload: Dict[str, Any]):
+    """
+    Processa webhooks de STATUS de mensagens (onMessageStatus) da Z-API
+    e repassa pro GHL.
+    Status esperados da Z-API: "DELIVERED", "READ", "ERROR", etc.
+    """
+    zapi_message_id = payload.get("messageId")
+    status = payload.get("status", "").upper()
+    
+    if not zapi_message_id:
+        return
+        
+    mapping = token_manager.get_ghl_message_id_by_zapi(zapi_message_id)
+    if not mapping:
+        logger.debug(f"Webhook de status ignorado: Z-API MessageId {zapi_message_id} não mapeado para GHL.")
+        return
+        
+    ghl_message_id = mapping.get("ghl_message_id")
+    
+    # Traduzir status da Z-API para o GHL (delivered, read, failed)
+    ghl_status = "delivered" # Default fallback seguro
+    if status == "DELIVERED":
+        ghl_status = "delivered"
+    elif status == "READ":
+        ghl_status = "read"
+    elif status in ["ERROR", "FAILED", "REJECTED"]:
+        ghl_status = "failed"
+        
+    logger.info(f"Atualizando status no GHL para '{ghl_status}' (GHL MsgId: {ghl_message_id})")
+    await ghl_service.update_message_status(
+        location_id=location_id,
+        message_id=ghl_message_id,
+        status=ghl_status,
+        error_message=payload.get("error", "Erro remoto no Z-API") if ghl_status == "failed" else None
+    )
+
+
+@router.post("/status/{location_id}")
+async def zapi_status_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    location_id: str = Path(..., description="O Location ID do GHL desta empresa"),
+):
+    """
+    URL de Webhook (onMessageStatus) para colar no Z-API:
+    https://seu-servidor.com/webhook/zapi/status/{SEU_LOCATION_ID_DO_GHL}
+    """
+    try:
+        payload = await request.json()
+    except Exception as e:
+        logger.error("Payload Z-API Status inválido.")
+        return {"success": False, "error": "Invalid JSON"}
+
+    background_tasks.add_task(process_status_update, location_id, payload)
+    
+    return {"success": True}
