@@ -104,6 +104,23 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                     caption=message_text,  # Msg de texto vira caption
                     client_token=tenant.zapi_client_token,
                 )
+            elif any(ext in attachment_url.lower() for ext in [".mp3", ".ogg", ".wav", ".mpeg"]):
+                resp = await zapi_service.send_audio(
+                    instance_id=tenant.zapi_instance_id,
+                    token=tenant.zapi_token,
+                    phone=phone,
+                    audio_url=attachment_url,
+                    client_token=tenant.zapi_client_token,
+                )
+                # Se tinha texto junto com o áudio GHL (raro, mas pode ocorrer), enviamos logo depois
+                if message_text:
+                    await zapi_service.send_text(
+                        instance_id=tenant.zapi_instance_id,
+                        token=tenant.zapi_token,
+                        phone=phone,
+                        message=message_text,
+                        client_token=tenant.zapi_client_token,
+                    )
             else:
                 resp = await zapi_service.send_document(
                     instance_id=tenant.zapi_instance_id,
@@ -113,6 +130,15 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                     filename=attachment_url.split("/")[-1] or "arquivo",
                     client_token=tenant.zapi_client_token,
                 )
+                # Se tinha texto junto, manda
+                if message_text:
+                    await zapi_service.send_text(
+                        instance_id=tenant.zapi_instance_id,
+                        token=tenant.zapi_token,
+                        phone=phone,
+                        message=message_text,
+                        client_token=tenant.zapi_client_token,
+                    )
             
             # (Opcional) se houver múltiplos anexos, poderia fazer um forloop
             success = bool(resp)
