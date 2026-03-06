@@ -102,7 +102,7 @@ async def oauth_callback(
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
                 f"{settings.ghl_api_base}/oauth/token",
-                json={
+                data={
                     "client_id": client_id,
                     "client_secret": client_secret,
                     "grant_type": "authorization_code",
@@ -112,7 +112,7 @@ async def oauth_callback(
                 },
                 headers={
                     "Accept": "application/json",
-                    "Content-Type": "application/json",
+                    "Content-Type": "application/x-www-form-urlencoded",
                 },
             )
 
