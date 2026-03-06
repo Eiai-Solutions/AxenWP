@@ -177,35 +177,60 @@ class GHLService:
     ) -> dict | None:
         """
         Busca um contato pelo telefone.
+        Tenta buscar o número exato. Se for do Brasil (+55) e tiver DDD, 
+        tenta buscar a variação com/sem o 9º dígito para evitar duplicidade.
         GET /contacts/search?query={phone}&locationId={locationId}
         """
         headers = await self._get_headers(location_id)
         if not headers:
             return None
 
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    f"{self.BASE_URL}/contacts/search",
-                    params={"query": phone, "locationId": location_id},
-                    headers=headers,
-                )
-
-                if response.status_code == 200:
-                    data = response.json()
-                    contacts = data.get("contacts", [])
-                    if contacts:
-                        return contacts[0]
-                    return None
-                else:
-                    logger.warning(
-                        f"Busca de contato retornou status {response.status_code}"
+        async def _do_search(query_phone: str):
+            try:
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    response = await client.get(
+                        f"{self.BASE_URL}/contacts/search",
+                        params={"query": query_phone, "locationId": location_id},
+                        headers=headers,
                     )
+                    if response.status_code == 200:
+                        data = response.json()
+                        contacts = data.get("contacts", [])
+                        if contacts:
+                            return contacts[0]
                     return None
+            except Exception as e:
+                logger.error(f"Exceção ao buscar contato ({query_phone}): {e}")
+                return None
 
-        except Exception as e:
-            logger.error(f"Exceção ao buscar contato: {e}")
-            return None
+        # 1. Tenta a busca exata com o número recebido
+        clean_phone = phone.replace("+", "").strip()
+        contact = await _do_search(clean_phone)
+        if contact:
+            return contact
+
+        # 2. Se for Brasil (55), tenta a variação do 9º dígito
+        if clean_phone.startswith("55") and len(clean_phone) in (12, 13):
+            # Formatos esperados: 
+            # 55 + DDD (2) + Número (8 ou 9)
+            ddd = clean_phone[2:4]
+            numero = clean_phone[4:]
+            
+            alt_phone = None
+            if len(numero) == 9 and numero.startswith("9"):
+                # Tem 9, vamos buscar sem o 9
+                alt_phone = f"55{ddd}{numero[1:]}"
+            elif len(numero) == 8:
+                # Não tem 9, vamos buscar com o 9
+                alt_phone = f"55{ddd}9{numero}"
+
+            if alt_phone:
+                logger.info(f"Contato não encontrado com {clean_phone}. Tentando variação BR: {alt_phone}")
+                contact_alt = await _do_search(alt_phone)
+                if contact_alt:
+                    return contact_alt
+
+        return None
 
     async def create_contact(
         self, location_id: str, phone: str, name: str = "", email: str = ""
