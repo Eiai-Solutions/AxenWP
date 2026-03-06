@@ -46,6 +46,7 @@
             document.getElementById('form_zapi').action = '/admin/tenant/' + locationId + '/zapi';
             var host = window.location.host;
             document.getElementById('zapi_webhook_instruction').innerText = 'https://' + host + '/webhook/zapi/inbound/' + locationId;
+            document.getElementById('zapi_webhook_status').innerText = 'https://' + host + '/webhook/zapi/status/' + locationId;
             document.getElementById('zapiModal').classList.remove('hidden');
         }
 
@@ -324,7 +325,7 @@
                     <div
                         class="absolute inset-0 bg-brand-red/5 mix-blend-overlay opacity-0 group-hover:opacity-100 transition-opacity">
                     </div>
-                    <div class="flex items-start gap-4 relative z-10">
+                    <div class="flex items-start gap-4 relative z-10 w-full">
                         <div
                             class="w-8 h-8 rounded-full bg-brand-red/10 flex items-center justify-center shrink-0 border border-brand-red/30 text-brand-red">
                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -332,14 +333,20 @@
                                     d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                             </svg>
                         </div>
-                        <div>
-                            <p class="text-xs text-brand-red font-bold uppercase tracking-widest mb-1">Webhook Target
-                                Payload</p>
-                            <p class="text-xs text-gray-400 mb-3">Copy this endpoint to the Z-API "Ao Receber Mensagem"
-                                field:</p>
+                        <div class="min-w-0 flex-1 overflow-hidden">
+                            <p class="text-xs text-brand-red font-bold uppercase tracking-widest mb-1">Inbound Webhook
+                            </p>
+                            <p class="text-xs text-gray-400 mb-2">Copy to Z-API "Ao Receber Mensagem":</p>
                             <code id="zapi_webhook_instruction"
-                                class="block bg-black border border-gray-800 p-3 rounded-lg text-xs text-gray-300 font-mono select-all overflow-x-auto selection:bg-brand-red/30">https://{{ request.headers.host }}/webhook/zapi/inbound/ID</code>
-                            <p class="text-[10px] text-gray-500 mt-2 font-mono uppercase tracking-widest">Client-Token
+                                class="block w-full bg-black border border-gray-800 p-3 rounded-lg text-xs text-gray-300 font-mono select-all overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent selection:bg-brand-red/30">https://{{ request.headers.host }}/webhook/zapi/inbound/ID</code>
+
+                            <p class="text-xs text-brand-red font-bold uppercase tracking-widest mt-5 mb-1">Status
+                                Webhook</p>
+                            <p class="text-xs text-gray-400 mb-2">Copy to Z-API "Ao Alterar Status da Mensagem":</p>
+                            <code id="zapi_webhook_status"
+                                class="block w-full bg-black border border-gray-800 p-3 rounded-lg text-xs text-gray-300 font-mono select-all overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent selection:bg-brand-red/30">https://{{ request.headers.host }}/webhook/zapi/status/ID</code>
+
+                            <p class="text-[10px] text-gray-500 mt-4 font-mono uppercase tracking-widest">Client-Token
                                 header required if specified below.</p>
                         </div>
                     </div>
