@@ -24,6 +24,7 @@ class GHLOutboundPayload(BaseModel):
     locationId: str = ""
     messageId: str = ""
     type: Optional[str] = None
+    status: Optional[str] = None
     phone: Optional[str] = None # Tornando phone opcional para evitar o erro 422
     message: Optional[str] = ""
     attachments: Optional[List[str]] = []
@@ -42,6 +43,12 @@ async def process_outbound_message(payload: GHLOutboundPayload):
     """
     location_id = payload.locationId
     tenant = token_manager.get_tenant(location_id)
+
+    # GHL enviará 2 webhooks: um "pending" (quando criamos) e um "delivered" (quando atualizamos a msg). 
+    # Só processamos o "pending".
+    if payload.status and payload.status.lower() != "pending":
+        logger.debug(f"Ignorando GHL Outbound (status={payload.status}) - ID: {payload.messageId}")
+        return
 
     if not tenant:
         logger.error(f"GHL Outbound abortado: Tenant {location_id} não encontrado/registrado.")
