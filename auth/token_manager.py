@@ -79,7 +79,7 @@ class TokenManager:
         finally:
             db.close()
             
-    def update_zapi_credentials(self, location_id: str, instance_id: str, token: str):
+    def update_zapi_credentials(self, location_id: str, instance_id: str, token: str, client_token: str = ""):
         """Atualiza as credenciais Z-API de um determinado tenant."""
         db = SessionLocal()
         try:
@@ -87,6 +87,7 @@ class TokenManager:
             if tenant:
                 tenant.zapi_instance_id = instance_id
                 tenant.zapi_token = token
+                tenant.zapi_client_token = client_token
                 db.commit()
                 logger.info(f"Credenciais Z-API salvas no banco para {tenant.company_name}")
         finally:

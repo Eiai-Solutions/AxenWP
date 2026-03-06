@@ -7,11 +7,12 @@
     <title>Dashboard - Axen WP</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
-        function openZAPIModal(locationId, companyName, instanceId, token) {
+        function openZAPIModal(locationId, companyName, instanceId, token, clientToken) {
             document.getElementById('zapi_location_id').value = locationId;
             document.getElementById('zapi_company_name').innerText = companyName;
             document.getElementById('zapi_instance_id').value = instanceId || '';
             document.getElementById('zapi_token').value = token || '';
+            document.getElementById('zapi_client_token').value = clientToken || '';
             document.getElementById('form_zapi').action = '/admin/tenant/' + locationId + '/zapi';
             // Atualizar a instrução do webhook
             var host = window.location.host;
@@ -130,7 +131,7 @@
                         </td>
                         <td class="px-5 py-4 border-b border-gray-200 bg-white text-sm text-right">
                             <button
-                                onclick="openZAPIModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.zapi_instance_id }}', '{{ tenant.zapi_token }}')"
+                                onclick="openZAPIModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.zapi_instance_id or '' }}', '{{ tenant.zapi_token or '' }}', '{{ tenant.zapi_client_token or '' }}')"
                                 class="text-blue-600 hover:text-blue-900 font-semibold">
                                 Editar Z-API
                             </button>
@@ -189,11 +190,21 @@
                             required>
                     </div>
 
-                    <div class="mb-6">
+                    <div class="mb-4">
                         <label class="block text-gray-700 text-sm font-bold mb-2">Token (Z-API)</label>
                         <input type="text" id="zapi_token" name="token"
                             class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none"
                             required>
+                    </div>
+
+                    <div class="mb-6">
+                        <label class="block text-gray-700 text-sm font-bold mb-2">Client Token (Segurança /
+                            Opcional)</label>
+                        <input type="text" id="zapi_client_token" name="client_token"
+                            class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none"
+                            placeholder="Seu client-token configurado na Z-API">
+                        <p class="text-xs text-gray-500 mt-1">Se a sua instância Z-API exige Client-Token de segurança,
+                            coloque ele aqui.</p>
                     </div>
 
                     <div class="flex items-center justify-between">

@@ -72,6 +72,7 @@ async def update_zapi_credentials(
     location_id: str,
     instance_id: str = Form(...),
     token: str = Form(...),
+    client_token: str = Form(""),
     authenticated: bool = Depends(verify_admin)
 ):
     if not authenticated:
@@ -86,7 +87,8 @@ async def update_zapi_credentials(
         token_manager.update_zapi_credentials(
             location_id=tenant_data.location_id,
             instance_id=instance_id.strip(),
-            token=token.strip()
+            token=token.strip(),
+            client_token=client_token.strip()
         )
         return RedirectResponse(url="/admin/dashboard?msg=Credenciais do Z-API atualizadas!", status_code=303)
     except Exception as e:
