@@ -215,9 +215,10 @@ async def zapi_inbound_webhook(
     # Valida Client-Token do tenant, se configurado
     tenant = token_manager.get_tenant(location_id)
     if tenant and tenant.zapi_client_token:
-        incoming_token = request.headers.get("Client-Token", "")
+        # FastAPI / Starlette padroniza os headers para lowercase
+        incoming_token = request.headers.get("client-token", "")
         if incoming_token != tenant.zapi_client_token:
-            logger.warning(f"Webhook Z-API Inbound rejeitado: Client-Token inválido para {location_id}.")
+            logger.warning(f"Webhook Z-API Inbound rejeitado: Client-Token inválido para {location_id}. Esperado: {tenant.zapi_client_token}, Recebido: {incoming_token}")
             return {"success": False, "error": "Unauthorized"}
 
     # Envia pro processamento em background
@@ -288,9 +289,10 @@ async def zapi_status_webhook(
     # Valida Client-Token do tenant, se configurado
     tenant = token_manager.get_tenant(location_id)
     if tenant and tenant.zapi_client_token:
-        incoming_token = request.headers.get("Client-Token", "")
+        # FastAPI / Starlette padroniza os headers para lowercase
+        incoming_token = request.headers.get("client-token", "")
         if incoming_token != tenant.zapi_client_token:
-            logger.warning(f"Webhook Z-API Status rejeitado: Client-Token inválido para {location_id}.")
+            logger.warning(f"Webhook Z-API Status rejeitado: Client-Token inválido para {location_id}. Esperado: {tenant.zapi_client_token}, Recebido: {incoming_token}")
             return {"success": False, "error": "Unauthorized"}
 
     background_tasks.add_task(process_status_update, location_id, payload)
