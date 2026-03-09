@@ -296,6 +296,21 @@
                                 {% endif %}
                             </td>
                             <td class="px-6 py-5 text-right flex items-center justify-end gap-4 h-full">
+                                <form method="POST" action="/admin/tenant/{{ tenant.location_id }}/toggle"
+                                    class="mr-auto my-auto flex items-center">
+                                    <input type="hidden" name="is_active"
+                                        value="{{ 'false' if tenant.is_active else 'true' }}">
+                                    <button type="submit"
+                                        class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-brand-red focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors {{ 'bg-green-500/80 shadow-[0_0_10px_rgba(34,197,94,0.3)]' if tenant.is_active else 'bg-gray-700' }}"
+                                        role="switch" aria-checked="{{ 'true' if tenant.is_active else 'false' }}"
+                                        title="{{ 'Disable' if tenant.is_active else 'Enable' }} Automation">
+                                        <span class="sr-only">Toggle automation</span>
+                                        <span aria-hidden="true"
+                                            class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {{ 'translate-x-4' if tenant.is_active else '-translate-x-0' }}">
+                                        </span>
+                                    </button>
+                                </form>
+
                                 {% if tenant.zapi_connection_status == 'DISCONNECTED' %}
                                 <button onclick="openQRModal('{{ tenant.location_id }}', '{{ tenant.company_name }}')"
                                     class="text-brand-red hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-1.5 bg-brand-red/10 px-2.5 py-1.5 rounded-md border border-brand-red/30">

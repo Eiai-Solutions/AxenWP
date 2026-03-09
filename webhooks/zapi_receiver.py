@@ -28,6 +28,10 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
         logger.error(f"Z-API Inbound abortado: Tenant {location_id} não registrado.")
         return
 
+    if not getattr(tenant, 'is_active', True):
+        logger.info(f"Z-API Inbound abortado: Automação desativada para {location_id}.")
+        return
+
     # Apenas logamos as infos para facilitar debug
     phone = payload.get("phone", "")
     message_type = payload.get("type", "")
@@ -187,6 +191,11 @@ async def process_status_update(location_id: str, payload: Dict[str, Any]):
     status = payload.get("status", "").upper()
     
     if not zapi_message_id:
+        return
+
+    tenant = token_manager.get_tenant(location_id)
+    if tenant and not getattr(tenant, 'is_active', True):
+        logger.info(f"Z-API Status abortado: Automação desativada para {location_id}.")
         return
         
     mapping = token_manager.get_ghl_message_id_by_zapi(zapi_message_id)

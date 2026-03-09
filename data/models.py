@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime
+from sqlalchemy import Column, String, DateTime, Boolean
 
 from data.database import Base
 
@@ -22,6 +22,9 @@ class Tenant(Base):
     # GHL App Configs
     conversation_provider_id = Column(String, nullable=True)
     
+    # State flags
+    is_active = Column(Boolean, default=True)
+
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
     @property

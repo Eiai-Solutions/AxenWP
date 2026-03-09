@@ -93,6 +93,18 @@ class TokenManager:
         finally:
             db.close()
 
+    def toggle_active_status(self, location_id: str, is_active: bool):
+        """Ativa/desativa a automação inteira no nível do Tenant."""
+        db = SessionLocal()
+        try:
+            tenant = self.get_tenant(location_id, db=db)
+            if tenant:
+                tenant.is_active = is_active
+                db.commit()
+                logger.info(f"Automação de {tenant.company_name} alterada para {'ATIVA' if is_active else 'PAUSADA'}")
+        finally:
+            db.close()
+
     def is_token_expired(self, tenant: Tenant) -> bool:
         """Verifica se o access_token está expirado ou prestes a expirar."""
         if not tenant.token_expires_at:

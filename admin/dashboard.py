@@ -77,6 +77,24 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
     )
 
 
+@router.post("/tenant/{location_id}/toggle")
+async def toggle_tenant_automation(
+    location_id: str,
+    is_active: bool = Form(...),
+    authenticated: bool = Depends(verify_admin)
+):
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    try:
+        token_manager.toggle_active_status(location_id, is_active)
+        status_msg = "ativada" if is_active else "desativada"
+        return RedirectResponse(url=f"/admin/dashboard?msg=Automação da instância foi {status_msg}.", status_code=303)
+    except Exception as e:
+        logger.error(f"Erro ao alternar status da instância: {e}")
+        return RedirectResponse(url="/admin/dashboard?err=Erro interno ao tentar alternar o status.", status_code=303)
+
+
 @router.post("/tenant/{location_id}/zapi")
 async def update_zapi_credentials(
     location_id: str,

@@ -59,6 +59,13 @@ async def process_outbound_message(payload: GHLOutboundPayload):
         )
         return
 
+    if not getattr(tenant, 'is_active', True):
+        logger.info(f"GHL Outbound abortado: Automação pausada/desativada para {location_id}.")
+        await ghl_service.update_message_status(
+            location_id, payload.messageId, status="failed", error_message="Automação Axen WP pausada no painel."
+        )
+        return
+
     if not tenant.zapi_instance_id or not tenant.zapi_token:
         logger.error(f"GHL Outbound abortado: Z-API não configurada para tenant {location_id}.")
         await ghl_service.update_message_status(
