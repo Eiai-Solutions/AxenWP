@@ -63,7 +63,7 @@
             document.getElementById('newCompanyModal').classList.add('hidden');
         }
 
-        function openAIAgentModal(locationId, companyName, agentName, agentPrompt, agentModel, agentApiKey, isActive) {
+        function openAIAgentModal(locationId, companyName, agentName, agentPrompt, agentModel, agentApiKey, isActive, elevenlabsKey, elevenlabsVoiceId, alwaysAudio) {
             document.getElementById('ai_location_id').value = locationId;
             document.getElementById('ai_company_name').innerText = companyName;
 
@@ -73,8 +73,17 @@
             document.getElementById('ai_api_key').value = agentApiKey || '';
             document.getElementById('ai_is_active').checked = isActive === 'True';
 
+            document.getElementById('ai_elevenlabs_api_key').value = elevenlabsKey || '';
+            document.getElementById('ai_always_reply_with_audio').checked = alwaysAudio === 'True';
+
+            // Set voice if exists, otherwise load won't pre-select it perfectly until fetched, handled in fetch
+            document.getElementById('ai_elevenlabs_voice_id').dataset.preselected = elevenlabsVoiceId || '';
+
             document.getElementById('form_ai_agent').action = '/admin/agents/' + locationId + '/save';
             document.getElementById('aiAgentModal').classList.remove('hidden');
+
+            // Default to Settings Tab
+            switchAITab('settings');
         }
 
         function closeAIAgentModal() {
@@ -105,6 +114,63 @@
             document.getElementById('qrModal').classList.add('hidden');
             // Refresh to update the UI connectivity status
             setTimeout(() => window.location.reload(), 500);
+        }
+
+        function switchAITab(tabName) {
+            document.querySelectorAll('.ai-tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById('ai_tab_' + tabName).classList.remove('hidden');
+
+            document.querySelectorAll('.ai-tab-btn').forEach(el => {
+                el.classList.remove('border-brand-red', 'text-brand-red', 'bg-brand-red/10');
+                el.classList.add('border-transparent', 'text-gray-400');
+            });
+            const activeBtn = document.getElementById('btn_ai_tab_' + tabName);
+            activeBtn.classList.remove('border-transparent', 'text-gray-400');
+            activeBtn.classList.add('border-brand-red', 'text-brand-red', 'bg-brand-red/10');
+        }
+
+        async function fetchElevenLabsVoices() {
+            const apiKey = document.getElementById('ai_elevenlabs_api_key').value;
+            const btn = document.getElementById('btn_fetch_voices');
+            const selectInfo = document.getElementById('voices_status_info');
+            const voiceSelect = document.getElementById('ai_elevenlabs_voice_id');
+            const preselected = voiceSelect.dataset.preselected;
+
+            if (!apiKey) {
+                alert("Please enter the ElevenLabs API Key first.");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-pulse">Loading...</span>';
+            selectInfo.innerText = "Fetching voices...";
+
+            try {
+                const response = await fetch(`/admin/agents/elevenlabs/voices?api_key=${encodeURIComponent(apiKey)}`);
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    voiceSelect.innerHTML = '<option value="">-- Selecione a Voz --</option>';
+                    data.voices.forEach(v => {
+                        const opt = document.createElement('option');
+                        opt.value = v.voice_id;
+                        opt.innerText = v.name;
+                        if (v.voice_id === preselected) opt.selected = true;
+                        voiceSelect.appendChild(opt);
+                    });
+                    selectInfo.innerText = `${data.voices.length} voices loaded successfully.`;
+                    selectInfo.classList.replace('text-gray-400', 'text-green-400');
+                } else {
+                    selectInfo.innerText = data.detail || "Error loading voices.";
+                    selectInfo.classList.replace('text-gray-400', 'text-red-400');
+                }
+            } catch (err) {
+                selectInfo.innerText = "Connection error.";
+                selectInfo.classList.replace('text-gray-400', 'text-red-400');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Fetch Voices';
+            }
         }
     </script>
     <style>
@@ -345,7 +411,7 @@
                                 </button>
                                 {% endif %}
                                 <button
-                                    onclick="openAIAgentModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.ai_agent_data.name if tenant.ai_agent_data else '' }}', `{{ tenant.ai_agent_data.prompt if tenant.ai_agent_data else '' }}`, '{{ tenant.ai_agent_data.model if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.api_key if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.is_active if tenant.ai_agent_data else 'False' }}')"
+                                    onclick="openAIAgentModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.ai_agent_data.name if tenant.ai_agent_data else '' }}', `{{ tenant.ai_agent_data.prompt if tenant.ai_agent_data else '' }}`, '{{ tenant.ai_agent_data.model if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.api_key if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.is_active if tenant.ai_agent_data else 'False' }}', '{{ tenant.ai_agent_data.elevenlabs_api_key if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.elevenlabs_voice_id if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.always_reply_with_audio if tenant.ai_agent_data else 'False' }}')"
                                     class="text-brand-red hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-1.5 bg-brand-red/10 px-2.5 py-1.5 rounded-md border border-brand-red/30 mr-2">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -617,65 +683,156 @@
                 <form id="form_ai_agent" method="POST" class="space-y-6">
                     <input type="hidden" id="ai_location_id" name="location_id">
 
-                    <div class="flex items-center justify-between bg-black/40 border border-gray-800 p-4 rounded-xl">
-                        <div>
-                            <p class="text-sm font-bold text-white uppercase tracking-wide">Enable Cognitive Engine</p>
-                            <p class="text-xs text-gray-500 mt-1">When active, the AI will automatically intercept
-                                inbound messages marked for AI processing.</p>
+                    <div
+                        class="flex border-b border-gray-800 mb-6 font-mono text-xs uppercase tracking-widest gap-2 overflow-x-auto whitespace-nowrap scrollbar-none">
+                        <button type="button" id="btn_ai_tab_settings" onclick="switchAITab('settings')"
+                            class="ai-tab-btn py-2.5 px-4 font-bold border-b-2 text-brand-red border-brand-red bg-brand-red/10 rounded-t-lg transition-all">⚙️
+                            Settings</button>
+                        <button type="button" id="btn_ai_tab_voice" onclick="switchAITab('voice')"
+                            class="ai-tab-btn py-2.5 px-4 font-bold border-b-2 text-gray-400 border-transparent hover:text-white transition-all">🗣️
+                            Voice & Audio</button>
+                        <button type="button" id="btn_ai_tab_knowledge" onclick="switchAITab('knowledge')"
+                            class="ai-tab-btn py-2.5 px-4 font-bold border-b-2 text-gray-400 border-transparent hover:text-white transition-all">🧠
+                            Knowledge Base</button>
+                    </div>
+
+                    <!-- TAB: SETTINGS -->
+                    <div id="ai_tab_settings" class="ai-tab-content space-y-6">
+                        <div
+                            class="flex items-center justify-between bg-black/40 border border-gray-800 p-4 rounded-xl">
+                            <div>
+                                <p class="text-sm font-bold text-white uppercase tracking-wide">Enable Cognitive Engine
+                                </p>
+                                <p class="text-xs text-gray-500 mt-1">When active, the AI will automatically intercept
+                                    inbound messages marked for AI processing.</p>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="ai_is_active" name="is_active" value="true"
+                                    class="w-5 h-5 text-brand-red bg-gray-900 border-gray-700 rounded focus:ring-brand-red focus:ring-2">
+                            </div>
                         </div>
-                        <div class="flex items-center">
-                            <input type="checkbox" id="ai_is_active" name="is_active" value="true"
-                                class="w-5 h-5 text-brand-red bg-gray-900 border-gray-700 rounded focus:ring-brand-red focus:ring-2">
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="group">
+                                <label
+                                    class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Agent
+                                    Identity Name</label>
+                                <input type="text" id="ai_name" name="name"
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm" required
+                                    placeholder="e.g. MapInvest Consultant">
+                            </div>
+
+                            <div class="group">
+                                <label
+                                    class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">LLM
+                                    Routing Model</label>
+                                <select id="ai_model" name="model"
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" required>
+                                    <option value="openai/gpt-4o">OpenRouter - GPT-4o (OpenAI)</option>
+                                    <option value="openai/gpt-4o-mini">OpenRouter - GPT-4o Mini (OpenAI)</option>
+                                    <option value="anthropic/claude-3.5-sonnet">OpenRouter - Claude 3.5 Sonnet</option>
+                                    <option value="anthropic/claude-3-haiku">OpenRouter - Claude 3 Haiku</option>
+                                    <option value="google/gemini-pro-1.5">OpenRouter - Gemini 1.5 Pro</option>
+                                    <option value="meta-llama/llama-3-70b-instruct">OpenRouter - LLaMA 3 70B</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="group">
+                            <label
+                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
+                                <span class="group-focus-within:text-white">API Key (OpenRouter)</span>
+                                <a href="https://openrouter.ai/keys" target="_blank"
+                                    class="text-brand-red hover:underline">Get Key</a>
+                            </label>
+                            <input type="password" id="ai_api_key" name="api_key"
+                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
+                                placeholder="sk-or-v1-xxxxxxxxxx...">
+                        </div>
+
+                        <div class="group">
+                            <label
+                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">System
+                                Prompt (Cognitive Instructions)</label>
+                            <textarea id="ai_prompt" name="prompt" rows="12"
+                                class="input-dark w-full py-3 px-4 rounded-lg text-sm font-mono leading-relaxed resize-y scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent"
+                                placeholder="You are a helpful assistant..."></textarea>
+                            <p class="text-[10px] text-gray-500 mt-2 font-mono">This prompt dictates the exact behavior,
+                                tone, and constraints of the agent.</p>
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="group">
-                            <label
-                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Agent
-                                Identity Name</label>
-                            <input type="text" id="ai_name" name="name"
-                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm" required
-                                placeholder="e.g. MapInvest Consultant">
+                    <!-- TAB: VOICE -->
+                    <div id="ai_tab_voice" class="ai-tab-content space-y-6 hidden">
+
+                        <div
+                            class="flex items-center justify-between bg-black/40 border border-gray-800 p-4 rounded-xl">
+                            <div>
+                                <p class="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor"
+                                        viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z">
+                                        </path>
+                                    </svg>
+                                    Always Reply with Audio
+                                </p>
+                                <p class="text-xs text-gray-500 mt-1">If enabled, every AI text response will be
+                                    converted to speech and sent as a WhatsApp Audio (PTT).</p>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="checkbox" id="ai_always_reply_with_audio" name="always_reply_with_audio"
+                                    value="true"
+                                    class="w-5 h-5 text-brand-red bg-gray-900 border-gray-700 rounded focus:ring-brand-red focus:ring-2">
+                            </div>
                         </div>
 
                         <div class="group">
                             <label
-                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">LLM
-                                Routing Model</label>
-                            <select id="ai_model" name="model"
-                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" required>
-                                <option value="openai/gpt-4o">OpenRouter - GPT-4o (OpenAI)</option>
-                                <option value="openai/gpt-4o-mini">OpenRouter - GPT-4o Mini (OpenAI)</option>
-                                <option value="anthropic/claude-3.5-sonnet">OpenRouter - Claude 3.5 Sonnet</option>
-                                <option value="anthropic/claude-3-haiku">OpenRouter - Claude 3 Haiku</option>
-                                <option value="google/gemini-pro-1.5">OpenRouter - Gemini 1.5 Pro</option>
-                                <option value="meta-llama/llama-3-70b-instruct">OpenRouter - LLaMA 3 70B</option>
+                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
+                                <span class="group-focus-within:text-white">ElevenLabs API Key</span>
+                                <a href="https://elevenlabs.io/" target="_blank"
+                                    class="text-brand-red hover:underline">Get Key</a>
+                            </label>
+                            <div class="flex gap-3">
+                                <input type="password" id="ai_elevenlabs_api_key" name="elevenlabs_api_key"
+                                    class="input-dark flex-1 py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
+                                    placeholder="sk_...">
+                                <button type="button" id="btn_fetch_voices" onclick="fetchElevenLabsVoices()"
+                                    class="bg-gray-800 hover:bg-gray-700 text-white font-mono uppercase tracking-widest text-[10px] px-4 rounded-lg font-bold border border-gray-700 transition-colors">
+                                    Fetch Voices
+                                </button>
+                            </div>
+                        </div>
+
+                        <div class="group">
+                            <label
+                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Select
+                                Voice</label>
+                            <select id="ai_elevenlabs_voice_id" name="elevenlabs_voice_id"
+                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" data-preselected="">
+                                <option value="">-- Load Voices First --</option>
                             </select>
+                            <p id="voices_status_info" class="text-[10px] text-gray-400 mt-2 font-mono">Select a
+                                predefined or cloned voice from your ElevenLabs account.</p>
                         </div>
                     </div>
 
-                    <div class="group">
-                        <label
-                            class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
-                            <span class="group-focus-within:text-white">API Key (OpenRouter)</span>
-                            <a href="https://openrouter.ai/keys" target="_blank"
-                                class="text-brand-red hover:underline">Get Key</a>
-                        </label>
-                        <input type="password" id="ai_api_key" name="api_key"
-                            class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
-                            placeholder="sk-or-v1-xxxxxxxxxx...">
-                    </div>
-
-                    <div class="group">
-                        <label
-                            class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">System
-                            Prompt (Cognitive Instructions)</label>
-                        <textarea id="ai_prompt" name="prompt" rows="12"
-                            class="input-dark w-full py-3 px-4 rounded-lg text-sm font-mono leading-relaxed resize-y scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent"
-                            placeholder="You are a helpful assistant..."></textarea>
-                        <p class="text-[10px] text-gray-500 mt-2 font-mono">This prompt dictates the exact behavior,
-                            tone, and constraints of the agent.</p>
+                    <!-- TAB: KNOWLEDGE BASE -->
+                    <div id="ai_tab_knowledge"
+                        class="ai-tab-content hidden h-64 flex items-center justify-center border-2 border-dashed border-gray-800 rounded-xl bg-black/20">
+                        <div class="text-center">
+                            <svg class="mx-auto h-12 w-12 text-gray-700" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                    d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10">
+                                </path>
+                            </svg>
+                            <h3 class="mt-2 font-mono text-sm uppercase tracking-widest font-bold text-gray-400">RAG
+                                Documents</h3>
+                            <p class="mt-1 text-xs text-gray-600 font-sans">Uploading interface coming later in Phase 3.
+                            </p>
+                        </div>
                     </div>
 
                     <div class="mt-8 flex items-center justify-end gap-3 pt-4 border-t border-gray-800">

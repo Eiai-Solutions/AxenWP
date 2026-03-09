@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
+import httpx
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
@@ -21,6 +22,9 @@ async def save_agent_settings(
     prompt: str = Form(...),
     model: str = Form("openai/gpt-4o"),
     api_key: Optional[str] = Form(None),
+    elevenlabs_api_key: Optional[str] = Form(None),
+    elevenlabs_voice_id: Optional[str] = Form(None),
+    always_reply_with_audio: bool = Form(False),
     is_active: bool = Form(False)
 ):
     """
@@ -43,6 +47,9 @@ async def save_agent_settings(
         agent.prompt = prompt
         agent.model = model
         agent.api_key = api_key
+        agent.elevenlabs_api_key = elevenlabs_api_key
+        agent.elevenlabs_voice_id = elevenlabs_voice_id
+        agent.always_reply_with_audio = always_reply_with_audio
         agent.is_active = is_active
         
         db.commit()
@@ -56,3 +63,29 @@ async def save_agent_settings(
         return RedirectResponse(url="/admin/dashboard?error=Erro+ao+salvar+Agente", status_code=303)
     finally:
         db.close()
+
+@router.get("/elevenlabs/voices")
+async def get_elevenlabs_voices(api_key: str):
+    """
+    Busca a lista de vozes disponíveis na conta da ElevenLabs usando a API Key fornecida.
+    """
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API Key da ElevenLabs é obrigatória.")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "https://api.elevenlabs.io/v1/voices",
+                headers={"xi-api-key": api_key}
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(status_code=400, detail="Não foi possível verificar a API Key na ElevenLabs")
+
+            data = response.json()
+            voices = [{"voice_id": v["voice_id"], "name": v["name"]} for v in data.get("voices", [])]
+            return {"success": True, "voices": voices}
+            
+    except Exception as e:
+        logger.error(f"Erro ao buscar vozes na ElevenLabs: {e}")
+        raise HTTPException(status_code=500, detail="Erro interno ao consultar serviço de voz.")

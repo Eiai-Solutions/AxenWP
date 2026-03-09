@@ -53,13 +53,36 @@ class AIAgent(Base):
     name = Column(String, nullable=False, default="Agente Inteligente")
     prompt = Column(Text, nullable=False, default="Você é um assistente virtual prestativo.")
     model = Column(String, nullable=False, default="openai/gpt-4o") # Formato OpenRouter
-    api_key = Column(String, nullable=True) # OpenRouter API Key
+    # OpenRouter
+    api_key = Column(String(255), nullable=True)
+
+    # ElevenLabs - Fase 3 Voz
+    elevenlabs_api_key = Column(String(255), nullable=True)
+    elevenlabs_voice_id = Column(String(100), nullable=True)
+    always_reply_with_audio = Column(Boolean, default=False)
+    
     is_active = Column(Boolean, default=False)
     
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Relações
     tenant = relationship("Tenant", back_populates="ai_agent")
+
+class KnowledgeDocument(Base):
+    __tablename__ = "knowledge_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(String, ForeignKey("tenants.location_id", ondelete="CASCADE"), nullable=False, index=True)
+    filename = Column(String(255), nullable=False)
+    file_type = Column(String(50), nullable=True)  # ex: pdf, txt
+    blob_url = Column(String(512), nullable=True)  # Se upado em S3/Supabase Storage
+    is_indexed = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relações
+    tenant = relationship("Tenant", back_populates="knowledge_documents")
 
 class ChatHistory(Base):
     """
