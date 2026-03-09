@@ -56,7 +56,8 @@ async def oauth_install(
             "conversations/message.write "
             "contacts.readonly "
             "contacts.write "
-            "locations.readonly"
+            "locations.readonly "
+            "locations.customFields.readonly"
         ),
     }
 
