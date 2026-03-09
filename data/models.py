@@ -43,6 +43,7 @@ class Tenant(Base):
 
     # Relações
     ai_agent = relationship("AIAgent", back_populates="tenant", uselist=False, cascade="all, delete-orphan")
+    knowledge_documents = relationship("KnowledgeDocument", back_populates="tenant", cascade="all, delete-orphan")
 
 
 class AIAgent(Base):
