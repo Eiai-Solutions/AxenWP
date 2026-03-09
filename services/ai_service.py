@@ -93,7 +93,7 @@ class AIEngine:
             except Exception as e:
                 logger.error(f"Erro ao instanciar LLM OpenRouter: {e}")
 
-    def generate_response(self, user_phone: str, user_message: str) -> Optional[str]:
+    async def generate_response(self, user_phone: str, user_message: str) -> Optional[str]:
         """
         Recebe a mensagem do usuário, busca o histórico e gera a resposta com o LLM.
         """
@@ -104,48 +104,59 @@ class AIEngine:
         # Identificador único de sessão de memória
         session_id = f"{self.agent_config.location_id}_{user_phone}"
         memory = PostgresChatMessageHistory(session_id)
-        
+
         # Recupera histórico
         past_messages = memory.messages
-        
+
         # Constrói o template base (a "conciência" e o prompt)
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", self.agent_config.prompt),
             MessagesPlaceholder(variable_name="history"),
             ("human", "{input}")
         ])
-        
+
         chain = prompt_template | self.llm
-        
+
         try:
-            # Invoca o LLM
-            response = chain.invoke({
+            # Invoca o LLM de forma assíncrona para não bloquear o event loop
+            response = await chain.ainvoke({
                 "history": past_messages,
                 "input": user_message
             })
-            
+
             ai_text = response.content
-            
+
             # Se deu certo, salva ambas as mensagens no banco (Humano + IA)
             memory.add_user_message(user_message)
             memory.add_ai_message(ai_text)
-            
+
             return ai_text
-            
+
         except Exception as e:
             logger.error(f"Erro ao gerar resposta do Agente IA: {e}")
             return None
 
 # Serviço singleton para instanciar/invocações fáceis
 class AIService:
-    
+    # Cache: location_id -> (updated_at, AIEngine)
+    _engine_cache: dict = {}
+
     def get_agent_for_tenant(self, location_id: str) -> Optional[AIEngine]:
         db = SessionLocal()
         try:
             agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
-            if agent and agent.is_active and agent.api_key:
-                return AIEngine(agent)
-            return None
+            if not agent or not agent.is_active or not agent.api_key:
+                self._engine_cache.pop(location_id, None)
+                return None
+
+            # Retorna do cache se o agente não foi alterado desde a última vez
+            cached = self._engine_cache.get(location_id)
+            if cached and cached[0] == agent.updated_at:
+                return cached[1]
+
+            engine = AIEngine(agent)
+            self._engine_cache[location_id] = (agent.updated_at, engine)
+            return engine
         finally:
             db.close()
             
@@ -156,10 +167,10 @@ class AIService:
         engine = self.get_agent_for_tenant(location_id)
         if not engine:
             return None
-            
+
         # O JID geralmente vem no formato '5511... @s.whatsapp.net', limpar
         phone_number = remote_jid.split('@')[0] if '@' in remote_jid else remote_jid
-        
-        return engine.generate_response(user_phone=phone_number, user_message=text_content)
+
+        return await engine.generate_response(user_phone=phone_number, user_message=text_content)
 
 ai_service = AIService()

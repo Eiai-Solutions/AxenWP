@@ -46,9 +46,10 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
     if from_me:
         logger.debug(f"Ignorando mensagem enviada por nós mesmos.")
         return
+    # Aceita apenas eventos de mensagem recebida
     if message_type not in ["ReceivedCallback", "MessageReceived"]:
-        # Pode ajustar dependo de onde no painel Z-API configurou
-        pass 
+        logger.debug(f"Ignorando evento de tipo '{message_type}' (não é mensagem recebida).")
+        return
 
     logger.info(f"Processando inbound Z-API para tenant {location_id} (origem: {phone})")
 
@@ -211,14 +212,13 @@ async def zapi_inbound_webhook(
         logger.error("Payload Z-API Inbound inválido.")
         return {"success": False, "error": "Invalid JSON"}
 
-    # Segurança (opcional): Validação por Header, se configurado no Z-API
-    # zapi_client_token = request.headers.get("Client-Token", "")
-    # if settings.zapi_webhook_secret and zapi_client_token != settings.zapi_webhook_secret:
-    #     logger.warning(f"Tentativa de acesso ao Webhook com token inválido.")
-    #     return {"success": False, "error": "Unauthorized"}
-    
-    # Print do body pro dev (para debug inicial, depois remover ou colocar com model=debug)
-    # logger.debug(f"Payload inbound: {payload}")
+    # Valida Client-Token do tenant, se configurado
+    tenant = token_manager.get_tenant(location_id)
+    if tenant and tenant.zapi_client_token:
+        incoming_token = request.headers.get("Client-Token", "")
+        if incoming_token != tenant.zapi_client_token:
+            logger.warning(f"Webhook Z-API Inbound rejeitado: Client-Token inválido para {location_id}.")
+            return {"success": False, "error": "Unauthorized"}
 
     # Envia pro processamento em background
     background_tasks.add_task(process_inbound_message, location_id, payload)
@@ -284,6 +284,14 @@ async def zapi_status_webhook(
     except Exception as e:
         logger.error("Payload Z-API Status inválido.")
         return {"success": False, "error": "Invalid JSON"}
+
+    # Valida Client-Token do tenant, se configurado
+    tenant = token_manager.get_tenant(location_id)
+    if tenant and tenant.zapi_client_token:
+        incoming_token = request.headers.get("Client-Token", "")
+        if incoming_token != tenant.zapi_client_token:
+            logger.warning(f"Webhook Z-API Status rejeitado: Client-Token inválido para {location_id}.")
+            return {"success": False, "error": "Unauthorized"}
 
     background_tasks.add_task(process_status_update, location_id, payload)
     

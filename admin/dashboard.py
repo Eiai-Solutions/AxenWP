@@ -8,6 +8,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 import os
+import hmac
+import hashlib
 
 from utils.logger import logger
 from utils.config import settings
@@ -21,9 +23,15 @@ templates = Jinja2Templates(directory="web/templates")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
 
 
+def _make_session_token(password: str) -> str:
+    """Deriva um token de sessão seguro a partir da senha (nunca expõe a senha no cookie)."""
+    return hmac.new(password.encode(), b"axenwp-admin-session", hashlib.sha256).hexdigest()
+
+
 def verify_admin(admin_session: Optional[str] = Cookie(None)) -> bool:
-    """Valida se o cookie da sessão corresponde à senha."""
-    return admin_session == ADMIN_PASSWORD
+    """Valida se o cookie da sessão é um token HMAC válido."""
+    expected = _make_session_token(ADMIN_PASSWORD)
+    return hmac.compare_digest(admin_session or "", expected)
 
 
 @router.get("/login", response_class=HTMLResponse)
@@ -35,9 +43,15 @@ async def login_page(request: Request, error: str = None):
 async def do_login(password: str = Form(...)):
     if password == ADMIN_PASSWORD:
         response = RedirectResponse(url="/admin/dashboard", status_code=303)
-        response.set_cookie(key="admin_session", value=password, httponly=True, max_age=86400 * 30)
+        response.set_cookie(
+            key="admin_session",
+            value=_make_session_token(password),
+            httponly=True,
+            samesite="lax",
+            max_age=86400 * 30,
+        )
         return response
-    
+
     return RedirectResponse(url="/admin/login?error=Senha incorreta", status_code=303)
 
 
