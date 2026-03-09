@@ -57,7 +57,7 @@ async def oauth_install(
             "contacts.readonly "
             "contacts.write "
             "locations.readonly "
-            "locations.customFields.readonly"
+            "locations/customFields.readonly"
         ),
     }
 
