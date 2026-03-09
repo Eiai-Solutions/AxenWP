@@ -57,8 +57,23 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
     # Ordenar por data de criação ou nome da empresa
     tenants.sort(key=lambda x: x.company_name)
     
+    # Busca os Agentes de IA
+    from data.database import SessionLocal
+    from data.models import AIAgent
+    db = SessionLocal()
+    agent_map = {}
+    try:
+        agents = db.query(AIAgent).all()
+        for a in agents:
+            agent_map[a.location_id] = a
+    except Exception as e:
+        logger.error(f"Erro ao buscar AI Agents: {e}")
+    finally:
+        db.close()
+    
     # Busca status online da Z-API para exibir no painel
     for t in tenants:
+        t.ai_agent_data = agent_map.get(t.location_id)
         setattr(t, "zapi_connection_status", "NOT_CONFIGURED")
         if t.zapi_instance_id and t.zapi_token:
             status_data = await zapi_service.get_status(t.zapi_instance_id, t.zapi_token, t.zapi_client_token)

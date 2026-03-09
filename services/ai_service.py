@@ -1,0 +1,165 @@
+import logging
+from typing import List, Optional, Tuple
+from datetime import datetime
+
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+
+from data.database import SessionLocal
+from data.models import AIAgent, ChatHistory, Tenant
+
+logger = logging.getLogger(__name__)
+
+class PostgresChatMessageHistory:
+    """Implementa o histórico de mensagens direto via SQLAlchemy (equivalente ao Postgres Chat Memory do n8n)."""
+    
+    def __init__(self, session_id: str):
+        # A session_id idealmente será o location_id + telefone, por ex: "location123__+55119999999"
+        self.session_id = session_id
+        self.max_history = 20 # Mantém o contexto de no máximo N mensagens
+
+    @property
+    def messages(self) -> List[BaseMessage]:
+        db = SessionLocal()
+        try:
+            # Pega as últimas N mensagens
+            records = db.query(ChatHistory).filter(
+                ChatHistory.session_id == self.session_id
+            ).order_by(ChatHistory.id.desc()).limit(self.max_history).all()
+            
+            # Reverte para ficar em ordem cronológica p/ o modelo
+            records.reverse()
+            
+            msgs = []
+            for r in records:
+                if r.message_type == "human":
+                    msgs.append(HumanMessage(content=r.content))
+                elif r.message_type == "ai":
+                    msgs.append(AIMessage(content=r.content))
+            return msgs
+        finally:
+            db.close()
+            
+    def add_user_message(self, message: str) -> None:
+        self._add_message("human", message)
+        
+    def add_ai_message(self, message: str) -> None:
+        self._add_message("ai", message)
+        
+    def _add_message(self, type_: str, content: str) -> None:
+        db = SessionLocal()
+        try:
+            history = ChatHistory(
+                session_id=self.session_id,
+                message_type=type_,
+                content=content
+            )
+            db.add(history)
+            db.commit()
+        except Exception as e:
+            logger.error(f"Erro ao salvar mensagem no histórico: {e}")
+            db.rollback()
+        finally:
+            db.close()
+
+
+class AIEngine:
+    """Core do motor IA integrando OpenRouter via LangChain e Memória persistente PostgreSQL."""
+    
+    def __init__(self, agent_data: AIAgent):
+        self.agent_config = agent_data
+        # Inicializa o LLM via OpenRouter usando a biblioteca oficial OpenAI com base_url
+        # (já que OpenRouter é OpenAI-compatible)
+        
+        # Só inicializa se tiver chave
+        self.llm = None
+        if self.agent_config.api_key:
+            try:
+                self.llm = ChatOpenAI(
+                    model=self.agent_config.model,
+                    api_key=self.agent_config.api_key,
+                    base_url="https://openrouter.ai/api/v1",
+                    temperature=0.3,
+                    max_tokens=1000,
+                    model_kwargs={
+                        # Headers extras úteis no OpenRouter (opcional mas recomendado)
+                        "extra_headers": {
+                            "HTTP-Referer": "https://axenwp.com",
+                            "X-Title": "AxenWP IA Engine"
+                        }
+                    }
+                )
+            except Exception as e:
+                logger.error(f"Erro ao instanciar LLM OpenRouter: {e}")
+
+    def generate_response(self, user_phone: str, user_message: str) -> Optional[str]:
+        """
+        Recebe a mensagem do usuário, busca o histórico e gera a resposta com o LLM.
+        """
+        if not self.agent_config.is_active or not self.llm:
+            logger.info("Agente IA inativo ou sem API Key configurada. Ignorando processamento cognitivo.")
+            return None
+
+        # Identificador único de sessão de memória
+        session_id = f"{self.agent_config.location_id}_{user_phone}"
+        memory = PostgresChatMessageHistory(session_id)
+        
+        # Recupera histórico
+        past_messages = memory.messages
+        
+        # Constrói o template base (a "conciência" e o prompt)
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", self.agent_config.prompt),
+            MessagesPlaceholder(variable_name="history"),
+            ("human", "{input}")
+        ])
+        
+        chain = prompt_template | self.llm
+        
+        try:
+            # Invoca o LLM
+            response = chain.invoke({
+                "history": past_messages,
+                "input": user_message
+            })
+            
+            ai_text = response.content
+            
+            # Se deu certo, salva ambas as mensagens no banco (Humano + IA)
+            memory.add_user_message(user_message)
+            memory.add_ai_message(ai_text)
+            
+            return ai_text
+            
+        except Exception as e:
+            logger.error(f"Erro ao gerar resposta do Agente IA: {e}")
+            return None
+
+# Serviço singleton para instanciar/invocações fáceis
+class AIService:
+    
+    def get_agent_for_tenant(self, location_id: str) -> Optional[AIEngine]:
+        db = SessionLocal()
+        try:
+            agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
+            if agent and agent.is_active and agent.api_key:
+                return AIEngine(agent)
+            return None
+        finally:
+            db.close()
+            
+    async def process_incoming_message(self, location_id: str, remote_jid: str, text_content: str) -> Optional[str]:
+        """
+        Gatilho unificado. Executa o Agente caso o inquilino tenha ativado e retorna a string p/ GHL.
+        """
+        engine = self.get_agent_for_tenant(location_id)
+        if not engine:
+            return None
+            
+        # O JID geralmente vem no formato '5511... @s.whatsapp.net', limpar
+        phone_number = remote_jid.split('@')[0] if '@' in remote_jid else remote_jid
+        
+        return engine.generate_response(user_phone=phone_number, user_message=text_content)
+
+ai_service = AIService()

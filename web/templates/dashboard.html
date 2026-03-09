@@ -59,6 +59,24 @@
             document.getElementById('newCompanyModal').classList.add('hidden');
         }
 
+        function openAIAgentModal(locationId, companyName, agentName, agentPrompt, agentModel, agentApiKey, isActive) {
+            document.getElementById('ai_location_id').value = locationId;
+            document.getElementById('ai_company_name').innerText = companyName;
+
+            document.getElementById('ai_name').value = agentName || 'Agente IA';
+            document.getElementById('ai_prompt').value = agentPrompt || 'Você é um assistente virtual prestativo.';
+            document.getElementById('ai_model').value = agentModel || 'openai/gpt-4o';
+            document.getElementById('ai_api_key').value = agentApiKey || '';
+            document.getElementById('ai_is_active').checked = isActive === 'True';
+
+            document.getElementById('form_ai_agent').action = '/admin/agents/' + locationId + '/save';
+            document.getElementById('aiAgentModal').classList.remove('hidden');
+        }
+
+        function closeAIAgentModal() {
+            document.getElementById('aiAgentModal').classList.add('hidden');
+        }
+
         async function openQRModal(locationId, companyName) {
             document.getElementById('qr_company_name').innerText = companyName;
             const qrContainer = document.getElementById('qr_image_container');
@@ -322,6 +340,17 @@
                                     Scan QR
                                 </button>
                                 {% endif %}
+                                {% endif %}
+                                <button
+                                    onclick="openAIAgentModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.ai_agent_data.name if tenant.ai_agent_data else '' }}', `{{ tenant.ai_agent_data.prompt if tenant.ai_agent_data else '' }}`, '{{ tenant.ai_agent_data.model if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.api_key if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.is_active if tenant.ai_agent_data else 'False' }}')"
+                                    class="text-brand-red hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-1.5 bg-brand-red/10 px-2.5 py-1.5 rounded-md border border-brand-red/30 mr-2">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
+                                        </path>
+                                    </svg>
+                                    Agent AI
+                                </button>
                                 <button
                                     onclick="openZAPIModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.zapi_instance_id | default('', true) }}', '{{ tenant.zapi_token | default('', true) }}', '{{ tenant.zapi_client_token | default('', true) }}')"
                                     class="text-gray-400 hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-semibold uppercase tracking-widest transition-colors font-mono mt-0.5">
@@ -543,6 +572,117 @@
                         Done / Close
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Configuração do Agente IA -->
+    <div id="aiAgentModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeAIAgentModal()"></div>
+
+        <div
+            class="relative w-full max-w-3xl bg-gray-900 border border-brand-red/30 rounded-2xl shadow-[0_0_50px_rgba(225,29,72,0.15)] overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-red to-brand-darkred"></div>
+
+            <div
+                class="p-8 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-brand-red scrollbar-track-gray-900">
+                <div class="flex justify-between items-start mb-6 border-b border-gray-800 pb-4">
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="w-10 h-10 rounded-lg bg-brand-red/10 flex items-center justify-center border border-brand-red/30">
+                            <svg class="h-6 w-6 text-brand-red" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
+                                </path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight glow-text">AI
+                                Agent Core</h3>
+                            <p class="text-xs text-gray-500 font-mono mt-1 uppercase tracking-widest">Instance: <span
+                                    id="ai_company_name" class="text-brand-red"></span></p>
+                        </div>
+                    </div>
+                    <button onclick="closeAIAgentModal()" class="text-gray-500 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <form id="form_ai_agent" method="POST" class="space-y-6">
+                    <input type="hidden" id="ai_location_id" name="location_id">
+
+                    <div class="flex items-center justify-between bg-black/40 border border-gray-800 p-4 rounded-xl">
+                        <div>
+                            <p class="text-sm font-bold text-white uppercase tracking-wide">Enable Cognitive Engine</p>
+                            <p class="text-xs text-gray-500 mt-1">When active, the AI will automatically intercept
+                                inbound messages marked for AI processing.</p>
+                        </div>
+                        <div class="flex items-center">
+                            <input type="checkbox" id="ai_is_active" name="is_active" value="true"
+                                class="w-5 h-5 text-brand-red bg-gray-900 border-gray-700 rounded focus:ring-brand-red focus:ring-2">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="group">
+                            <label
+                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Agent
+                                Identity Name</label>
+                            <input type="text" id="ai_name" name="name"
+                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm" required
+                                placeholder="e.g. MapInvest Consultant">
+                        </div>
+
+                        <div class="group">
+                            <label
+                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">LLM
+                                Routing Model</label>
+                            <select id="ai_model" name="model"
+                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" required>
+                                <option value="openai/gpt-4o">OpenRouter - GPT-4o (OpenAI)</option>
+                                <option value="openai/gpt-4o-mini">OpenRouter - GPT-4o Mini (OpenAI)</option>
+                                <option value="anthropic/claude-3.5-sonnet">OpenRouter - Claude 3.5 Sonnet</option>
+                                <option value="anthropic/claude-3-haiku">OpenRouter - Claude 3 Haiku</option>
+                                <option value="google/gemini-pro-1.5">OpenRouter - Gemini 1.5 Pro</option>
+                                <option value="meta-llama/llama-3-70b-instruct">OpenRouter - LLaMA 3 70B</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="group">
+                        <label
+                            class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
+                            <span class="group-focus-within:text-white">API Key (OpenRouter)</span>
+                            <a href="https://openrouter.ai/keys" target="_blank"
+                                class="text-brand-red hover:underline">Get Key</a>
+                        </label>
+                        <input type="password" id="ai_api_key" name="api_key"
+                            class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
+                            placeholder="sk-or-v1-xxxxxxxxxx...">
+                    </div>
+
+                    <div class="group">
+                        <label
+                            class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">System
+                            Prompt (Cognitive Instructions)</label>
+                        <textarea id="ai_prompt" name="prompt" rows="12"
+                            class="input-dark w-full py-3 px-4 rounded-lg text-sm font-mono leading-relaxed resize-y scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent"
+                            placeholder="You are a helpful assistant..."></textarea>
+                        <p class="text-[10px] text-gray-500 mt-2 font-mono">This prompt dictates the exact behavior,
+                            tone, and constraints of the agent.</p>
+                    </div>
+
+                    <div class="mt-8 flex items-center justify-end gap-3 pt-4 border-t border-gray-800">
+                        <button type="button" onclick="closeAIAgentModal()"
+                            class="px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">Cancel</button>
+                        <button type="submit"
+                            class="btn-brand px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white shadow-[0_0_15px_rgba(225,29,72,0.4)]">Initialize
+                            Cognitive Core</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

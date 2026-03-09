@@ -14,6 +14,10 @@ class GHLService:
     """Serviço para interagir com a API do GoHighLevel."""
 
     BASE_URL = settings.ghl_api_base
+    
+    # Cache para os mapeamentos de Custom Fields por Location ID
+    # formato: {"location_id": {"Nome do Campo": "id_do_campo"}}
+    _custom_fields_cache = {}
 
     async def _get_headers(self, location_id: str) -> dict | None:
         """Monta os headers com o token válido do tenant."""
@@ -35,6 +39,7 @@ class GHLService:
         attachments: list[str] | None = None,
         conversation_provider_id: str = "",
         contact_id: str | None = None,
+        direction: str = "inbound"
     ) -> dict | None:
         """
         Registra uma mensagem inbound (recebida do WhatsApp) no CRM.
@@ -59,7 +64,7 @@ class GHLService:
             "locationId": location_id,
             "phone": formatted_phone,
             "message": message,
-            "direction": "inbound",
+            "direction": direction,
         }
 
         if contact_id:
@@ -285,6 +290,65 @@ class GHLService:
         except Exception as e:
             logger.error(f"Exceção ao criar contato: {e}")
             return None
+
+    async def _get_custom_field_id_by_name(self, location_id: str, field_name: str) -> str | None:
+        """Busca e faz cache do ID de um Custom Field com base no seu nome."""
+        if location_id in self._custom_fields_cache and field_name in self._custom_fields_cache[location_id]:
+            return self._custom_fields_cache[location_id][field_name]
+            
+        headers = await self._get_headers(location_id)
+        if not headers:
+            return None
+            
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.get(
+                    f"{self.BASE_URL}/locations/{location_id}/customFields",
+                    headers=headers,
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    fields = data.get("customFields", [])
+                    
+                    if location_id not in self._custom_fields_cache:
+                        self._custom_fields_cache[location_id] = {}
+                        
+                    for field in fields:
+                        self._custom_fields_cache[location_id][field["name"]] = field["id"]
+                        
+                    return self._custom_fields_cache[location_id].get(field_name)
+                else:
+                    logger.warning(f"Erro ao buscar Custom Fields da location {location_id}: {response.text}")
+                    return None
+        except Exception as e:
+            logger.error(f"Exceção ao buscar custom fields: {e}")
+            return None
+
+    async def is_ai_active_for_contact(self, location_id: str, contact_id: str) -> bool:
+        """
+        Verifica se o contato tem o Custom Field 'Status IA' com o valor 'Ativada'.
+        """
+        field_id = await self._get_custom_field_id_by_name(location_id, "Status IA")
+        if not field_id:
+            logger.debug(f"Custom Field 'Status IA' não encontrado na location {location_id}.")
+            return False
+            
+        contact = await self.get_contact(location_id, contact_id)
+        if not contact:
+            return False
+            
+        custom_fields = contact.get("customFields", [])
+        for cf in custom_fields:
+            if cf.get("id") == field_id:
+                # O valor pode ser uma lista dependendo do tipo do campo, ou uma string.
+                val = cf.get("value")
+                if isinstance(val, list):
+                    return "Ativada" in val
+                elif isinstance(val, str):
+                    return val.strip().lower() == "ativada"
+                    
+        return False
+
 
 
 # Instância global

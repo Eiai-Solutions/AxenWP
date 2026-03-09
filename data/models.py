@@ -1,5 +1,6 @@
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Boolean
+from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, ForeignKey, Text
+from sqlalchemy.orm import relationship
 
 from data.database import Base
 
@@ -39,6 +40,39 @@ class Tenant(Base):
             return datetime.now(timezone.utc) >= (expires - margin)
         except (ValueError, TypeError):
             return True
+
+    # Relações
+    ai_agent = relationship("AIAgent", back_populates="tenant", uselist=False, cascade="all, delete-orphan")
+
+
+class AIAgent(Base):
+    __tablename__ = "ai_agents"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    location_id = Column(String, ForeignKey("tenants.location_id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    name = Column(String, nullable=False, default="Agente Inteligente")
+    prompt = Column(Text, nullable=False, default="Você é um assistente virtual prestativo.")
+    model = Column(String, nullable=False, default="openai/gpt-4o") # Formato OpenRouter
+    api_key = Column(String, nullable=True) # OpenRouter API Key
+    is_active = Column(Boolean, default=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    tenant = relationship("Tenant", back_populates="ai_agent")
+
+class ChatHistory(Base):
+    """
+    Armazena o histórico do langchain na unha ou pra fallback.
+    session_id é o número do cliente (ou ID da conversa).
+    """
+    __tablename__ = "chat_histories"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(String, index=True, nullable=False) # Ex: numero de telefone +55...
+    message_type = Column(String, nullable=False) # "human", "ai", "system"
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class ContactMapping(Base):
