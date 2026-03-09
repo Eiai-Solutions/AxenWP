@@ -215,8 +215,14 @@ async def zapi_inbound_webhook(
     # Valida Client-Token do tenant, se configurado
     tenant = token_manager.get_tenant(location_id)
     if tenant and tenant.zapi_client_token:
-        # FastAPI / Starlette padroniza os headers para lowercase
-        incoming_token = request.headers.get("client-token", "")
+        # FastAPI / Starlette padroniza os headers para lowercase, mas a Z-API às vezes manda no query param
+        incoming_token = (
+            request.headers.get("client-token") or 
+            request.headers.get("Client-Token") or 
+            request.query_params.get("Client-Token") or 
+            request.query_params.get("client-token") or 
+            ""
+        )
         if incoming_token != tenant.zapi_client_token:
             logger.warning(f"Webhook Z-API Inbound rejeitado: Client-Token inválido para {location_id}. Esperado: {tenant.zapi_client_token}, Recebido: {incoming_token}")
             return {"success": False, "error": "Unauthorized"}
@@ -289,8 +295,14 @@ async def zapi_status_webhook(
     # Valida Client-Token do tenant, se configurado
     tenant = token_manager.get_tenant(location_id)
     if tenant and tenant.zapi_client_token:
-        # FastAPI / Starlette padroniza os headers para lowercase
-        incoming_token = request.headers.get("client-token", "")
+        # FastAPI / Starlette padroniza os headers para lowercase, mas a Z-API às vezes manda no query param
+        incoming_token = (
+            request.headers.get("client-token") or 
+            request.headers.get("Client-Token") or 
+            request.query_params.get("Client-Token") or 
+            request.query_params.get("client-token") or 
+            ""
+        )
         if incoming_token != tenant.zapi_client_token:
             logger.warning(f"Webhook Z-API Status rejeitado: Client-Token inválido para {location_id}. Esperado: {tenant.zapi_client_token}, Recebido: {incoming_token}")
             return {"success": False, "error": "Unauthorized"}
