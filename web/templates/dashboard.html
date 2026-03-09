@@ -340,7 +340,6 @@
                                     Scan QR
                                 </button>
                                 {% endif %}
-                                {% endif %}
                                 <button
                                     onclick="openAIAgentModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.ai_agent_data.name if tenant.ai_agent_data else '' }}', `{{ tenant.ai_agent_data.prompt if tenant.ai_agent_data else '' }}`, '{{ tenant.ai_agent_data.model if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.api_key if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.is_active if tenant.ai_agent_data else 'False' }}')"
                                     class="text-brand-red hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-1.5 bg-brand-red/10 px-2.5 py-1.5 rounded-md border border-brand-red/30 mr-2">
