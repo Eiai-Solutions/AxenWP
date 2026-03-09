@@ -85,21 +85,49 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
     finally:
         db.close()
     
+    # Converter Tenant e Agent para dicts locais para garantir que as propriedades
+    # não se percam quando a sessão do SQLAlchemy fechar.
+    tenants_list = []
+    
     # Busca status online da Z-API para exibir no painel
     for t in tenants:
-        t.ai_agent_data = agent_map.get(t.location_id)
-        setattr(t, "zapi_connection_status", "NOT_CONFIGURED")
+        t_dict = {
+            "location_id": t.location_id,
+            "company_name": t.company_name,
+            "is_active": t.is_active,
+            "zapi_instance_id": t.zapi_instance_id,
+            "zapi_token": t.zapi_token,
+            "zapi_client_token": t.zapi_client_token,
+        }
+        
+        agent = agent_map.get(t.location_id)
+        if agent:
+            t_dict["ai_agent_data"] = {
+                "name": agent.name,
+                "prompt": agent.prompt,
+                "model": agent.model,
+                "api_key": agent.api_key,
+                "elevenlabs_api_key": agent.elevenlabs_api_key,
+                "elevenlabs_voice_id": agent.elevenlabs_voice_id,
+                "always_reply_with_audio": agent.always_reply_with_audio,
+                "is_active": agent.is_active,
+            }
+        else:
+            t_dict["ai_agent_data"] = None
+
+        t_dict["zapi_connection_status"] = "NOT_CONFIGURED"
         if t.zapi_instance_id and t.zapi_token:
             status_data = await zapi_service.get_status(t.zapi_instance_id, t.zapi_token, t.zapi_client_token)
             if status_data:
-                # Retorno do z-api status é {"connected": true, "session": "CONNECTED"}
-                t.zapi_connection_status = "CONNECTED" if status_data.get("connected") else "DISCONNECTED"
+                t_dict["zapi_connection_status"] = "CONNECTED" if status_data.get("connected") else "DISCONNECTED"
+                
+        tenants_list.append(t_dict)
 
     return templates.TemplateResponse(
         "dashboard.html", 
         {
             "request": request, 
-            "tenants": tenants, 
+            "tenants": tenants_list, 
             "message": msg,
             "error_msg": err
         }

@@ -55,6 +55,7 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
 
     content_message = "Mensagem recebida do WhatsApp"
     attachments = []
+    is_audio = False
 
     # Parse do tipo de mensagem (Z-API possui várias estruturas)
     if "text" in payload and isinstance(payload["text"], dict):
@@ -65,6 +66,7 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
             attachments.append(payload["image"]["imageUrl"])
     elif "audio" in payload and isinstance(payload["audio"], dict):
         content_message = "🎙️ Áudio recebido"
+        is_audio = True
         if "audioUrl" in payload["audio"]:
             attachments.append(payload["audio"]["audioUrl"])
     elif "document" in payload and isinstance(payload["document"], dict):
@@ -155,19 +157,35 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
                 logger.info(f"🧠 Agente IA ativado para contato {contact_id}. Gerando resposta...")
                 from services.ai_service import ai_service
                 
-                ai_response = await ai_service.process_incoming_message(location_id, phone, content_message)
+                ai_response = await ai_service.process_incoming_message(location_id, phone, content_message, is_audio=is_audio)
                 if ai_response:
-                    logger.info(f"🤖 IA respondeu, enviando via Z-API...")
+                    ai_type = ai_response.get("type", "text")
+                    ai_content = ai_response.get("content", "")
+                    ai_text_for_ghl = ai_response.get("text", ai_content)
+                    
+                    logger.info(f"🤖 IA respondeu ({ai_type}), enviando via Z-API...")
                     
                     # 1. Envia direto via Z-API (mais rápido)
-                    sent_data = await zapi_service.send_text(
-                        instance_id=tenant.zapi_instance_id,
-                        token=tenant.zapi_token,
-                        phone=phone,
-                        message=ai_response,
-                        client_token=tenant.zapi_client_token,
-                        delay_typing=2
-                    )
+                    sent_data = None
+                    if ai_type == "audio":
+                        # Z-API send-audio aceita base64 no parâmetro audio
+                        sent_data = await zapi_service.send_audio(
+                            instance_id=tenant.zapi_instance_id,
+                            token=tenant.zapi_token,
+                            phone=phone,
+                            audio_url=ai_content, # A função send_audio no zapi_service permite enviar base64 pelo argumento audio ou audio_url dependendo da key
+                            client_token=tenant.zapi_client_token,
+                            record_audio=True
+                        )
+                    else:
+                        sent_data = await zapi_service.send_text(
+                            instance_id=tenant.zapi_instance_id,
+                            token=tenant.zapi_token,
+                            phone=phone,
+                            message=ai_content,
+                            client_token=tenant.zapi_client_token,
+                            delay_typing=2
+                        )
                     
                     # 2. Sincroniza a resposta no GHL como Outbound (para histórico)
                     if sent_data:
@@ -175,7 +193,7 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
                         outbound_resp = await ghl_service.send_inbound_message(
                             location_id=location_id,
                             phone=phone,
-                            message=ai_response,
+                            message=ai_text_for_ghl,
                             conversation_provider_id=tenant.conversation_provider_id,
                             contact_id=contact_id,
                             direction="outbound"

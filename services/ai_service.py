@@ -93,9 +93,10 @@ class AIEngine:
             except Exception as e:
                 logger.error(f"Erro ao instanciar LLM OpenRouter: {e}")
 
-    async def generate_response(self, user_phone: str, user_message: str) -> Optional[str]:
+    async def generate_response(self, user_phone: str, user_message: str, is_audio: bool = False) -> Optional[dict]:
         """
         Recebe a mensagem do usuário, busca o histórico e gera a resposta com o LLM.
+        Retorna um dicionário: {"type": "text"|"audio", "content": <string ou base64>}
         """
         if not self.agent_config.is_active or not self.llm:
             logger.info("Agente IA inativo ou sem API Key configurada. Ignorando processamento cognitivo.")
@@ -130,7 +131,51 @@ class AIEngine:
             memory.add_user_message(user_message)
             memory.add_ai_message(ai_text)
 
-            return ai_text
+            # Lógica de Áudio (ElevenLabs)
+            should_send_audio = False
+            if self.agent_config.always_reply_with_audio or is_audio:
+                should_send_audio = True
+
+            # Regra de Exceção: Não enviar áudio se contiver links, emails, @, números grandes ou formatações que a IA fala mal.
+            if should_send_audio:
+                import re
+                # Bloqueia audio se tiver: números longos (telefone/CEP/preço), URLs, @, links
+                if re.search(r'(https?://|www\.|@|\d{4,})', ai_text, re.IGNORECASE):
+                    logger.info("Resposta IA contém URLs, @ ou números longos. Fazendo fallback para Texto.")
+                    should_send_audio = False
+
+            if should_send_audio and self.agent_config.elevenlabs_api_key and self.agent_config.elevenlabs_voice_id:
+                try:
+                    import httpx
+                    import base64
+                    
+                    logger.info(f"Gerando áudio via ElevenLabs (VoiceID: {self.agent_config.elevenlabs_voice_id})...")
+                    async with httpx.AsyncClient(timeout=30.0) as client:
+                        response_el = await client.post(
+                            f"https://api.elevenlabs.io/v1/text-to-speech/{self.agent_config.elevenlabs_voice_id}",
+                            headers={
+                                "xi-api-key": self.agent_config.elevenlabs_api_key,
+                                "Content-Type": "application/json"
+                            },
+                            json={
+                                "text": ai_text,
+                                "model_id": "eleven_multilingual_v2",
+                                "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
+                            }
+                        )
+                        
+                        if response_el.status_code == 200:
+                            audio_content = response_el.content
+                            b64_audio = base64.b64encode(audio_content).decode("utf-8")
+                            # Retorna o dict avisando que é áudio (basta usar data:audio/mpeg;base64)
+                            return {"type": "audio", "content": f"data:audio/mpeg;base64,{b64_audio}", "text": ai_text}
+                        else:
+                            logger.error(f"Erro ao gerar ElevenLabs: {response_el.text}. Fallback texto.")
+                except Exception as ex_el:
+                    logger.error(f"Exceção no ElevenLabs: {ex_el}. Fallback texto.")
+
+            # Resposta Padrão de Texto
+            return {"type": "text", "content": ai_text}
 
         except Exception as e:
             logger.error(f"Erro ao gerar resposta do Agente IA: {e}")
@@ -160,9 +205,9 @@ class AIService:
         finally:
             db.close()
             
-    async def process_incoming_message(self, location_id: str, remote_jid: str, text_content: str) -> Optional[str]:
+    async def process_incoming_message(self, location_id: str, remote_jid: str, text_content: str, is_audio: bool = False) -> Optional[dict]:
         """
-        Gatilho unificado. Executa o Agente caso o inquilino tenha ativado e retorna a string p/ GHL.
+        Gatilho unificado. Executa o Agente caso o inquilino tenha ativado e retorna um dict p/ zapi_receiver.
         """
         engine = self.get_agent_for_tenant(location_id)
         if not engine:
@@ -171,6 +216,6 @@ class AIService:
         # O JID geralmente vem no formato '5511... @s.whatsapp.net', limpar
         phone_number = remote_jid.split('@')[0] if '@' in remote_jid else remote_jid
 
-        return await engine.generate_response(user_phone=phone_number, user_message=text_content)
+        return await engine.generate_response(user_phone=phone_number, user_message=text_content, is_audio=is_audio)
 
 ai_service = AIService()

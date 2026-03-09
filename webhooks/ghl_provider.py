@@ -7,8 +7,10 @@ este webhook recebe a mensagem e a repassa para a Z-API.
 from fastapi import APIRouter, Request, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
+from typing import Optional, List
 import re
 import urllib.parse
+from pydantic import Field
 
 from utils.logger import logger
 from auth.token_manager import token_manager
@@ -22,15 +24,27 @@ router = APIRouter(prefix="/webhook/ghl", tags=["Webhooks GHL"])
 class GHLOutboundPayload(BaseModel):
     """Schema do payload recebido do GHL (Conversation Provider)."""
 
-    contactId: Optional[str] = None
-    locationId: str = ""
-    messageId: str = ""
+    contactId: Optional[str] = Field(None, alias="contact_id")
+    locationId: str = Field("", alias="location_id")
+    messageId: str = Field("", alias="message_id")
     type: Optional[str] = None
     status: Optional[str] = None
-    phone: Optional[str] = None # Tornando phone opcional para evitar o erro 422
+    phone: Optional[str] = None
     message: Optional[str] = ""
     attachments: Optional[List[str]] = []
-    userId: Optional[str] = None
+    userId: Optional[str] = Field(None, alias="user_id")
+
+    def __init__(self, **data):
+        # Allow accepting both camelCase and snake_case directly
+        if 'contactId' in data and 'contact_id' not in data:
+            data['contact_id'] = data['contactId']
+        if 'locationId' in data and 'location_id' not in data:
+            data['location_id'] = data['locationId']
+        if 'messageId' in data and 'message_id' not in data:
+            data['message_id'] = data['messageId']
+        if 'userId' in data and 'user_id' not in data:
+            data['user_id'] = data['userId']
+        super().__init__(**data)
     
     class Config:
         extra = "allow"
