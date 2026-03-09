@@ -63,7 +63,18 @@
             document.getElementById('newCompanyModal').classList.add('hidden');
         }
 
-        function openAIAgentModal(locationId, companyName, agentName, agentPrompt, agentModel, agentApiKey, isActive, elevenlabsKey, elevenlabsVoiceId, alwaysAudio) {
+        function openAIAgentModal(btn) {
+            const locationId = btn.dataset.location;
+            const companyName = btn.dataset.company;
+            const agentName = btn.dataset.ainame;
+            const agentPrompt = btn.dataset.aiprompt;
+            const agentModel = btn.dataset.aimodel;
+            const agentApiKey = btn.dataset.aiapikey;
+            const isActive = btn.dataset.aiisactive;
+            const elevenlabsKey = btn.dataset.aielevenlabskey;
+            const elevenlabsVoiceId = btn.dataset.aielevenlabsvoice;
+            const alwaysAudio = btn.dataset.aialwaysaudio;
+
             document.getElementById('ai_location_id').value = locationId;
             document.getElementById('ai_company_name').innerText = companyName;
 
@@ -71,10 +82,10 @@
             document.getElementById('ai_prompt').value = agentPrompt || 'Você é um assistente virtual prestativo.';
             document.getElementById('ai_model').value = agentModel || 'openai/gpt-4o';
             document.getElementById('ai_api_key').value = agentApiKey || '';
-            document.getElementById('ai_is_active').checked = isActive === 'True';
+            document.getElementById('ai_is_active').checked = String(isActive).toLowerCase() === 'true';
 
             document.getElementById('ai_elevenlabs_api_key').value = elevenlabsKey || '';
-            document.getElementById('ai_always_reply_with_audio').checked = alwaysAudio === 'True';
+            document.getElementById('ai_always_reply_with_audio').checked = String(alwaysAudio).toLowerCase() === 'true';
 
             // Set voice if exists, otherwise load won't pre-select it perfectly until fetched, handled in fetch
             document.getElementById('ai_elevenlabs_voice_id').dataset.preselected = elevenlabsVoiceId || '';
@@ -410,8 +421,17 @@
                                     Scan QR
                                 </button>
                                 {% endif %}
-                                <button
-                                    onclick="openAIAgentModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.ai_agent_data.name if tenant.ai_agent_data else '' }}', `{{ tenant.ai_agent_data.prompt if tenant.ai_agent_data else '' }}`, '{{ tenant.ai_agent_data.model if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.api_key if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.is_active if tenant.ai_agent_data else 'False' }}', '{{ tenant.ai_agent_data.elevenlabs_api_key if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.elevenlabs_voice_id if tenant.ai_agent_data else '' }}', '{{ tenant.ai_agent_data.always_reply_with_audio if tenant.ai_agent_data else 'False' }}')"
+                                <button data-location="{{ tenant.location_id }}"
+                                    data-company="{{ tenant.company_name }}"
+                                    data-ainame="{{ tenant.ai_agent_data.name if tenant.ai_agent_data else '' }}"
+                                    data-aiprompt="{{ tenant.ai_agent_data.prompt if tenant.ai_agent_data and tenant.ai_agent_data.prompt else '' }}"
+                                    data-aimodel="{{ tenant.ai_agent_data.model if tenant.ai_agent_data else '' }}"
+                                    data-aiapikey="{{ tenant.ai_agent_data.api_key if tenant.ai_agent_data and tenant.ai_agent_data.api_key else '' }}"
+                                    data-aiisactive="{{ tenant.ai_agent_data.is_active if tenant.ai_agent_data else 'False' }}"
+                                    data-aielevenlabskey="{{ tenant.ai_agent_data.elevenlabs_api_key if tenant.ai_agent_data and tenant.ai_agent_data.elevenlabs_api_key else '' }}"
+                                    data-aielevenlabsvoice="{{ tenant.ai_agent_data.elevenlabs_voice_id if tenant.ai_agent_data and tenant.ai_agent_data.elevenlabs_voice_id else '' }}"
+                                    data-aialwaysaudio="{{ tenant.ai_agent_data.always_reply_with_audio if tenant.ai_agent_data else 'False' }}"
+                                    onclick="openAIAgentModal(this)"
                                     class="text-brand-red hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-1.5 bg-brand-red/10 px-2.5 py-1.5 rounded-md border border-brand-red/30 mr-2">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
