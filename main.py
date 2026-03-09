@@ -42,27 +42,22 @@ async def lifespan(app: FastAPI):
     logger.info("Tabelas do banco de dados verificadas/criadas.")
 
     # Automigração simples para adicionar colunas faltantes no PostgreSQL/SQLite
+    from sqlalchemy import text
+    
+    col_exists = True
     try:
-        from sqlalchemy import text
-        with engine.begin() as conn:
-            # Verifica se a coluna is_active existe
-            try:
-                conn.execute(text("SELECT is_active FROM tenants LIMIT 1"))
-            except Exception:
-                # Se der erro (coluna não existe), fazemos o ALTER TABLE
-                logger.info("Coluna 'is_active' não encontrada. Adicionando na tabela tenants...")
-                # Usar um try aninhado porque a exceção de cima já invalidou a transação em alguns dialetos
-                pass
-                
-        # Segunda conexão apenas se precisarmos alterar
-        with engine.begin() as conn:
-            try:
-                conn.execute(text("SELECT is_active FROM tenants LIMIT 1"))
-            except Exception:
-                # Agora rodamos em uma transação nova
+        with engine.connect() as conn:
+            conn.execute(text("SELECT is_active FROM tenants LIMIT 1"))
+    except Exception:
+        col_exists = False
+
+    if not col_exists:
+        try:
+            logger.info("Coluna 'is_active' não encontrada. Adicionando na tabela tenants...")
+            with engine.begin() as conn:
                 conn.execute(text("ALTER TABLE tenants ADD COLUMN is_active BOOLEAN DEFAULT true"))
-    except Exception as e:
-        logger.error(f"Erro na automigração do banco de dados: {e}")
+        except Exception as e:
+            logger.error(f"Erro ao adicionar coluna: {e}")
 
     # Inicializa scheduler de token refresh a cada 12 horas (proteção)
     # E roda imediatamente na subida
