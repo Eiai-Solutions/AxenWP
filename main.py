@@ -42,23 +42,33 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
     logger.info("Tabelas do banco de dados verificadas/criadas.")
 
-    # Automigração simples para adicionar colunas faltantes no PostgreSQL/SQLite
+    # Automigração segura: usa information_schema para checar colunas sem abortar transações
     from sqlalchemy import text
-    
-    col_exists = True
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT is_active FROM tenants LIMIT 1"))
-    except Exception:
-        col_exists = False
 
-    if not col_exists:
+    def column_exists(table: str, column: str) -> bool:
+        with engine.connect() as conn:
+            result = conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_name = :t AND column_name = :c"
+            ), {"t": table, "c": column})
+            return result.fetchone() is not None
+
+    pending_migrations = [
+        ("tenants",   "is_active",              "ALTER TABLE tenants ADD COLUMN is_active BOOLEAN DEFAULT true"),
+        ("ai_agents", "elevenlabs_api_key",      "ALTER TABLE ai_agents ADD COLUMN elevenlabs_api_key VARCHAR(255)"),
+        ("ai_agents", "elevenlabs_voice_id",     "ALTER TABLE ai_agents ADD COLUMN elevenlabs_voice_id VARCHAR(100)"),
+        ("ai_agents", "always_reply_with_audio", "ALTER TABLE ai_agents ADD COLUMN always_reply_with_audio BOOLEAN DEFAULT false"),
+        ("ai_agents", "updated_at",              "ALTER TABLE ai_agents ADD COLUMN updated_at TIMESTAMP"),
+    ]
+
+    for table, col, ddl in pending_migrations:
         try:
-            logger.info("Coluna 'is_active' não encontrada. Adicionando na tabela tenants...")
-            with engine.begin() as conn:
-                conn.execute(text("ALTER TABLE tenants ADD COLUMN is_active BOOLEAN DEFAULT true"))
+            if not column_exists(table, col):
+                logger.info(f"Coluna '{col}' não encontrada em '{table}'. Adicionando...")
+                with engine.begin() as conn:
+                    conn.execute(text(ddl))
         except Exception as e:
-            logger.error(f"Erro ao adicionar coluna: {e}")
+            logger.error(f"Erro na migração '{table}.{col}': {e}")
 
     # Inicializa scheduler de token refresh a cada 12 horas (proteção)
     # E roda imediatamente na subida

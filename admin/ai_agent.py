@@ -34,15 +34,16 @@ async def save_agent_settings(
     try:
         tenant = db.query(Tenant).filter(Tenant.location_id == location_id).first()
         if not tenant:
-            raise HTTPException(status_code=404, detail="Tenant não encontrado.")
+            logger.error(f"Tenant {location_id} não encontrado ao tentar salvar Agente IA.")
+            return RedirectResponse(url="/admin/dashboard?err=Tenant+não+encontrado", status_code=303)
 
         # Busca agente existente ou cria novo
         agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
-        
+
         if not agent:
             agent = AIAgent(location_id=location_id)
             db.add(agent)
-            
+
         agent.name = name
         agent.prompt = prompt
         agent.model = model
@@ -51,16 +52,16 @@ async def save_agent_settings(
         agent.elevenlabs_voice_id = elevenlabs_voice_id
         agent.always_reply_with_audio = always_reply_with_audio
         agent.is_active = is_active
-        
+
         db.commit()
         logger.info(f"Configurações do Agente IA atualizadas para o Tenant {location_id}.")
-        
+
         return RedirectResponse(url="/admin/dashboard?msg=Agente+IA+atualizado+com+sucesso", status_code=303)
-    
+
     except Exception as e:
         db.rollback()
-        logger.error(f"Erro ao salvar Agente IA para o tenant {location_id}: {e}")
-        return RedirectResponse(url="/admin/dashboard?error=Erro+ao+salvar+Agente", status_code=303)
+        logger.error(f"Erro ao salvar Agente IA para o tenant {location_id}: {e}", exc_info=True)
+        return RedirectResponse(url="/admin/dashboard?err=Erro+ao+salvar+Agente+IA", status_code=303)
     finally:
         db.close()
 
