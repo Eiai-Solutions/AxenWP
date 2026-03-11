@@ -166,44 +166,77 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
                     logger.info(f"🤖 IA respondeu ({ai_type}), enviando via Z-API...")
                     
                     # 1. Envia direto via Z-API (mais rápido)
-                    sent_data = None
                     if ai_type == "audio":
                         # Z-API send-audio aceita base64 no parâmetro audio
                         sent_data = await zapi_service.send_audio(
                             instance_id=tenant.zapi_instance_id,
                             token=tenant.zapi_token,
                             phone=phone,
-                            audio_url=ai_content, # A função send_audio no zapi_service permite enviar base64 pelo argumento audio ou audio_url dependendo da key
+                            audio_url=ai_content,
                             client_token=tenant.zapi_client_token,
                             record_audio=True
                         )
-                    else:
-                        sent_data = await zapi_service.send_text(
-                            instance_id=tenant.zapi_instance_id,
-                            token=tenant.zapi_token,
-                            phone=phone,
-                            message=ai_content,
-                            client_token=tenant.zapi_client_token,
-                            delay_typing=2
-                        )
-                    
-                    # 2. Sincroniza a resposta no GHL como Outbound (para histórico)
-                    if sent_data:
-                        zapi_message_id = sent_data.get("zapiMessageId")
-                        outbound_resp = await ghl_service.send_inbound_message(
-                            location_id=location_id,
-                            phone=phone,
-                            message=ai_text_for_ghl,
-                            conversation_provider_id=tenant.conversation_provider_id,
-                            contact_id=contact_id,
-                            direction="outbound"
-                        )
                         
-                        # Salva mapeamento para atualizar status (read/delivered) se necessário
-                        if outbound_resp and not outbound_resp.get("error"):
-                            ghl_msg_id = outbound_resp.get("messageId") or outbound_resp.get("id")
-                            if ghl_msg_id and zapi_message_id:
-                                token_manager.save_message_mapping(zapi_message_id, ghl_msg_id, location_id)
+                        # Sincroniza a resposta de aúdio no GHL
+                        if sent_data:
+                            zapi_message_id = sent_data.get("zapiMessageId")
+                            outbound_resp = await ghl_service.send_inbound_message(
+                                location_id=location_id,
+                                phone=phone,
+                                message="[Mensagem de Áudio enviada pela IA]",
+                                conversation_provider_id=tenant.conversation_provider_id,
+                                contact_id=contact_id,
+                                direction="outbound"
+                            )
+                            if outbound_resp and not outbound_resp.get("error"):
+                                ghl_msg_id = outbound_resp.get("messageId") or outbound_resp.get("id")
+                                if ghl_msg_id and zapi_message_id:
+                                    token_manager.save_message_mapping(zapi_message_id, ghl_msg_id, location_id)
+                    else:
+                        import re
+                        import asyncio
+                        
+                        # Quebra o texto por ponto final, interrogação ou exclamação
+                        # (ignora casos que não possuem espaço depois da pontuação, como URLs ou emails)
+                        chunks = [c.strip() for c in re.split(r'(?<=[.?!])\s+(?=[A-Z0-9À-ÖØ-Þ*])', ai_content) if c.strip()]
+                        
+                        # Se por algum motivo o regex não quebrar nada, garante que o fallback seja a mensagem inteira
+                        if not chunks:
+                            chunks = [ai_content.strip()]
+                            
+                        for i, chunk in enumerate(chunks):
+                            delay = 5 if i > 0 else 2
+                            
+                            # Se for o segundo balão em diante, o script espera (dorme) enquanto o WhatsApp
+                            # mostra "Digitando...", garantindo que as mensagens não atropelem a ordem.
+                            if i > 0:
+                                await asyncio.sleep(delay)
+                                
+                            sent_data = await zapi_service.send_text(
+                                instance_id=tenant.zapi_instance_id,
+                                token=tenant.zapi_token,
+                                phone=phone,
+                                message=chunk,
+                                client_token=tenant.zapi_client_token,
+                                delay_typing=delay
+                            )
+                            
+                            # 2. Sincroniza cada balão da resposta no GHL como Outbound
+                            if sent_data:
+                                zapi_message_id = sent_data.get("zapiMessageId")
+                                outbound_resp = await ghl_service.send_inbound_message(
+                                    location_id=location_id,
+                                    phone=phone,
+                                    message=chunk,
+                                    conversation_provider_id=tenant.conversation_provider_id,
+                                    contact_id=contact_id,
+                                    direction="outbound"
+                                )
+                                
+                                if outbound_resp and not outbound_resp.get("error"):
+                                    ghl_msg_id = outbound_resp.get("messageId") or outbound_resp.get("id")
+                                    if ghl_msg_id and zapi_message_id:
+                                        token_manager.save_message_mapping(zapi_message_id, ghl_msg_id, location_id)
                                 
         except Exception as ai_e:
             logger.error(f"Erro durante processamento do motor IA: {ai_e}")
