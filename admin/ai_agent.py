@@ -110,16 +110,53 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
         if not settings or not settings.admin_openrouter_key:
             return {"success": False, "error": "Chave API do Administrador não configurada. Configure no menu superior (Admin Settings)."}
             
-        system_prompt = (
-            "Você é um especialista em Prompt Engineering focado em Agentes de IA para WhatsApp (SDRs, Vendas B2B e Atendimento). "
-            "Sua tarefa é analisar o prompt enviado, identificar problemas que fazem o agente 'falar demais' ou 'ignorar regras', "
-            "e fornecer dicas diretas de melhoria. Seja extremamente objetivo, amigável e use Markdown estruturado (negrito, listas). "
-            "Foque em regras de tamanho máximo, uso de perguntas singulares e redução de discursos extensos."
-            "CRÍTICO: Você DEVE retornar EXCLUSIVAMENTE um objeto JSON válido. O JSON deve ter exatamente duas chaves: "
-            "`\"analysis\"` (contendo todo o seu feedback em markdown) e `\"improved_prompt\"` (contendo o prompt reescrito por completo, pronto para colar, incorporando limites de palavras e regras que você sugeriu)."
+        # 1. Simulate a synthetic conversation
+        simulation_prompt = (
+            "Você é um 'Lead' (cliente em potencial) interessado nos serviços da empresa, mas você é ocupado, direto e um pouco cético. "
+            "Você deve simular uma conversa de 3 turnos com o Agente de IA. "
+            "Abaixo estão as instruções do Agente (Prompt):\n"
+            f"--- PROMPT DO AGENTE ---\n{payload.prompt_text}\n\n"
+            "Retorne a transcrição da conversa no seguinte formato:\n"
+            "Lead: [sua pergunta]\n"
+            "Agente: [resposta baseada no prompt]\n"
+            "...\n\n"
+            "Gere uma conversa curta de 3 turnos."
         )
-        
-        async with httpx.AsyncClient(timeout=45.0) as client:
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            # Simulação
+            sim_resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.admin_openrouter_key}",
+                    "HTTP-Referer": "https://axenwp.com",
+                    "X-Title": "AxenWP Admin Simulation",
+                },
+                json={
+                    "model": settings.admin_openrouter_model or "openai/gpt-4o",
+                    "messages": [{"role": "user", "content": simulation_prompt}]
+                }
+            )
+            transcript = sim_resp.json()["choices"][0]["message"]["content"] if sim_resp.status_code == 200 else "Falha na simulação."
+
+            # 2. Final Analysis with Transcript
+            system_prompt = (
+                "Você é um especialista em Prompt Engineering para WhatsApp B2B. "
+                "Você analisará um PROMPT de agente e uma TRANSCRIÇÃO de um teste automático. "
+                "Sua meta é encontrar falhas de tom, prolixidade e falta de perguntas singulares. "
+                "Foque em regras de tamanho máximo e redução de discursos. "
+                "CRÍTICO: Retorne EXCLUSIVAMENTE um JSON com:\n"
+                "- `\"analysis\"`: feedback markdown sobre o prompt e a conversa.\n"
+                "- `\"improved_prompt\"`: o prompt reescrito completo.\n"
+                "- `\"simulation_transcript\"`: a transcrição da conversa formatada."
+            )
+            
+            final_user_msg = (
+                f"PROMPT DO AGENTE:\n{payload.prompt_text}\n\n"
+                f"TRANSCRIÇÃO DO TESTE:\n{transcript}\n\n"
+                "Retorne o diagnóstico completo em JSON."
+            )
+
             resp = await client.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={
@@ -132,14 +169,13 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                     "response_format": {"type": "json_object"},
                     "messages": [
                         {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"Analise o seguinte prompt do meu agente e retorne apenas o JSON:\n\n---\n{payload.prompt_text}"}
+                        {"role": "user", "content": final_user_msg}
                     ]
                 }
             )
             
             if resp.status_code != 200:
-                logger.error(f"Erro OpenRouter Analyzer: {resp.text}")
-                return {"success": False, "error": f"Erro na IA Mestre ({resp.status_code}). Verifique a chave do Admin."}
+                return {"success": False, "error": f"IA Mestre falhou ({resp.status_code})."}
                 
             data = resp.json()
             raw_content = data["choices"][0]["message"]["content"]
@@ -147,16 +183,70 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
             try:
                 import json
                 parsed = json.loads(raw_content)
-                analysis = parsed.get("analysis", "Erro ao processar análise. O JSON retornado está incompleto.")
-                improved = parsed.get("improved_prompt", "")
-                return {"success": True, "analysis": analysis, "improved_prompt": improved}
-            except Exception as e:
-                logger.error(f"Failed to parse JSON from AI: {raw_content}")
-                return {"success": False, "error": "A IA gerou uma resposta malformada (Não é um JSON válido)."}
-            
+                return {
+                    "success": True, 
+                    "analysis": parsed.get("analysis", ""), 
+                    "improved_prompt": parsed.get("improved_prompt", ""),
+                    "simulation_transcript": parsed.get("simulation_transcript", transcript)
+                }
+            except:
+                return {"success": False, "error": "Resposta malformada da IA Mestre."}
     except Exception as e:
         logger.error(f"Erro no analisador de prompt: {e}", exc_info=True)
         return {"success": False, "error": "Erro interno do servidor ao tentar analisar."}
     finally:
         db.close()
+
+@router.post("/{location_id}/test")
+async def test_ai_agent(location_id: str, payload: dict):
+    """
+    Endpoint manual para o Testador de Chat no dashboard.
+    Recebe message e o prompt/modelo atual (mesmo sem salvar).
+    """
+    db = SessionLocal()
+    try:
+        agent_data = payload.get("agent_data", {})
+        prompt = agent_data.get("prompt")
+        model = agent_data.get("model", "openai/gpt-4o")
+        api_key = agent_data.get("api_key")
+        user_message = payload.get("message")
+        chat_history = payload.get("history", [])
+
+        if not api_key:
+            return {"success": False, "error": "A Chave API do Agente é necessária para testar."}
+
+        messages = [{"role": "system", "content": prompt}]
+        # Add history
+        for h in chat_history[-5:]: # last 5
+            messages.append({"role": "user" if h["from"] == "me" else "assistant", "content": h["text"]})
+        
+        # Current message
+        messages.append({"role": "user", "content": user_message})
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "HTTP-Referer": "https://axenwp.com",
+                    "X-Title": "AxenWP Agent Tester",
+                },
+                json={
+                    "model": model,
+                    "messages": messages
+                }
+            )
+            
+            if resp.status_code != 200:
+                return {"success": False, "error": f"Erro na API do Agente: {resp.text}"}
+            
+            data = resp.json()
+            ai_response = data["choices"][0]["message"]["content"]
+            return {"success": True, "response": ai_response}
+    except Exception as e:
+        logger.error(f"Erro no chat tester: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
 
