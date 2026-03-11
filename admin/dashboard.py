@@ -71,17 +71,30 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
     # Ordenar por data de criação ou nome da empresa
     tenants.sort(key=lambda x: x.company_name)
     
-    # Busca os Agentes de IA
+    # Busca os Agentes de IA e System Settings
     from data.database import SessionLocal
-    from data.models import AIAgent
+    from data.models import AIAgent, SystemSettings
     db = SessionLocal()
     agent_map = {}
+    system_settings = None
     try:
         agents = db.query(AIAgent).all()
         for a in agents:
             agent_map[a.location_id] = a
+            
+        settings = db.query(SystemSettings).first()
+        if settings:
+            system_settings = {
+                "admin_openrouter_key": settings.admin_openrouter_key,
+                "admin_openrouter_model": settings.admin_openrouter_model
+            }
+        else:
+            system_settings = {
+                "admin_openrouter_key": "",
+                "admin_openrouter_model": "openai/gpt-4o"
+            }
     except Exception as e:
-        logger.error(f"Erro ao buscar AI Agents: {e}")
+        logger.error(f"Erro ao buscar AI Agents/Settings: {e}")
     finally:
         db.close()
     
@@ -129,7 +142,8 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
             "request": request, 
             "tenants": tenants_list, 
             "message": msg,
-            "error_msg": err
+            "error_msg": err,
+            "system_settings": system_settings
         }
     )
 
@@ -179,6 +193,39 @@ async def update_zapi_credentials(
     except Exception as e:
         logger.error(f"Erro ao salvar z-api: {e}")
         return RedirectResponse(url="/admin/dashboard?err=Erro interno salvar.", status_code=303)
+
+
+@router.post("/system/save")
+async def save_system_settings(
+    admin_openrouter_key: str = Form(""),
+    admin_openrouter_model: str = Form("openai/gpt-4o"),
+    authenticated: bool = Depends(verify_admin)
+):
+    """Salva configurações globais do Admin."""
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    from data.database import SessionLocal
+    from data.models import SystemSettings
+    db = SessionLocal()
+    try:
+        settings = db.query(SystemSettings).first()
+        if not settings:
+            settings = SystemSettings()
+            db.add(settings)
+        
+        settings.admin_openrouter_key = admin_openrouter_key.strip()
+        settings.admin_openrouter_model = admin_openrouter_model.strip()
+        
+        db.commit()
+        return RedirectResponse(url="/admin/dashboard?msg=Configurações globais salvas com sucesso.", status_code=303)
+    except Exception as e:
+        logger.error(f"Erro ao salvar SystemSettings: {e}")
+        db.rollback()
+        return RedirectResponse(url=f"/admin/dashboard?err=Erro ao salvar configurações globais: {str(e)}", status_code=303)
+    finally:
+        db.close()
+
 
 
 @router.get("/tenant/{location_id}/qrcode")

@@ -6,9 +6,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from data.database import get_db, SessionLocal
-from data.models import Tenant, AIAgent
+from data.models import Tenant, AIAgent, SystemSettings
 from auth.token_manager import token_manager
 from datetime import datetime
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/admin/agents", tags=["admin_agents"])
 logger = logging.getLogger(__name__)
@@ -92,3 +93,59 @@ async def get_elevenlabs_voices(api_key: str):
     except Exception as e:
         logger.error(f"Erro ao buscar vozes na ElevenLabs: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao consultar serviço de voz.")
+
+
+class AnalyzeRequest(BaseModel):
+    prompt_text: str
+
+@router.post("/analyze-prompt")
+async def analyze_ai_prompt(payload: AnalyzeRequest):
+    """
+    Usa a API Key Global de Administrador (SystemSettings) para revisar
+    e sugerir melhorias em um prompt do usuário.
+    """
+    db = SessionLocal()
+    try:
+        settings = db.query(SystemSettings).first()
+        if not settings or not settings.admin_openrouter_key:
+            return {"success": False, "error": "Chave API do Administrador não configurada. Configure no menu superior (Admin Settings)."}
+            
+        system_prompt = (
+            "Você é um especialista em Prompt Engineering focado em Agentes de IA para WhatsApp (SDRs, Vendas B2B e Atendimento). "
+            "Sua tarefa é analisar o prompt enviado, identificar problemas que fazem o agente 'falar demais' ou 'ignorar regras', "
+            "e fornecer dicas diretas de melhoria. Seja extremamente objetivo, amigável e use Markdown estruturado (negrito, listas). "
+            "Foque em regras de tamanho máximo, uso de perguntas singulares e redução de discursos extensos."
+            "Termine sugerindo uma versão melhorada de regras de Limite de Resposta para colar no prompt."
+        )
+        
+        async with httpx.AsyncClient(timeout=45.0) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.admin_openrouter_key}",
+                    "HTTP-Referer": "https://axenwp.com",
+                    "X-Title": "AxenWP Admin Prompt Analyzer",
+                },
+                json={
+                    "model": settings.admin_openrouter_model or "openai/gpt-4o",
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": f"Analise o seguinte prompt do meu agente e crie um feedback estruturado sobre o que está ruim e como melhorar:\n\n---\n{payload.prompt_text}"}
+                    ]
+                }
+            )
+            
+            if resp.status_code != 200:
+                logger.error(f"Erro OpenRouter Analyzer: {resp.text}")
+                return {"success": False, "error": f"Erro na IA Mestre ({resp.status_code}). Verifique a chave do Admin."}
+                
+            data = resp.json()
+            analysis = data["choices"][0]["message"]["content"]
+            return {"success": True, "analysis": analysis}
+            
+    except Exception as e:
+        logger.error(f"Erro no analisador de prompt: {e}", exc_info=True)
+        return {"success": False, "error": "Erro interno do servidor ao tentar analisar."}
+    finally:
+        db.close()
+

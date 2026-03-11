@@ -128,3 +128,17 @@ class MessageMapping(Base):
     status = Column(String, default="pending")
     created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
 
+
+class SystemSettings(Base):
+    """
+    Tabela de configuração global do sistema (apenas 1 registro esperado id=1).
+    Guarda as credenciais de Admin para a IA analisadora de prompts.
+    """
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    admin_openrouter_key = Column(String(512), nullable=True)
+    admin_openrouter_model = Column(String(100), default="openai/gpt-4o")
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
