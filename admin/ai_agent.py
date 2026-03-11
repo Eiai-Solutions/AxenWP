@@ -115,7 +115,8 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
             "Sua tarefa é analisar o prompt enviado, identificar problemas que fazem o agente 'falar demais' ou 'ignorar regras', "
             "e fornecer dicas diretas de melhoria. Seja extremamente objetivo, amigável e use Markdown estruturado (negrito, listas). "
             "Foque em regras de tamanho máximo, uso de perguntas singulares e redução de discursos extensos."
-            "Termine sugerindo uma versão melhorada de regras de Limite de Resposta para colar no prompt."
+            "CRÍTICO: Você DEVE retornar EXCLUSIVAMENTE um objeto JSON válido. O JSON deve ter exatamente duas chaves: "
+            "`\"analysis\"` (contendo todo o seu feedback em markdown) e `\"improved_prompt\"` (contendo o prompt reescrito por completo, pronto para colar, incorporando limites de palavras e regras que você sugeriu)."
         )
         
         async with httpx.AsyncClient(timeout=45.0) as client:
@@ -128,9 +129,10 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                 },
                 json={
                     "model": settings.admin_openrouter_model or "openai/gpt-4o",
+                    "response_format": {"type": "json_object"},
                     "messages": [
                         {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": f"Analise o seguinte prompt do meu agente e crie um feedback estruturado sobre o que está ruim e como melhorar:\n\n---\n{payload.prompt_text}"}
+                        {"role": "user", "content": f"Analise o seguinte prompt do meu agente e retorne apenas o JSON:\n\n---\n{payload.prompt_text}"}
                     ]
                 }
             )
@@ -140,8 +142,17 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                 return {"success": False, "error": f"Erro na IA Mestre ({resp.status_code}). Verifique a chave do Admin."}
                 
             data = resp.json()
-            analysis = data["choices"][0]["message"]["content"]
-            return {"success": True, "analysis": analysis}
+            raw_content = data["choices"][0]["message"]["content"]
+            
+            try:
+                import json
+                parsed = json.loads(raw_content)
+                analysis = parsed.get("analysis", "Erro ao processar análise. O JSON retornado está incompleto.")
+                improved = parsed.get("improved_prompt", "")
+                return {"success": True, "analysis": analysis, "improved_prompt": improved}
+            except Exception as e:
+                logger.error(f"Failed to parse JSON from AI: {raw_content}")
+                return {"success": False, "error": "A IA gerou uma resposta malformada (Não é um JSON válido)."}
             
     except Exception as e:
         logger.error(f"Erro no analisador de prompt: {e}", exc_info=True)
