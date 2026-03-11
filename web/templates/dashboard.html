@@ -129,15 +129,18 @@
 
         function switchAITab(tabName, btn) {
             document.querySelectorAll('.ai-tab-content').forEach(el => el.classList.add('hidden'));
-            document.getElementById('ai_tab_' + tabName).classList.remove('hidden');
+            const targetContent = document.getElementById('ai_tab_' + tabName);
+            if (targetContent) targetContent.classList.remove('hidden');
 
             document.querySelectorAll('.ai-tab-btn').forEach(el => {
                 el.classList.remove('border-brand-red', 'text-brand-red', 'bg-brand-red/10');
                 el.classList.add('border-transparent', 'text-gray-500');
             });
-            if (btn) {
-                btn.classList.remove('border-transparent', 'text-gray-500');
-                btn.classList.add('border-brand-red', 'text-brand-red', 'bg-brand-red/10');
+
+            const activeBtn = btn || document.getElementById('btn_ai_tab_' + tabName);
+            if (activeBtn) {
+                activeBtn.classList.remove('border-transparent', 'text-gray-500');
+                activeBtn.classList.add('border-brand-red', 'text-brand-red', 'bg-brand-red/10');
             }
         }
 
@@ -612,7 +615,7 @@
                                     Agent AI
                                 </button>
                                 <button
-                                    onclick="openZAPIModal('{{ tenant.location_id }}', '{{ tenant.company_name }}', '{{ tenant.zapi_instance_id | default('', true) }}', '{{ tenant.zapi_token | default('', true) }}', '{{ tenant.zapi_client_token | default('', true) }}')"
+                                    onclick="openZAPIModal('{{ tenant.location_id }}', '{{ tenant.company_name | forceescape }}', '{{ tenant.zapi_instance_id or '' }}', '{{ tenant.zapi_token or '' }}', '{{ tenant.zapi_client_token or '' }}')"
                                     class="text-gray-400 hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-semibold uppercase tracking-widest transition-colors font-mono mt-0.5">
                                     Configure Z-API
                                 </button>
@@ -992,16 +995,16 @@
                     <input type="hidden" id="ai_location_id" name="location_id">
 
                     <nav class="flex border-b border-gray-800 mb-8 overflow-x-auto scrollbar-none">
-                        <button type="button" onclick="switchAITab('settings', this)"
+                        <button type="button" id="btn_ai_tab_settings" onclick="switchAITab('settings', this)"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-brand-red text-brand-red bg-brand-red/10 transition-all">⚙️
                             Settings</button>
-                        <button type="button" onclick="switchAITab('voice', this)"
+                        <button type="button" id="btn_ai_tab_voice" onclick="switchAITab('voice', this)"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">🗣️
                             Voice & Audio</button>
-                        <button type="button" onclick="switchAITab('knowledge', this)"
+                        <button type="button" id="btn_ai_tab_knowledge" onclick="switchAITab('knowledge', this)"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">🧠
                             Knowledge Base</button>
-                        <button type="button" onclick="switchAITab('tester', this)"
+                        <button type="button" id="btn_ai_tab_tester" onclick="switchAITab('tester', this)"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">🚀
                             Tester (Simulator)</button>
                     </nav>
@@ -1167,6 +1170,48 @@
                                 Documents</h3>
                             <p class="mt-1 text-xs text-gray-600 font-sans">Uploading interface coming later in Phase 3.
                             </p>
+                        </div>
+                    </div>
+
+                    <!-- TAB: TESTER (CHEST) -->
+                    <div id="ai_tab_tester" class="ai-tab-content space-y-4 hidden">
+                        <div class="bg-black/40 border border-gray-800 rounded-xl flex flex-col h-[400px]">
+                            <!-- Chat Header -->
+                            <div class="p-4 border-b border-gray-800 flex justify-between items-center">
+                                <span
+                                    class="text-[10px] font-bold text-brand-red uppercase tracking-widest font-mono">Simulador
+                                    de Chat (Experimental)</span>
+                                <button type="button" onclick="clearTestChat()"
+                                    class="text-[10px] text-gray-500 hover:text-white transition-colors uppercase font-mono">Limpar</button>
+                            </div>
+                            <!-- Chat Body -->
+                            <div id="test_chat_body"
+                                class="flex-1 p-4 space-y-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
+                                <div
+                                    class="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 text-xs text-gray-400 font-mono italic">
+                                    Inicie uma conversa para testar o comportamento do robô com as configurações atuais
+                                    (prompt e modelo).
+                                </div>
+                            </div>
+                            <!-- Chat Input -->
+                            <div class="p-4 border-t border-gray-800">
+                                <div class="flex gap-2">
+                                    <input type="text" id="test_chat_input"
+                                        class="input-dark flex-1 px-4 py-2 rounded-lg text-sm"
+                                        placeholder="Digite uma mensagem para o Agente..."
+                                        onkeypress="if(event.key === 'Enter') sendTestMessage()">
+                                    <button type="button" onclick="sendTestMessage()"
+                                        class="bg-brand-red hover:bg-brand-darkred text-white p-2 rounded-lg transition-colors">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <p class="text-[9px] text-gray-600 mt-2 font-mono uppercase">O teste utiliza a chave API
+                                    do
+                                    Agente cadastrada na aba Configurações.</p>
+                            </div>
                         </div>
                     </div>
 

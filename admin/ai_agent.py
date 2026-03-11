@@ -182,14 +182,27 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
             
             try:
                 import json
-                parsed = json.loads(raw_content)
+                # Clean up potential markdown formatting
+                clean_content = raw_content.strip()
+                if clean_content.startswith("```"):
+                    # Remove ```json and ``` wrap
+                    lines = clean_content.splitlines()
+                    if len(lines) >= 2:
+                        # Find the first line with content after the marker
+                        start = 1
+                        if lines[0].strip().lower().startswith("```json"):
+                            start = 1
+                        clean_content = "\n".join(lines[start:-1]).strip()
+                
+                parsed = json.loads(clean_content)
                 return {
                     "success": True, 
                     "analysis": parsed.get("analysis", ""), 
                     "improved_prompt": parsed.get("improved_prompt", ""),
                     "simulation_transcript": parsed.get("simulation_transcript", transcript)
                 }
-            except:
+            except Exception as e:
+                logger.error(f"Erro ao parsear JSON da IA Mestre: {e}. Raw: {raw_content}")
                 return {"success": False, "error": "Resposta malformada da IA Mestre."}
     except Exception as e:
         logger.error(f"Erro no analisador de prompt: {e}", exc_info=True)
