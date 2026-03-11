@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from data.database import get_db, SessionLocal
 from data.models import Tenant, AIAgent
 from auth.token_manager import token_manager
+from datetime import datetime
 
 router = APIRouter(prefix="/admin/agents", tags=["admin_agents"])
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ async def save_agent_settings(
         agent.elevenlabs_voice_id = elevenlabs_voice_id
         agent.always_reply_with_audio = always_reply_with_audio
         agent.is_active = is_active
+        agent.updated_at = datetime.utcnow()
 
         db.commit()
         logger.info(f"Configurações do Agente IA atualizadas para o Tenant {location_id}.")
