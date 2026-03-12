@@ -147,14 +147,18 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                 "Foque em regras de tamanho máximo e redução de discursos. "
                 "CRÍTICO: Retorne EXCLUSIVAMENTE um JSON com:\n"
                 "- `\"analysis\"`: feedback markdown sobre o prompt e a conversa.\n"
-                "- `\"improved_prompt\"`: o prompt reescrito completo.\n"
+                "- `\"improved_prompt\"`: o prompt INTEIRO reescrito, sem omitir nenhuma parte, "
+                "sem placeholders como '[...]', '[resto do prompt]', '[mantido]' ou similares. "
+                "O campo deve conter o texto completo pronto para ser colado diretamente no agente. "
+                "Se o prompt original for longo, reescreva ele inteiro mesmo assim.\n"
                 "- `\"simulation_transcript\"`: a transcrição da conversa formatada."
             )
-            
+
             final_user_msg = (
                 f"PROMPT DO AGENTE:\n{payload.prompt_text}\n\n"
                 f"TRANSCRIÇÃO DO TESTE:\n{transcript}\n\n"
-                "Retorne o diagnóstico completo em JSON."
+                "Retorne o diagnóstico completo em JSON. "
+                "Lembre-se: o campo improved_prompt deve conter o prompt COMPLETO, sem atalhos ou resumos."
             )
 
             resp = await client.post(
