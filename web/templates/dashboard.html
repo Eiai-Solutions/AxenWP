@@ -777,47 +777,6 @@
                         </div>
                     </div>
 
-                    <!-- TAB: TESTER (CHEST) -->
-                    <div id="ai_tab_tester" class="ai-tab-content space-y-4 hidden">
-                        <div class="bg-black/40 border border-gray-800 rounded-xl flex flex-col h-[400px]">
-                            <!-- Chat Header -->
-                            <div class="p-4 border-b border-gray-800 flex justify-between items-center">
-                                <span
-                                    class="text-[10px] font-bold text-brand-red uppercase tracking-widest font-mono">Simulador
-                                    de Chat (Experimental)</span>
-                                <button type="button" onclick="clearTestChat()"
-                                    class="text-[10px] text-gray-500 hover:text-white transition-colors uppercase font-mono">Limpar</button>
-                            </div>
-                            <!-- Chat Body -->
-                            <div id="test_chat_body"
-                                class="flex-1 p-4 space-y-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
-                                <div
-                                    class="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 text-xs text-gray-400 font-mono italic">
-                                    Inicie uma conversa para testar o comportamento do robô com as configurações atuais
-                                    (prompt e modelo).
-                                </div>
-                            </div>
-                            <!-- Chat Input -->
-                            <div class="p-4 border-t border-gray-800">
-                                <div class="flex gap-2">
-                                    <input type="text" id="test_chat_input"
-                                        class="input-dark flex-1 px-4 py-2 rounded-lg text-sm"
-                                        placeholder="Digite uma mensagem para o Agente..."
-                                        onkeypress="if(event.key === 'Enter') sendTestMessage()">
-                                    <button type="button" onclick="sendTestMessage()"
-                                        class="bg-brand-red hover:bg-brand-darkred text-white p-2 rounded-lg transition-colors">
-                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
-                                        </svg>
-                                    </button>
-                                </div>
-                                <p class="text-[9px] text-gray-600 mt-2 font-mono uppercase">O teste utiliza a chave API
-                                    do
-                                    Agente cadastrada na aba Configurações.</p>
-                            </div>
-                        </div>
-                    </div>
                 </div>
 
                 <form id="form_zapi" method="POST">

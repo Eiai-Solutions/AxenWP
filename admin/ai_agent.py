@@ -181,23 +181,15 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
             raw_content = data["choices"][0]["message"]["content"]
             
             try:
-                import json
-                # Clean up potential markdown formatting
-                clean_content = raw_content.strip()
-                if clean_content.startswith("```"):
-                    # Remove ```json and ``` wrap
-                    lines = clean_content.splitlines()
-                    if len(lines) >= 2:
-                        # Find the first line with content after the marker
-                        start = 1
-                        if lines[0].strip().lower().startswith("```json"):
-                            start = 1
-                        clean_content = "\n".join(lines[start:-1]).strip()
-                
-                parsed = json.loads(clean_content)
+                import json, re
+                # Extrai o primeiro objeto JSON válido da resposta (ignora texto antes/depois)
+                match = re.search(r'\{.*\}', raw_content, re.DOTALL)
+                if not match:
+                    raise ValueError("Nenhum JSON encontrado na resposta.")
+                parsed = json.loads(match.group())
                 return {
-                    "success": True, 
-                    "analysis": parsed.get("analysis", ""), 
+                    "success": True,
+                    "analysis": parsed.get("analysis", ""),
                     "improved_prompt": parsed.get("improved_prompt", ""),
                     "simulation_transcript": parsed.get("simulation_transcript", transcript)
                 }

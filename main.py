@@ -38,37 +38,20 @@ from data.database import Base, engine
 # =============================================================================
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Inicializa banco de dados
+    # 1. Cria tabelas novas que ainda não existem no banco (idempotente)
     Base.metadata.create_all(bind=engine)
     logger.info("Tabelas do banco de dados verificadas/criadas.")
 
-    # Automigração segura: usa information_schema para checar colunas sem abortar transações
-    from sqlalchemy import text
-
-    def column_exists(table: str, column: str) -> bool:
-        with engine.connect() as conn:
-            result = conn.execute(text(
-                "SELECT 1 FROM information_schema.columns "
-                "WHERE table_name = :t AND column_name = :c"
-            ), {"t": table, "c": column})
-            return result.fetchone() is not None
-
-    pending_migrations = [
-        ("tenants",   "is_active",              "ALTER TABLE tenants ADD COLUMN is_active BOOLEAN DEFAULT true"),
-        ("ai_agents", "elevenlabs_api_key",      "ALTER TABLE ai_agents ADD COLUMN elevenlabs_api_key VARCHAR(255)"),
-        ("ai_agents", "elevenlabs_voice_id",     "ALTER TABLE ai_agents ADD COLUMN elevenlabs_voice_id VARCHAR(100)"),
-        ("ai_agents", "always_reply_with_audio", "ALTER TABLE ai_agents ADD COLUMN always_reply_with_audio BOOLEAN DEFAULT false"),
-        ("ai_agents", "updated_at",              "ALTER TABLE ai_agents ADD COLUMN updated_at TIMESTAMP"),
-    ]
-
-    for table, col, ddl in pending_migrations:
-        try:
-            if not column_exists(table, col):
-                logger.info(f"Coluna '{col}' não encontrada em '{table}'. Adicionando...")
-                with engine.begin() as conn:
-                    conn.execute(text(ddl))
-        except Exception as e:
-            logger.error(f"Erro na migração '{table}.{col}': {e}")
+    # 2. Aplica migrações de schema via Alembic (adiciona colunas, etc.)
+    import os
+    from alembic.config import Config as AlembicConfig
+    from alembic import command as alembic_command
+    try:
+        alembic_cfg = AlembicConfig(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+        alembic_command.upgrade(alembic_cfg, "head")
+        logger.info("Migrações Alembic aplicadas com sucesso.")
+    except Exception as e:
+        logger.error(f"Erro ao aplicar migrações Alembic: {e}", exc_info=True)
 
     # Inicializa scheduler de token refresh a cada 12 horas (proteção)
     # E roda imediatamente na subida
