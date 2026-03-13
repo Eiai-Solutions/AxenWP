@@ -143,32 +143,36 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
             # Usamos delimitadores XML em vez de JSON — muito mais robusto para
             # prompts longos com markdown, aspas e quebras de linha que corrompem JSON.
             system_prompt = (
-                "Você é um especialista em Prompt Engineering para WhatsApp B2B.\n\n"
-                "Sua tarefa é MELHORAR o prompt de um agente, não reescrevê-lo do zero.\n\n"
-                "REGRAS ABSOLUTAS para o improved_prompt:\n"
-                "1. PRESERVE todas as seções existentes (identidade, regras, tools, políticas, filtros, etc.).\n"
-                "2. PRESERVE todas as instruções de tools, integrações e comportamentos especiais.\n"
-                "3. Apenas melhore: tom das frases, clareza das instruções, ordem lógica das seções e concisão das explicações.\n"
-                "4. NÃO remova seções, NÃO simplifique regras funcionais, NÃO descarte conteúdo.\n"
-                "5. O improved_prompt deve ter tamanho similar ao original — nunca drasticamente menor.\n"
-                "6. Jamais use placeholders como '[...]', '[mantido]', '[resto do prompt]' ou similares.\n\n"
-                "Retorne a resposta EXATAMENTE neste formato:\n\n"
+                "Você é um especialista sênior em Prompt Engineering para agentes de WhatsApp B2B.\n\n"
+                "Você recebe o prompt atual de um agente e uma transcrição de uma conversa simulada com um lead real.\n"
+                "Sua missão é avaliar com profundidade se o agente está cumprindo seu objetivo de negócio "
+                "e propor melhorias que realmente façam diferença na performance.\n\n"
+                "Como especialista, você tem total liberdade para:\n"
+                "- Reescrever seções que estejam confusas, redundantes ou ineficazes\n"
+                "- Remover instruções que não agregam ou que contradizem o objetivo\n"
+                "- Criar novas seções se identificar lacunas importantes\n"
+                "- Reorganizar o prompt para melhor fluxo de raciocínio do modelo\n"
+                "- Manter intacto o que já está funcionando bem\n\n"
+                "O que você NÃO deve fazer:\n"
+                "- Mudar coisas só por mudar\n"
+                "- Simplificar ao ponto de perder instruções funcionais críticas (como tools, integrações, regras de negócio específicas)\n"
+                "- Usar placeholders como '[...]', '[mantido]', '[resto do prompt]' — o improved_prompt deve ser completo e pronto para uso\n\n"
+                "Retorne EXATAMENTE neste formato:\n\n"
                 "<analysis>\n"
-                "[Feedback em markdown: o que estava bom, o que foi ajustado e por quê]\n"
+                "[Diagnóstico em markdown: objetivo do agente, o que a simulação revelou, o que foi mudado e por quê]\n"
                 "</analysis>\n\n"
                 "<improved_prompt>\n"
-                "[O prompt completo melhorado — todas as seções originais preservadas]\n"
+                "[Prompt completo, pronto para ser colado diretamente no agente]\n"
                 "</improved_prompt>\n\n"
                 "<transcript>\n"
-                "[A transcrição da conversa simulada]\n"
+                "[Transcrição da conversa simulada]\n"
                 "</transcript>"
             )
 
             final_user_msg = (
                 f"PROMPT DO AGENTE:\n{payload.prompt_text}\n\n"
                 f"TRANSCRIÇÃO DO TESTE:\n{transcript}\n\n"
-                "Melhore o prompt preservando TODO o conteúdo original. "
-                "Use os delimitadores <analysis>, <improved_prompt> e <transcript>."
+                "Analise e melhore o prompt. Use os delimitadores <analysis>, <improved_prompt> e <transcript>."
             )
 
             resp = await client.post(
