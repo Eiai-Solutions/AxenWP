@@ -166,14 +166,32 @@
                 .replace(/\n/g, '<br>');
         }
 
-        function renderApplyButton() {
-            return `<div class="mt-4 pt-3 border-t border-gray-800 flex justify-end">
-                <button type="button" onclick="applySuggestedPrompt()"
-                    class="bg-brand-red text-white hover:bg-brand-darkred transition-colors px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest font-mono flex items-center gap-2 shadow-[0_0_15px_rgba(225,29,72,0.3)]">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                    Aplicar Sugestão Mestre
-                </button>
-            </div>`;
+        // ctx = 'settings' | 'tester' — garante IDs únicos por contexto
+        function showApplyBtn(ctx) {
+            const btn = document.getElementById('btn_apply_master_' + ctx);
+            if (btn) btn.classList.remove('hidden');
+        }
+
+        function applySuggestedPrompt(ctx) {
+            const prompt = window.lastImprovedPrompt;
+            if (!prompt) return;
+
+            // Aplica o prompt no textarea (fica na aba Settings)
+            const textarea = document.getElementById('ai_prompt');
+            textarea.value = prompt;
+            textarea.classList.add('ring-2', 'ring-brand-red', 'ring-offset-2', 'ring-offset-gray-900');
+            setTimeout(() => textarea.classList.remove('ring-2', 'ring-brand-red', 'ring-offset-2', 'ring-offset-gray-900'), 1000);
+
+            // Esconde o painel correto e mostra confirmação
+            const panelId = ctx === 'tester' ? 'tester_analysis_result' : 'ai_analysis_result';
+            const panel = document.getElementById(panelId);
+            if (panel) {
+                panel.innerHTML = `<div class="flex items-center gap-2 p-3 text-xs text-green-400 font-mono">
+                    <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    Prompt aplicado com sucesso! Vá para a aba Settings para revisar e salvar.
+                </div>`;
+                setTimeout(() => panel.classList.add('hidden'), 3000);
+            }
         }
 
         async function analyzePrompt() {
@@ -216,12 +234,11 @@
                         </div>`;
                     }
 
-                    const applyBtn = data.improved_prompt ? renderApplyButton() : '';
-
                     resultContent.innerHTML = transcriptHtml
                         + `<div class="text-xs text-gray-300 font-mono leading-relaxed">${formatMasterText(data.analysis)}</div>`
-                        + applyBtn
-                        + masterChatHtml();
+                        + masterChatHtml('settings');
+
+                    if (data.improved_prompt) showApplyBtn('settings');
                 } else {
                     resultContent.innerHTML = `<span class="text-brand-red font-bold">${data.error}</span>`;
                 }
@@ -233,7 +250,7 @@
             }
         }
 
-        function masterChatHtml() {
+        function masterChatHtml(ctx) {
             return `
             <div class="mt-5 pt-4 border-t border-gray-800">
                 <p class="text-[10px] text-brand-red font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
@@ -241,23 +258,27 @@
                     Conversar com a IA Mestre
                 </p>
                 <p class="text-[10px] text-gray-500 font-mono mb-3">Dê seu feedback sobre o agente. A Mestre vai considerar e revisar o prompt se necessário.</p>
-                <div id="master_chat_messages" class="space-y-2 mb-3 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent"></div>
+                <div id="master_chat_messages_${ctx}" class="space-y-2 mb-3 max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent"></div>
                 <div class="flex gap-2">
-                    <input type="text" id="master_chat_input"
+                    <input type="text" id="master_chat_input_${ctx}"
                         class="input-dark flex-1 px-3 py-2 rounded-lg text-xs font-mono"
                         placeholder="Ex: o agente está sendo muito formal, precisa ser mais direto..."
-                        onkeydown="if(event.key==='Enter'){event.preventDefault();sendMasterFeedback();}">
-                    <button type="button" onclick="sendMasterFeedback()"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();sendMasterFeedback('${ctx}');}">
+                    <button type="button" onclick="sendMasterFeedback('${ctx}')"
                         class="bg-brand-red/20 hover:bg-brand-red text-brand-red hover:text-white border border-brand-red/40 transition-colors px-3 py-2 rounded-lg text-xs font-bold font-mono uppercase tracking-widest">
                         Enviar
+                    </button>
+                    <button type="button" id="btn_apply_master_${ctx}" onclick="applySuggestedPrompt('${ctx}')"
+                        class="hidden bg-green-600/20 hover:bg-green-600 text-green-400 hover:text-white border border-green-600/40 transition-colors px-3 py-2 rounded-lg text-xs font-bold font-mono uppercase tracking-widest whitespace-nowrap">
+                        Aplicar Mudanças
                     </button>
                 </div>
             </div>`;
         }
 
-        async function sendMasterFeedback() {
-            const input = document.getElementById('master_chat_input');
-            const messagesDiv = document.getElementById('master_chat_messages');
+        async function sendMasterFeedback(ctx) {
+            const input = document.getElementById('master_chat_input_' + ctx);
+            const messagesDiv = document.getElementById('master_chat_messages_' + ctx);
             const msg = input.value.trim();
             if (!msg || !window.originalPromptForMaster) return;
 
@@ -295,14 +316,10 @@
                     // Show master response
                     messagesDiv.innerHTML += `<div class="flex justify-start"><div class="bg-gray-800/60 border border-gray-700/50 text-gray-300 text-[11px] font-mono py-2 px-3 rounded-xl rounded-tl-none max-w-[85%] leading-relaxed">${formatMasterText(data.response)}</div></div>`;
 
-                    // If master revised the prompt, update it
+                    // If master revised the prompt, show/update the apply button
                     if (data.updated_prompt) {
                         window.lastImprovedPrompt = data.updated_prompt;
-                        // Refresh apply button
-                        const existing = document.querySelector('#ai_analysis_content .apply-btn-wrap');
-                        if (existing) existing.remove();
-                        messagesDiv.insertAdjacentHTML('afterend',
-                            `<div class="apply-btn-wrap mt-3">${renderApplyButton()}</div>`);
+                        showApplyBtn(ctx);
                         messagesDiv.innerHTML += `<div class="flex justify-center mt-1"><span class="text-[10px] text-brand-red font-mono bg-brand-red/10 px-2 py-1 rounded">✓ Prompt revisado com base no seu feedback</span></div>`;
                     }
                 } else {
@@ -318,20 +335,6 @@
             }
         }
 
-        function applySuggestedPrompt() {
-            const prompt = window.lastImprovedPrompt;
-            if (!prompt) return;
-
-            const textarea = document.getElementById('ai_prompt');
-            textarea.value = prompt;
-
-            textarea.classList.add('ring-2', 'ring-brand-red', 'ring-offset-2', 'ring-offset-gray-900');
-            setTimeout(() => {
-                textarea.classList.remove('ring-2', 'ring-brand-red', 'ring-offset-2', 'ring-offset-gray-900');
-            }, 1000);
-
-            document.getElementById('ai_analysis_result').classList.add('hidden');
-        }
 
         function clearTestChat() {
             testHistory = [];
@@ -417,11 +420,11 @@
                 body.scrollTop = body.scrollHeight;
 
                 // Renderiza painel de diagnóstico abaixo do chat
-                const applyBtn = data.improved_prompt ? renderApplyButton() : '';
                 analysisContent.innerHTML =
                     `<div class="text-xs text-gray-300 font-mono leading-relaxed">${formatMasterText(data.analysis)}</div>`
-                    + applyBtn
-                    + masterChatHtml();
+                    + masterChatHtml('tester');
+
+                if (data.improved_prompt) showApplyBtn('tester');
                 analysisDiv.classList.remove('hidden');
 
             } catch (err) {
@@ -1379,8 +1382,7 @@
                         <button type="button" onclick="closeAIAgentModal()"
                             class="px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">Cancel</button>
                         <button type="submit"
-                            class="btn-brand px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white shadow-[0_0_15px_rgba(225,29,72,0.4)]">Salvar
-                            Agente IA</button>
+                            class="btn-brand px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white shadow-[0_0_15px_rgba(225,29,72,0.4)]">Salvar</button>
                     </div>
                 </form>
             </div>
