@@ -124,7 +124,7 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
                 "elevenlabs_voice_id": agent.elevenlabs_voice_id,
                 "always_reply_with_audio": agent.always_reply_with_audio,
                 "is_active": agent.is_active,
-                "debounce_seconds": agent.debounce_seconds if agent.debounce_seconds is not None else 1.5,
+                "debounce_seconds": float(agent.debounce_seconds) if agent.debounce_seconds is not None else 1.5,
             }
         else:
             t_dict["ai_agent_data"] = None

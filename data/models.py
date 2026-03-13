@@ -63,7 +63,7 @@ class AIAgent(Base):
     always_reply_with_audio = Column(Boolean, default=False)
     
     is_active = Column(Boolean, default=False)
-    debounce_seconds = Column(Float, default=1.5, nullable=False)
+    debounce_seconds = Column(Float, default=1.5, nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

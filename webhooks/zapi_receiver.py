@@ -275,7 +275,9 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
                 _db = _SL()
                 try:
                     _agent = _db.query(_AIAgent).filter(_AIAgent.location_id == location_id).first()
-                    debounce = float(_agent.debounce_seconds) if _agent and _agent.debounce_seconds else DEFAULT_DEBOUNCE_SECONDS
+                    debounce = float(_agent.debounce_seconds) if _agent and _agent.debounce_seconds is not None else DEFAULT_DEBOUNCE_SECONDS
+                except Exception:
+                    debounce = DEFAULT_DEBOUNCE_SECONDS
                 finally:
                     _db.close()
 
