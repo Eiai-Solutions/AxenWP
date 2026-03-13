@@ -140,25 +140,32 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
             transcript = sim_resp.json()["choices"][0]["message"]["content"] if sim_resp.status_code == 200 else "Falha na simulação."
 
             # 2. Final Analysis with Transcript
+            # Usamos delimitadores XML em vez de JSON — muito mais robusto para
+            # prompts longos com markdown, aspas e quebras de linha que corrompem JSON.
             system_prompt = (
                 "Você é um especialista em Prompt Engineering para WhatsApp B2B. "
                 "Você analisará um PROMPT de agente e uma TRANSCRIÇÃO de um teste automático. "
                 "Sua meta é encontrar falhas de tom, prolixidade e falta de perguntas singulares. "
-                "Foque em regras de tamanho máximo e redução de discursos. "
-                "CRÍTICO: Retorne EXCLUSIVAMENTE um JSON com:\n"
-                "- `\"analysis\"`: feedback markdown sobre o prompt e a conversa.\n"
-                "- `\"improved_prompt\"`: o prompt INTEIRO reescrito, sem omitir nenhuma parte, "
-                "sem placeholders como '[...]', '[resto do prompt]', '[mantido]' ou similares. "
-                "O campo deve conter o texto completo pronto para ser colado diretamente no agente. "
-                "Se o prompt original for longo, reescreva ele inteiro mesmo assim.\n"
-                "- `\"simulation_transcript\"`: a transcrição da conversa formatada."
+                "Foque em regras de tamanho máximo e redução de discursos.\n\n"
+                "Retorne a resposta EXATAMENTE neste formato, sem alterar os delimitadores:\n\n"
+                "<analysis>\n"
+                "[Seu feedback em markdown sobre o prompt e a conversa]\n"
+                "</analysis>\n\n"
+                "<improved_prompt>\n"
+                "[O prompt COMPLETO reescrito — sem omitir nenhuma parte, sem placeholders "
+                "como '[...]', '[resto do prompt]' ou '[mantido]'. "
+                "Se o prompt original for longo, reescreva ele inteiro mesmo assim.]\n"
+                "</improved_prompt>\n\n"
+                "<transcript>\n"
+                "[A transcrição da conversa simulada]\n"
+                "</transcript>"
             )
 
             final_user_msg = (
                 f"PROMPT DO AGENTE:\n{payload.prompt_text}\n\n"
                 f"TRANSCRIÇÃO DO TESTE:\n{transcript}\n\n"
-                "Retorne o diagnóstico completo em JSON. "
-                "Lembre-se: o campo improved_prompt deve conter o prompt COMPLETO, sem atalhos ou resumos."
+                "Retorne o diagnóstico completo usando os delimitadores <analysis>, "
+                "<improved_prompt> e <transcript>."
             )
 
             resp = await client.post(
@@ -170,36 +177,38 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                 },
                 json={
                     "model": settings.admin_openrouter_model or "openai/gpt-4o",
-                    "response_format": {"type": "json_object"},
+                    "max_tokens": 8000,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": final_user_msg}
                     ]
                 }
             )
-            
+
             if resp.status_code != 200:
-                return {"success": False, "error": f"IA Mestre falhou ({resp.status_code})."}
-                
-            data = resp.json()
-            raw_content = data["choices"][0]["message"]["content"]
-            
-            try:
-                import json, re
-                # Extrai o primeiro objeto JSON válido da resposta (ignora texto antes/depois)
-                match = re.search(r'\{.*\}', raw_content, re.DOTALL)
-                if not match:
-                    raise ValueError("Nenhum JSON encontrado na resposta.")
-                parsed = json.loads(match.group())
-                return {
-                    "success": True,
-                    "analysis": parsed.get("analysis", ""),
-                    "improved_prompt": parsed.get("improved_prompt", ""),
-                    "simulation_transcript": parsed.get("simulation_transcript", transcript)
-                }
-            except Exception as e:
-                logger.error(f"Erro ao parsear JSON da IA Mestre: {e}. Raw: {raw_content}")
+                return {"success": False, "error": f"IA Mestre falhou ({resp.status_code}): {resp.text}"}
+
+            import re
+            raw_content = resp.json()["choices"][0]["message"]["content"]
+
+            def extract_tag(tag: str) -> str:
+                m = re.search(rf"<{tag}>(.*?)</{tag}>", raw_content, re.DOTALL)
+                return m.group(1).strip() if m else ""
+
+            analysis_text = extract_tag("analysis")
+            improved      = extract_tag("improved_prompt")
+            sim_transcript = extract_tag("transcript") or transcript
+
+            if not analysis_text and not improved:
+                logger.error(f"Delimitadores não encontrados na resposta. Raw: {raw_content[:500]}")
                 return {"success": False, "error": "Resposta malformada da IA Mestre."}
+
+            return {
+                "success": True,
+                "analysis": analysis_text,
+                "improved_prompt": improved,
+                "simulation_transcript": sim_transcript,
+            }
     except Exception as e:
         logger.error(f"Erro no analisador de prompt: {e}", exc_info=True)
         return {"success": False, "error": "Erro interno do servidor ao tentar analisar."}
