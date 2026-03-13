@@ -27,7 +27,8 @@ async def save_agent_settings(
     elevenlabs_api_key: Optional[str] = Form(None),
     elevenlabs_voice_id: Optional[str] = Form(None),
     always_reply_with_audio: bool = Form(False),
-    is_active: bool = Form(False)
+    is_active: bool = Form(False),
+    debounce_seconds: float = Form(1.5)
 ):
     """
     Cria ou atualiza as configurações do Agente de IA para um Tenant específico.
@@ -54,6 +55,7 @@ async def save_agent_settings(
         agent.elevenlabs_voice_id = elevenlabs_voice_id
         agent.always_reply_with_audio = always_reply_with_audio
         agent.is_active = is_active
+        agent.debounce_seconds = max(0.5, min(float(debounce_seconds), 30.0))
         agent.updated_at = datetime.utcnow()
 
         db.commit()

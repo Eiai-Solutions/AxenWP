@@ -87,6 +87,11 @@
             document.getElementById('ai_elevenlabs_api_key').value = elevenlabsKey || '';
             document.getElementById('ai_always_reply_with_audio').checked = String(alwaysAudio).toLowerCase() === 'true';
 
+            const debounceVal = parseFloat(btn.dataset.aidebounce) || 1.5;
+            const debounceInput = document.getElementById('ai_debounce_seconds');
+            debounceInput.value = debounceVal;
+            document.getElementById('debounce_display').textContent = debounceVal.toFixed(1) + 's';
+
             // Set voice if exists, otherwise load won't pre-select it perfectly until fetched, handled in fetch
             document.getElementById('ai_elevenlabs_voice_id').dataset.preselected = elevenlabsVoiceId || '';
 
@@ -796,6 +801,7 @@
                                     data-aielevenlabskey="{{ (tenant.ai_agent_data.elevenlabs_api_key | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.elevenlabs_api_key else '' }}"
                                     data-aielevenlabsvoice="{{ (tenant.ai_agent_data.elevenlabs_voice_id | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.elevenlabs_voice_id else '' }}"
                                     data-aialwaysaudio="{{ tenant.ai_agent_data.always_reply_with_audio if tenant.ai_agent_data else 'False' }}"
+                                    data-aidebounce="{{ tenant.ai_agent_data.debounce_seconds if tenant.ai_agent_data else '1.5' }}"
                                     onclick="openAIAgentModal(this)"
                                     class="text-brand-red hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-1.5 bg-brand-red/10 px-2.5 py-1.5 rounded-md border border-brand-red/30 mr-2">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1273,6 +1279,18 @@
                                     value="true"
                                     class="w-5 h-5 text-brand-red bg-gray-900 border-gray-700 rounded focus:ring-brand-red focus:ring-2">
                             </div>
+                        </div>
+
+                        <div class="group">
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors flex justify-between items-center">
+                                <span>Aguardar antes de responder (segundos)</span>
+                                <span id="debounce_display" class="text-brand-red font-mono text-xs normal-case">1.5s</span>
+                            </label>
+                            <input type="range" id="ai_debounce_seconds" name="debounce_seconds"
+                                min="0.5" max="15" step="0.5" value="1.5"
+                                class="w-full accent-brand-red cursor-pointer"
+                                oninput="document.getElementById('debounce_display').textContent = parseFloat(this.value).toFixed(1) + 's'">
+                            <p class="text-[10px] text-gray-600 mt-1">Tempo que o bot espera após a última mensagem do cliente antes de responder. Aumentar evita responder mensagens cortadas.</p>
                         </div>
 
                         <div class="group">

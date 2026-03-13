@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, ForeignKey, Text
+from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, ForeignKey, Text, Float
 from sqlalchemy.orm import relationship
 
 from data.database import Base
@@ -63,7 +63,8 @@ class AIAgent(Base):
     always_reply_with_audio = Column(Boolean, default=False)
     
     is_active = Column(Boolean, default=False)
-    
+    debounce_seconds = Column(Float, default=1.5, nullable=False)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     

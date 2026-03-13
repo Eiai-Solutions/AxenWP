@@ -22,15 +22,17 @@ router = APIRouter(prefix="/webhook/zapi", tags=["Webhooks Z-API"])
 # mensagens em sequência rápida. As mensagens são acumuladas por DEBOUNCE_SECONDS
 # e processadas juntas em uma única chamada à IA.
 # ---------------------------------------------------------------------------
-DEBOUNCE_SECONDS = 1.5
+DEFAULT_DEBOUNCE_SECONDS = 1.5
 _ai_pending_tasks: Dict[str, asyncio.Task] = {}   # contact_key -> Task
 _ai_message_buffers: Dict[str, list] = {}          # contact_key -> [(text, is_audio), ...]
+_ai_debounce_config: Dict[str, float] = {}         # contact_key -> debounce_seconds
 
 
 async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant, contact_key: str):
     """Aguarda o debounce e depois processa a IA com todas as mensagens acumuladas."""
     try:
-        await asyncio.sleep(DEBOUNCE_SECONDS)
+        delay = _ai_debounce_config.pop(contact_key, DEFAULT_DEBOUNCE_SECONDS)
+        await asyncio.sleep(delay)
 
         messages = _ai_message_buffers.pop(contact_key, [])
         _ai_pending_tasks.pop(contact_key, None)
@@ -266,10 +268,24 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
             if is_ai_active:
                 contact_key = f"{location_id}:{phone}"
 
+                # Lê o debounce configurado no agente deste tenant
+                from services.ai_service import ai_service as _ai_svc
+                from data.database import SessionLocal as _SL
+                from data.models import AIAgent as _AIAgent
+                _db = _SL()
+                try:
+                    _agent = _db.query(_AIAgent).filter(_AIAgent.location_id == location_id).first()
+                    debounce = float(_agent.debounce_seconds) if _agent and _agent.debounce_seconds else DEFAULT_DEBOUNCE_SECONDS
+                finally:
+                    _db.close()
+
                 # Acumula a mensagem no buffer desse contato
                 if contact_key not in _ai_message_buffers:
                     _ai_message_buffers[contact_key] = []
                 _ai_message_buffers[contact_key].append((content_message, is_audio))
+
+                # Armazena o debounce configurado (sobrescreve com o último valor — ok)
+                _ai_debounce_config[contact_key] = debounce
 
                 # Cancela o timer anterior se o usuário enviou outra mensagem antes do delay
                 existing = _ai_pending_tasks.get(contact_key)

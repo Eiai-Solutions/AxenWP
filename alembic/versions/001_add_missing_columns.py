@@ -49,6 +49,9 @@ def upgrade() -> None:
         if not _column_exists("ai_agents", "updated_at"):
             op.add_column("ai_agents", sa.Column("updated_at", sa.DateTime(), nullable=True))
 
+        if not _column_exists("ai_agents", "debounce_seconds"):
+            op.add_column("ai_agents", sa.Column("debounce_seconds", sa.Float(), nullable=False, server_default=sa.text("1.5")))
+
     # --- system_settings (criada pelo create_all, mas garantimos aqui também) ---
     if not _table_exists("system_settings"):
         op.create_table(
