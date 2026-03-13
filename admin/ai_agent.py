@@ -143,18 +143,21 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
             # Usamos delimitadores XML em vez de JSON — muito mais robusto para
             # prompts longos com markdown, aspas e quebras de linha que corrompem JSON.
             system_prompt = (
-                "Você é um especialista em Prompt Engineering para WhatsApp B2B. "
-                "Você analisará um PROMPT de agente e uma TRANSCRIÇÃO de um teste automático. "
-                "Sua meta é encontrar falhas de tom, prolixidade e falta de perguntas singulares. "
-                "Foque em regras de tamanho máximo e redução de discursos.\n\n"
-                "Retorne a resposta EXATAMENTE neste formato, sem alterar os delimitadores:\n\n"
+                "Você é um especialista em Prompt Engineering para WhatsApp B2B.\n\n"
+                "Sua tarefa é MELHORAR o prompt de um agente, não reescrevê-lo do zero.\n\n"
+                "REGRAS ABSOLUTAS para o improved_prompt:\n"
+                "1. PRESERVE todas as seções existentes (identidade, regras, tools, políticas, filtros, etc.).\n"
+                "2. PRESERVE todas as instruções de tools, integrações e comportamentos especiais.\n"
+                "3. Apenas melhore: tom das frases, clareza das instruções, ordem lógica das seções e concisão das explicações.\n"
+                "4. NÃO remova seções, NÃO simplifique regras funcionais, NÃO descarte conteúdo.\n"
+                "5. O improved_prompt deve ter tamanho similar ao original — nunca drasticamente menor.\n"
+                "6. Jamais use placeholders como '[...]', '[mantido]', '[resto do prompt]' ou similares.\n\n"
+                "Retorne a resposta EXATAMENTE neste formato:\n\n"
                 "<analysis>\n"
-                "[Seu feedback em markdown sobre o prompt e a conversa]\n"
+                "[Feedback em markdown: o que estava bom, o que foi ajustado e por quê]\n"
                 "</analysis>\n\n"
                 "<improved_prompt>\n"
-                "[O prompt COMPLETO reescrito — sem omitir nenhuma parte, sem placeholders "
-                "como '[...]', '[resto do prompt]' ou '[mantido]'. "
-                "Se o prompt original for longo, reescreva ele inteiro mesmo assim.]\n"
+                "[O prompt completo melhorado — todas as seções originais preservadas]\n"
                 "</improved_prompt>\n\n"
                 "<transcript>\n"
                 "[A transcrição da conversa simulada]\n"
@@ -164,8 +167,8 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
             final_user_msg = (
                 f"PROMPT DO AGENTE:\n{payload.prompt_text}\n\n"
                 f"TRANSCRIÇÃO DO TESTE:\n{transcript}\n\n"
-                "Retorne o diagnóstico completo usando os delimitadores <analysis>, "
-                "<improved_prompt> e <transcript>."
+                "Melhore o prompt preservando TODO o conteúdo original. "
+                "Use os delimitadores <analysis>, <improved_prompt> e <transcript>."
             )
 
             resp = await client.post(
