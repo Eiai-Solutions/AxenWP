@@ -336,7 +336,100 @@
         function clearTestChat() {
             testHistory = [];
             const body = document.getElementById('test_chat_body');
-            body.innerHTML = '<div class="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 text-xs text-gray-400 font-mono italic">Chat resetado. Inicie uma nova conversa.</div>';
+            body.innerHTML = '<div class="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 text-xs text-gray-400 font-mono italic">Chat resetado. Inicie uma nova conversa ou clique em <strong class="text-brand-red">Simular com IA Mestre</strong>.</div>';
+            document.getElementById('tester_analysis_result').classList.add('hidden');
+        }
+
+        async function runMasterSimulation() {
+            const promptText = document.getElementById('ai_prompt').value;
+            const btn = document.getElementById('btn_master_simulate');
+            const body = document.getElementById('test_chat_body');
+            const analysisDiv = document.getElementById('tester_analysis_result');
+            const analysisContent = document.getElementById('tester_analysis_content');
+
+            if (!promptText) {
+                alert('Configure o System Prompt na aba Settings antes de simular.');
+                return;
+            }
+
+            // Reset state
+            testHistory = [];
+            masterChatHistory = [];
+            window.originalPromptForMaster = promptText;
+            analysisDiv.classList.add('hidden');
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-pulse">🤖 Simulando...</span>';
+
+            body.innerHTML = `<div class="flex justify-center">
+                <span class="text-[10px] text-brand-red font-mono bg-brand-red/10 border border-brand-red/20 px-3 py-1.5 rounded-full animate-pulse">
+                    IA Mestre gerando simulação...
+                </span>
+            </div>`;
+
+            try {
+                const response = await fetch('/admin/agents/analyze-prompt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt_text: promptText })
+                });
+                const data = await response.json();
+
+                body.innerHTML = '';
+
+                if (!data.success) {
+                    body.innerHTML = `<div class="text-xs text-brand-red font-mono p-3">${data.error}</div>`;
+                    return;
+                }
+
+                window.lastImprovedPrompt = data.improved_prompt;
+
+                // Header da simulação
+                body.innerHTML += `<div class="flex justify-center my-1">
+                    <span class="text-[10px] text-gray-500 font-mono bg-gray-800/60 border border-gray-700/50 px-3 py-1 rounded-full">
+                        — Simulação IA Mestre —
+                    </span>
+                </div>`;
+
+                // Parsear o transcript em mensagens individuais
+                if (data.simulation_transcript) {
+                    const lines = data.simulation_transcript.split('\n').filter(l => l.trim());
+                    for (const line of lines) {
+                        if (line.startsWith('Lead:') || line.startsWith('lead:')) {
+                            const text = line.replace(/^lead:/i, '').trim();
+                            body.innerHTML += `<div class="flex justify-end"><div class="bg-brand-red text-white text-xs py-2 px-3 rounded-2xl rounded-tr-none min-w-0 max-w-[85%]">${text}</div></div>`;
+                        } else if (line.startsWith('Agente:') || line.startsWith('agente:')) {
+                            const text = line.replace(/^agente:/i, '').trim();
+                            body.innerHTML += `<div class="flex justify-start"><div class="bg-gray-800 text-gray-200 text-xs py-2 px-3 rounded-2xl rounded-tl-none min-w-0 max-w-[85%] font-mono whitespace-pre-wrap">${text}</div></div>`;
+                        } else if (line.trim()) {
+                            // Linha sem prefixo reconhecido — exibe como separador informativo
+                            body.innerHTML += `<div class="flex justify-center"><div class="text-[10px] text-gray-600 font-mono italic text-center">${line}</div></div>`;
+                        }
+                    }
+                }
+
+                // Separador antes do diagnóstico
+                body.innerHTML += `<div class="flex justify-center my-1">
+                    <span class="text-[10px] text-gray-500 font-mono bg-gray-800/60 border border-gray-700/50 px-3 py-1 rounded-full">
+                        — Fim da Simulação —
+                    </span>
+                </div>`;
+                body.scrollTop = body.scrollHeight;
+
+                // Renderiza painel de diagnóstico abaixo do chat
+                const applyBtn = data.improved_prompt ? renderApplyButton() : '';
+                analysisContent.innerHTML =
+                    `<div class="text-xs text-gray-300 font-mono leading-relaxed">${formatMasterText(data.analysis)}</div>`
+                    + applyBtn
+                    + masterChatHtml();
+                analysisDiv.classList.remove('hidden');
+
+            } catch (err) {
+                body.innerHTML = `<div class="text-xs text-brand-red font-mono p-3">Erro de conexão ao simular.</div>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🤖 Simular com IA Mestre';
+            }
         }
 
         async function sendTestMessage() {
@@ -1231,20 +1324,22 @@
                     <div id="ai_tab_tester" class="ai-tab-content space-y-4 hidden">
                         <div class="bg-black/40 border border-gray-800 rounded-xl flex flex-col h-[400px]">
                             <!-- Chat Header -->
-                            <div class="p-4 border-b border-gray-800 flex justify-between items-center">
-                                <span
-                                    class="text-[10px] font-bold text-brand-red uppercase tracking-widest font-mono">Simulador
-                                    de Chat (Experimental)</span>
-                                <button type="button" onclick="clearTestChat()"
-                                    class="text-[10px] text-gray-500 hover:text-white transition-colors uppercase font-mono">Limpar</button>
+                            <div class="p-4 border-b border-gray-800 flex justify-between items-center gap-2">
+                                <span class="text-[10px] font-bold text-brand-red uppercase tracking-widest font-mono shrink-0">Simulador de Chat</span>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" id="btn_master_simulate" onclick="runMasterSimulation()"
+                                        class="bg-brand-red/10 text-brand-red hover:bg-brand-red hover:text-white border border-brand-red/30 transition-colors px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest font-mono flex items-center gap-1.5">
+                                        🤖 Simular com IA Mestre
+                                    </button>
+                                    <button type="button" onclick="clearTestChat()"
+                                        class="text-[10px] text-gray-500 hover:text-white transition-colors uppercase font-mono">Limpar</button>
+                                </div>
                             </div>
                             <!-- Chat Body -->
                             <div id="test_chat_body"
-                                class="flex-1 p-4 space-y-4 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
-                                <div
-                                    class="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 text-xs text-gray-400 font-mono italic">
-                                    Inicie uma conversa para testar o comportamento do robô com as configurações atuais
-                                    (prompt e modelo).
+                                class="flex-1 p-4 space-y-3 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
+                                <div class="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 text-xs text-gray-400 font-mono italic">
+                                    Inicie uma conversa manualmente ou clique em <strong class="text-brand-red">Simular com IA Mestre</strong> para ver uma simulação automática.
                                 </div>
                             </div>
                             <!-- Chat Input -->
@@ -1262,9 +1357,20 @@
                                         </svg>
                                     </button>
                                 </div>
-                                <p class="text-[9px] text-gray-600 mt-2 font-mono uppercase">O teste utiliza a chave API
-                                    do
-                                    Agente cadastrada na aba Configurações.</p>
+                                <p class="text-[9px] text-gray-600 mt-2 font-mono uppercase">Teste manual usa a chave API do Agente (aba Settings). Simulação usa a chave do Admin (Admin Settings).</p>
+                            </div>
+                        </div>
+
+                        <!-- Painel de Diagnóstico do Tester (aparece após simulação) -->
+                        <div id="tester_analysis_result" class="hidden mt-4 bg-black/60 border border-brand-red/30 rounded-lg p-4 shadow-inner">
+                            <h4 class="text-white text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2 border-b border-gray-800 pb-2">
+                                <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                                </svg>
+                                Diagnóstico & Sugestões Mestre
+                            </h4>
+                            <div id="tester_analysis_content"
+                                class="text-xs text-gray-300 font-mono leading-relaxed max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-brand-red/50 scrollbar-track-transparent pr-2">
                             </div>
                         </div>
                     </div>
