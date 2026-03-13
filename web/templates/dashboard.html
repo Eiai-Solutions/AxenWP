@@ -1158,7 +1158,7 @@
                                     <input type="text" id="test_chat_input"
                                         class="input-dark flex-1 px-4 py-2 rounded-lg text-sm"
                                         placeholder="Digite uma mensagem para o Agente..."
-                                        onkeypress="if(event.key === 'Enter') sendTestMessage()">
+                                        onkeydown="if(event.key === 'Enter') { event.preventDefault(); sendTestMessage(); }">
                                     <button type="button" onclick="sendTestMessage()"
                                         class="bg-brand-red hover:bg-brand-darkred text-white p-2 rounded-lg transition-colors">
                                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
