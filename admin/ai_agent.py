@@ -223,13 +223,13 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
         db.close()
 
 @router.post("/{location_id}/test")
-async def test_ai_agent(location_id: str, payload: dict):
+async def test_ai_agent(location_id: str, request: Request):
     """
     Endpoint manual para o Testador de Chat no dashboard.
     Recebe message e o prompt/modelo atual (mesmo sem salvar).
     """
-    db = SessionLocal()
     try:
+        payload = await request.json()
         agent_data = payload.get("agent_data", {})
         prompt = agent_data.get("prompt")
         model = agent_data.get("model", "openai/gpt-4o")
@@ -269,9 +269,7 @@ async def test_ai_agent(location_id: str, payload: dict):
             ai_response = data["choices"][0]["message"]["content"]
             return {"success": True, "response": ai_response}
     except Exception as e:
-        logger.error(f"Erro no chat tester: {e}")
+        logger.error(f"Erro no chat tester: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
-    finally:
-        db.close()
 
 
