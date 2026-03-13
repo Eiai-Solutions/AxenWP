@@ -222,6 +222,104 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
     finally:
         db.close()
 
+class MasterChatRequest(BaseModel):
+    original_prompt: str
+    current_improved_prompt: str
+    user_message: str
+    chat_history: list = []
+
+@router.post("/master-chat")
+async def master_chat(payload: MasterChatRequest):
+    """
+    Chat iterativo com a IA Mestre. O usuário envia feedback sobre o agente
+    e a Mestre revisa o prompt levando em consideração esse feedback.
+    """
+    db = SessionLocal()
+    try:
+        settings = db.query(SystemSettings).first()
+        if not settings or not settings.admin_openrouter_key:
+            return {"success": False, "error": "Chave API do Administrador não configurada."}
+
+        system_prompt = (
+            "Você é um especialista sênior em Prompt Engineering para agentes de WhatsApp B2B.\n\n"
+            "Você já analisou o prompt de um agente e gerou uma sugestão de melhoria. "
+            "Agora está em uma conversa com o dono do agente, que vai te dar feedback sobre o comportamento real do agente.\n\n"
+            "Seu papel nessa conversa:\n"
+            "- Responder de forma direta e consultiva ao feedback do usuário\n"
+            "- Quando o feedback indicar uma mudança necessária no prompt, gerar uma versão revisada\n"
+            "- Quando for apenas uma dúvida ou confirmação, responder sem alterar o prompt\n"
+            "- Ser objetivo — não repita análises longas, vá direto ao ponto\n\n"
+            "Retorne SEMPRE neste formato:\n\n"
+            "<response>\n"
+            "[Sua resposta conversacional ao feedback do usuário]\n"
+            "</response>\n\n"
+            "<improved_prompt>\n"
+            "[Prompt revisado completo se o feedback exigiu mudança — ou deixe VAZIO se não houve mudança necessária]\n"
+            "</improved_prompt>"
+        )
+
+        # Monta histórico de mensagens
+        messages = [{"role": "system", "content": system_prompt}]
+
+        # Contexto inicial com o estado atual
+        context_msg = (
+            f"PROMPT ORIGINAL DO AGENTE:\n{payload.original_prompt}\n\n"
+            f"VERSÃO ATUAL SUGERIDA:\n{payload.current_improved_prompt}"
+        )
+        messages.append({"role": "user", "content": context_msg})
+        messages.append({"role": "assistant", "content": "Entendido. Tenho o contexto completo do prompt original e da versão melhorada. Pode compartilhar seu feedback."})
+
+        # Histórico da conversa
+        for turn in payload.chat_history:
+            messages.append({"role": "user" if turn["from"] == "user" else "assistant", "content": turn["text"]})
+
+        # Mensagem atual
+        messages.append({"role": "user", "content": payload.user_message})
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.admin_openrouter_key}",
+                    "HTTP-Referer": "https://axenwp.com",
+                    "X-Title": "AxenWP Master Chat",
+                },
+                json={
+                    "model": settings.admin_openrouter_model or "openai/gpt-4o",
+                    "max_tokens": 8000,
+                    "messages": messages,
+                }
+            )
+
+        if resp.status_code != 200:
+            return {"success": False, "error": f"IA Mestre falhou ({resp.status_code})."}
+
+        import re
+        raw = resp.json()["choices"][0]["message"]["content"]
+
+        response_text = ""
+        m = re.search(r"<response>(.*?)</response>", raw, re.DOTALL)
+        if m:
+            response_text = m.group(1).strip()
+
+        updated_prompt = ""
+        m2 = re.search(r"<improved_prompt>(.*?)</improved_prompt>", raw, re.DOTALL)
+        if m2:
+            updated_prompt = m2.group(1).strip()
+
+        return {
+            "success": True,
+            "response": response_text or raw.strip(),
+            "updated_prompt": updated_prompt,
+        }
+
+    except Exception as e:
+        logger.error(f"Erro no master chat: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
 @router.post("/{location_id}/test")
 async def test_ai_agent(location_id: str, request: Request):
     """
