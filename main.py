@@ -146,10 +146,30 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Retorna estado do servidor e os tenants ativos."""
+    """Retorna estado do servidor, conectividade do DB e os tenants ativos."""
+    import asyncio
+    from sqlalchemy import text
+
+    # Verify database connectivity
+    db_ok = False
+    try:
+        def _check_db():
+            db = SessionLocal()
+            try:
+                db.execute(text("SELECT 1"))
+                return True
+            finally:
+                db.close()
+        db_ok = await asyncio.to_thread(_check_db)
+    except Exception as e:
+        logger.error(f"Health check: DB unreachable — {e}")
+
+    if not db_ok:
+        return {"status": "unhealthy", "database": "unreachable"}
+
     tenants = token_manager.get_all_tenants()
     active_tenants = []
-    
+
     for t in tenants:
         active_tenants.append({
             "company": t.company_name,
@@ -158,9 +178,10 @@ async def health_check():
             "zapi_configured": bool(t.zapi_instance_id and t.zapi_token),
             "zapi_instance_id": t.zapi_instance_id
         })
-        
+
     return {
         "status": "healthy",
+        "database": "connected",
         "tenants_loaded": len(tenants),
         "tenants": active_tenants
     }

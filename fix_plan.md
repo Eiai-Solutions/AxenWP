@@ -13,7 +13,7 @@
 - **Impact:** Increased latency on every AI response, reduced throughput under load
 - **Fix:** Convert to async sessions or run sync operations in `asyncio.to_thread()`
 
-### 3. Health endpoint should verify database connectivity
+### 3. [DONE] Health endpoint should verify database connectivity
 - **Problem:** `/health` only lists tenants, doesn't verify DB is reachable
 - **Impact:** Health checks pass even when DB is down, misleading monitoring
 - **Fix:** Add a simple `SELECT 1` check to the health endpoint
