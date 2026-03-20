@@ -24,7 +24,7 @@ router = APIRouter(prefix="/webhook/zapi", tags=["Webhooks Z-API"])
 # ---------------------------------------------------------------------------
 DEFAULT_DEBOUNCE_SECONDS = 1.5
 _ai_pending_tasks: Dict[str, asyncio.Task] = {}   # contact_key -> Task
-_ai_message_buffers: Dict[str, list] = {}          # contact_key -> [(text, is_audio), ...]
+_ai_message_buffers: Dict[str, list] = {}          # contact_key -> [(text, is_audio, audio_url), ...]
 _ai_debounce_config: Dict[str, float] = {}         # contact_key -> debounce_seconds
 
 
@@ -43,6 +43,12 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
         # Combina todas as mensagens recebidas na janela de debounce em um único turno
         combined_text = '\n'.join(m[0] for m in messages if m[0])
         is_audio = any(m[1] for m in messages)
+        # Pega a URL do último áudio recebido (para transcrição)
+        audio_url = None
+        for m in reversed(messages):
+            if m[1] and m[2]:  # is_audio=True e tem audio_url
+                audio_url = m[2]
+                break
 
         if not combined_text:
             return
@@ -54,7 +60,9 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
 
         from services.ai_service import ai_service
 
-        ai_response = await ai_service.process_incoming_message(location_id, phone, combined_text, is_audio=is_audio)
+        ai_response = await ai_service.process_incoming_message(
+            location_id, phone, combined_text, is_audio=is_audio, audio_url=audio_url
+        )
         if not ai_response:
             return
 
@@ -168,6 +176,7 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
     content_message = "Mensagem recebida do WhatsApp"
     attachments = []
     is_audio = False
+    audio_url = None
 
     # Parse do tipo de mensagem (Z-API possui várias estruturas)
     if "text" in payload and isinstance(payload["text"], dict):
@@ -180,7 +189,8 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
         content_message = "🎙️ Áudio recebido"
         is_audio = True
         if "audioUrl" in payload["audio"]:
-            attachments.append(payload["audio"]["audioUrl"])
+            audio_url = payload["audio"]["audioUrl"]
+            attachments.append(audio_url)
     elif "document" in payload and isinstance(payload["document"], dict):
         content_message = payload["document"].get("fileName", "📄 Documento recebido")
         if "documentUrl" in payload["document"]:
@@ -284,7 +294,7 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
                 # Acumula a mensagem no buffer desse contato
                 if contact_key not in _ai_message_buffers:
                     _ai_message_buffers[contact_key] = []
-                _ai_message_buffers[contact_key].append((content_message, is_audio))
+                _ai_message_buffers[contact_key].append((content_message, is_audio, audio_url))
 
                 # Armazena o debounce configurado (sobrescreve com o último valor — ok)
                 _ai_debounce_config[contact_key] = debounce

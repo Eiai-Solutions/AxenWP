@@ -74,6 +74,7 @@
             const elevenlabsKey = btn.dataset.aielevenlabskey;
             const elevenlabsVoiceId = btn.dataset.aielevenlabsvoice;
             const alwaysAudio = btn.dataset.aialwaysaudio;
+            const groqKey = btn.dataset.aigroqkey;
 
             document.getElementById('ai_location_id').value = locationId;
             document.getElementById('ai_company_name').innerText = companyName;
@@ -85,6 +86,7 @@
             document.getElementById('ai_is_active').checked = String(isActive).toLowerCase() === 'true';
 
             document.getElementById('ai_elevenlabs_api_key').value = elevenlabsKey || '';
+            document.getElementById('ai_groq_api_key').value = groqKey || '';
             document.getElementById('ai_always_reply_with_audio').checked = String(alwaysAudio).toLowerCase() === 'true';
 
             const debounceVal = parseFloat(btn.dataset.aidebounce) || 1.5;
@@ -801,6 +803,7 @@
                                     data-aielevenlabskey="{{ (tenant.ai_agent_data.elevenlabs_api_key | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.elevenlabs_api_key else '' }}"
                                     data-aielevenlabsvoice="{{ (tenant.ai_agent_data.elevenlabs_voice_id | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.elevenlabs_voice_id else '' }}"
                                     data-aialwaysaudio="{{ tenant.ai_agent_data.always_reply_with_audio if tenant.ai_agent_data else 'False' }}"
+                                    data-aigroqkey="{{ (tenant.ai_agent_data.groq_api_key | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.groq_api_key else '' }}"
                                     data-aidebounce="{{ tenant.ai_agent_data.debounce_seconds if tenant.ai_agent_data else '1.5' }}"
                                     onclick="openAIAgentModal(this)"
                                     class="text-brand-red hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-1.5 bg-brand-red/10 px-2.5 py-1.5 rounded-md border border-brand-red/30 mr-2">
@@ -1296,7 +1299,20 @@
                         <div class="group">
                             <label
                                 class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
-                                <span class="group-focus-within:text-white">ElevenLabs API Key</span>
+                                <span class="group-focus-within:text-white">Groq API Key (Transcrição de Áudio)</span>
+                                <a href="https://console.groq.com/keys" target="_blank"
+                                    class="text-brand-red hover:underline">Get Key</a>
+                            </label>
+                            <input type="password" id="ai_groq_api_key" name="groq_api_key"
+                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
+                                placeholder="gsk_...">
+                            <p class="text-[10px] text-gray-600 mt-1">Necessária para transcrever áudios recebidos dos clientes (Whisper). Gratuita no Groq.</p>
+                        </div>
+
+                        <div class="group">
+                            <label
+                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
+                                <span class="group-focus-within:text-white">ElevenLabs API Key (Voz da IA)</span>
                                 <a href="https://elevenlabs.io/" target="_blank"
                                     class="text-brand-red hover:underline">Get Key</a>
                             </label>

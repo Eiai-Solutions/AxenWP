@@ -1,7 +1,12 @@
 import logging
+import re
+import base64
+import tempfile
+import os
 from typing import List, Optional, Tuple
 from datetime import datetime
 
+import httpx
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -10,6 +15,82 @@ from data.database import SessionLocal
 from data.models import AIAgent, ChatHistory, Tenant
 
 logger = logging.getLogger(__name__)
+
+
+async def transcribe_audio(audio_url: str, groq_api_key: str) -> Optional[str]:
+    """
+    Baixa o áudio da URL (Z-API) e transcreve usando Groq Whisper (gratuito e rápido).
+    Retorna o texto transcrito ou None em caso de erro.
+    """
+    try:
+        # 1. Baixar o áudio da Z-API
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            audio_resp = await client.get(audio_url)
+            if audio_resp.status_code != 200:
+                logger.error(f"Erro ao baixar áudio da Z-API: status={audio_resp.status_code}")
+                return None
+            audio_bytes = audio_resp.content
+
+        # 2. Salvar em arquivo temporário para enviar ao Groq
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+            tmp.write(audio_bytes)
+            tmp_path = tmp.name
+
+        try:
+            # 3. Enviar para Groq Whisper API (OpenAI-compatible)
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                with open(tmp_path, "rb") as f:
+                    resp = await client.post(
+                        "https://api.groq.com/openai/v1/audio/transcriptions",
+                        headers={"Authorization": f"Bearer {groq_api_key}"},
+                        data={
+                            "model": "whisper-large-v3",
+                            "language": "pt",
+                            "response_format": "text",
+                        },
+                        files={"file": ("audio.ogg", f, "audio/ogg")},
+                    )
+
+                if resp.status_code == 200:
+                    transcription = resp.text.strip()
+                    logger.info(f"Áudio transcrito com sucesso ({len(transcription)} chars): {transcription[:80]}...")
+                    return transcription
+                else:
+                    logger.error(f"Erro na transcrição Groq Whisper: status={resp.status_code}, body={resp.text}")
+                    return None
+        finally:
+            os.unlink(tmp_path)
+
+    except Exception as e:
+        logger.error(f"Exceção ao transcrever áudio: {e}")
+        return None
+
+
+def _contains_special_content(text: str) -> bool:
+    """
+    Verifica se o texto contém conteúdo que ficaria bugado em TTS:
+    - URLs / links (https://, www., .com, .com.br)
+    - Emails (@)
+    - Valores monetários (R$ 1.500,00)
+    - Números longos (telefone, CEP, CNPJ, CPF)
+    - Endereços (Rua, Av., Avenida, etc.)
+    """
+    patterns = [
+        r'https?://',                          # URLs
+        r'www\.',                              # Links www
+        r'\.[a-z]{2,3}\.br\b',                # Domínios .com.br, .org.br
+        r'\b\w+\.(com|net|org|io|app)\b',     # Domínios genéricos
+        r'@',                                  # Emails
+        r'R\$\s*[\d.,]+',                      # Valores em reais: R$ 1.500,00
+        r'\d{1,3}(?:\.\d{3})+,\d{2}',         # Formato brasileiro de número: 1.500,00
+        r'\d{5}[\-]?\d{3}',                   # CEP: 01234-567 ou 01234567
+        r'\d{2}[\.\-]?\d{3}[\.\-]?\d{3}[\/\-]?\d{4}[\-]?\d{2}',  # CNPJ
+        r'\d{3}[\.\-]?\d{3}[\.\-]?\d{3}[\-]?\d{2}',              # CPF
+        r'\(?\d{2}\)?\s*\d{4,5}[\-\s]?\d{4}', # Telefone: (11) 99999-9999
+        r'\b(?:Rua|Av\.|Avenida|Alameda|Travessa|Praça|Rodovia|Estrada|R\.)\s',  # Endereços
+    ]
+    combined = '|'.join(patterns)
+    return bool(re.search(combined, text, re.IGNORECASE))
 
 class PostgresChatMessageHistory:
     """Implementa o histórico de mensagens direto via SQLAlchemy (equivalente ao Postgres Chat Memory do n8n)."""
@@ -93,14 +174,29 @@ class AIEngine:
             except Exception as e:
                 logger.error(f"Erro ao instanciar LLM OpenRouter: {e}")
 
-    async def generate_response(self, user_phone: str, user_message: str, is_audio: bool = False) -> Optional[dict]:
+    async def generate_response(
+        self, user_phone: str, user_message: str,
+        is_audio: bool = False, audio_url: Optional[str] = None,
+    ) -> Optional[dict]:
         """
         Recebe a mensagem do usuário, busca o histórico e gera a resposta com o LLM.
-        Retorna um dicionário: {"type": "text"|"audio", "content": <string ou base64>}
+        Retorna um dicionário: {"type": "text"|"audio", "content": <string ou base64>, "text": <str>}
         """
         if not self.agent_config.is_active or not self.llm:
             logger.info("Agente IA inativo ou sem API Key configurada. Ignorando processamento cognitivo.")
             return None
+
+        # ── Transcrição de áudio (STT) ──
+        actual_message = user_message
+        if is_audio and audio_url and self.agent_config.groq_api_key:
+            logger.info(f"Áudio recebido de {user_phone}. Transcrevendo via Groq Whisper...")
+            transcription = await transcribe_audio(audio_url, self.agent_config.groq_api_key)
+            if transcription:
+                actual_message = transcription
+            else:
+                logger.warning("Falha na transcrição. Usando mensagem original como fallback.")
+        elif is_audio and not self.agent_config.groq_api_key:
+            logger.warning("Áudio recebido mas Groq API Key não configurada. Ignorando transcrição.")
 
         # Identificador único de sessão de memória
         session_id = f"{self.agent_config.location_id}_{user_phone}"
@@ -122,33 +218,29 @@ class AIEngine:
             # Invoca o LLM de forma assíncrona para não bloquear o event loop
             response = await chain.ainvoke({
                 "history": past_messages,
-                "input": user_message
+                "input": actual_message
             })
 
             ai_text = response.content
 
             # Se deu certo, salva ambas as mensagens no banco (Humano + IA)
-            memory.add_user_message(user_message)
+            memory.add_user_message(actual_message)
             memory.add_ai_message(ai_text)
 
-            # Lógica de Áudio (ElevenLabs)
+            # ── Decisão: responder com áudio ou texto ──
             should_send_audio = False
             if self.agent_config.always_reply_with_audio or is_audio:
                 should_send_audio = True
 
-            # Regra de Exceção: Não enviar áudio se contiver links, emails, @, números grandes ou formatações que a IA fala mal.
-            if should_send_audio:
-                import re
-                # Bloqueia audio se tiver: números longos (telefone/CEP/preço), URLs, @, links
-                if re.search(r'(https?://|www\.|@|\d{4,})', ai_text, re.IGNORECASE):
-                    logger.info("Resposta IA contém URLs, @ ou números longos. Fazendo fallback para Texto.")
-                    should_send_audio = False
+            # Exceção: fallback para texto se a resposta contém conteúdo especial
+            # (R$, URLs, endereços, CPF, CNPJ, telefone, etc.)
+            if should_send_audio and _contains_special_content(ai_text):
+                logger.info("Resposta contém conteúdo especial (R$, URL, endereço, etc.). Fallback para texto.")
+                should_send_audio = False
 
+            # ── Gerar áudio via ElevenLabs (TTS) ──
             if should_send_audio and self.agent_config.elevenlabs_api_key and self.agent_config.elevenlabs_voice_id:
                 try:
-                    import httpx
-                    import base64
-                    
                     logger.info(f"Gerando áudio via ElevenLabs (VoiceID: {self.agent_config.elevenlabs_voice_id})...")
                     async with httpx.AsyncClient(timeout=30.0) as client:
                         response_el = await client.post(
@@ -163,11 +255,10 @@ class AIEngine:
                                 "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
                             }
                         )
-                        
+
                         if response_el.status_code == 200:
                             audio_content = response_el.content
                             b64_audio = base64.b64encode(audio_content).decode("utf-8")
-                            # Retorna o dict avisando que é áudio (basta usar data:audio/mpeg;base64)
                             return {"type": "audio", "content": f"data:audio/mpeg;base64,{b64_audio}", "text": ai_text}
                         else:
                             logger.error(f"Erro ao gerar ElevenLabs: {response_el.text}. Fallback texto.")
@@ -205,7 +296,10 @@ class AIService:
         finally:
             db.close()
             
-    async def process_incoming_message(self, location_id: str, remote_jid: str, text_content: str, is_audio: bool = False) -> Optional[dict]:
+    async def process_incoming_message(
+        self, location_id: str, remote_jid: str, text_content: str,
+        is_audio: bool = False, audio_url: Optional[str] = None,
+    ) -> Optional[dict]:
         """
         Gatilho unificado. Executa o Agente caso o inquilino tenha ativado e retorna um dict p/ zapi_receiver.
         """
@@ -216,6 +310,11 @@ class AIService:
         # O JID geralmente vem no formato '5511... @s.whatsapp.net', limpar
         phone_number = remote_jid.split('@')[0] if '@' in remote_jid else remote_jid
 
-        return await engine.generate_response(user_phone=phone_number, user_message=text_content, is_audio=is_audio)
+        return await engine.generate_response(
+            user_phone=phone_number,
+            user_message=text_content,
+            is_audio=is_audio,
+            audio_url=audio_url,
+        )
 
 ai_service = AIService()

@@ -61,6 +61,9 @@ class AIAgent(Base):
     elevenlabs_api_key = Column(String(255), nullable=True)
     elevenlabs_voice_id = Column(String(100), nullable=True)
     always_reply_with_audio = Column(Boolean, default=False)
+
+    # Groq - Transcrição de áudio (Whisper)
+    groq_api_key = Column(String(255), nullable=True)
     
     is_active = Column(Boolean, default=False)
     debounce_seconds = Column(Float, default=1.5, nullable=True)

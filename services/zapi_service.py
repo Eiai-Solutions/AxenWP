@@ -101,6 +101,7 @@ class ZAPIService:
         phone: str,
         audio_url: str,
         client_token: str = "",
+        record_audio: bool = True,
     ) -> dict | None:
         """
         Envia um áudio.
@@ -110,7 +111,7 @@ class ZAPIService:
         payload = {
             "phone": self._format_phone(phone),
             "audio": audio_url,
-            "recordAudio": True,
+            "recordAudio": record_audio,
         }
 
         return await self._post(url, payload, client_token)
