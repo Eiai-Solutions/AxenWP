@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Optional
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 import httpx
@@ -99,10 +100,25 @@ async def get_elevenlabs_voices(api_key: str):
             data = response.json()
             voices = [{"voice_id": v["voice_id"], "name": v["name"]} for v in data.get("voices", [])]
             return {"success": True, "voices": voices}
-            
+
     except Exception as e:
         logger.error(f"Erro ao buscar vozes na ElevenLabs: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao consultar serviço de voz.")
+
+
+# ── Helpers para chamadas OpenRouter ──
+
+def _openrouter_headers(api_key: str, title: str = "AxenWP") -> dict:
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "HTTP-Referer": "https://axenwp.com",
+        "X-Title": title,
+    }
+
+def _extract_tag(text: str, tag: str) -> str:
+    """Extrai conteúdo entre tags XML. Usa greedy para capturar até o último fechamento."""
+    m = re.search(rf"<{tag}>(.*)</{tag}>", text, re.DOTALL)
+    return m.group(1).strip() if m else ""
 
 
 class AnalyzeRequest(BaseModel):
@@ -111,137 +127,141 @@ class AnalyzeRequest(BaseModel):
 @router.post("/analyze-prompt")
 async def analyze_ai_prompt(payload: AnalyzeRequest):
     """
-    Usa a API Key Global de Administrador (SystemSettings) para revisar
-    e sugerir melhorias em um prompt do usuário.
+    Analisa e melhora o prompt do agente em 3 etapas:
+      1. Simula conversa Lead vs Agente
+      2. Gera análise + lista de mudanças específicas (NÃO gera prompt completo)
+      3. Chamada separada que aplica as mudanças ao prompt original (sem abreviar)
     """
     db = SessionLocal()
     try:
         settings = db.query(SystemSettings).first()
         if not settings or not settings.admin_openrouter_key:
             return {"success": False, "error": "Chave API do Administrador não configurada. Configure no menu superior (Admin Settings)."}
-            
-        # 1. Simulate a synthetic conversation
-        simulation_prompt = (
-            "Você é um 'Lead' (cliente em potencial) interessado nos serviços da empresa, mas você é ocupado, direto e um pouco cético. "
-            "Você deve simular uma conversa de 3 turnos com o Agente de IA. "
-            "Abaixo estão as instruções do Agente (Prompt):\n"
-            f"--- PROMPT DO AGENTE ---\n{payload.prompt_text}\n\n"
-            "Retorne a transcrição da conversa no seguinte formato:\n"
-            "Lead: [sua pergunta]\n"
-            "Agente: [resposta baseada no prompt]\n"
-            "...\n\n"
-            "Gere uma conversa curta de 3 turnos."
-        )
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            # Simulação
+        model = settings.admin_openrouter_model or "openai/gpt-4o"
+        headers = _openrouter_headers(settings.admin_openrouter_key, "AxenWP Prompt Analyzer")
+
+        async with httpx.AsyncClient(timeout=90.0) as client:
+
+            # ── ETAPA 1: Simular conversa Lead vs Agente ──
             sim_resp = await client.post(
                 "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.admin_openrouter_key}",
-                    "HTTP-Referer": "https://axenwp.com",
-                    "X-Title": "AxenWP Admin Simulation",
-                },
+                headers=headers,
                 json={
-                    "model": settings.admin_openrouter_model or "openai/gpt-4o",
-                    "messages": [{"role": "user", "content": simulation_prompt}]
+                    "model": model,
+                    "messages": [{"role": "user", "content": (
+                        "Você é um 'Lead' (cliente em potencial) interessado nos serviços da empresa, "
+                        "mas você é ocupado, direto e um pouco cético.\n"
+                        "Simule uma conversa de 3 turnos com o Agente de IA.\n\n"
+                        f"--- PROMPT DO AGENTE ---\n{payload.prompt_text}\n\n"
+                        "Formato:\nLead: [pergunta]\nAgente: [resposta]\n\n"
+                        "Gere 3 turnos."
+                    )}]
                 }
             )
             transcript = sim_resp.json()["choices"][0]["message"]["content"] if sim_resp.status_code == 200 else "Falha na simulação."
 
-            # 2. Final Analysis with Transcript
-            # Usamos delimitadores XML em vez de JSON — muito mais robusto para
-            # prompts longos com markdown, aspas e quebras de linha que corrompem JSON.
-            system_prompt = (
-                "Você é um especialista sênior em Prompt Engineering para agentes de WhatsApp B2B.\n\n"
-                "Você recebe o prompt atual de um agente e uma transcrição de uma conversa simulada com um lead real.\n"
-                "Sua missão é avaliar com profundidade se o agente está cumprindo seu objetivo de negócio "
-                "e propor melhorias que realmente façam diferença na performance.\n\n"
-                "Como especialista, você tem total liberdade para:\n"
-                "- Reescrever seções que estejam confusas, redundantes ou ineficazes\n"
-                "- Remover instruções que não agregam ou que contradizem o objetivo\n"
-                "- Criar novas seções se identificar lacunas importantes\n"
-                "- Reorganizar o prompt para melhor fluxo de raciocínio do modelo\n"
-                "- Manter intacto o que já está funcionando bem\n\n"
-                "O que você NÃO deve fazer:\n"
-                "- Mudar coisas só por mudar\n"
-                "- Simplificar ao ponto de perder instruções funcionais críticas (como tools, integrações, regras de negócio específicas)\n"
-                "- Usar placeholders como '[...]', '[mantido]', '[resto do prompt]' — o improved_prompt deve ser completo e pronto para uso\n"
-                "- Resumir, omitir ou abreviar QUALQUER parte do prompt dentro de <improved_prompt>. Ele DEVE conter o prompt inteiro, palavra por palavra das partes não alteradas, com as melhorias incorporadas\n\n"
-                "REGRA CRÍTICA: O conteúdo de <improved_prompt> será colado DIRETAMENTE no agente. Se você omitir qualquer seção, regra ou instrução do original, ela será PERDIDA permanentemente. "
-                "Sempre inclua 100% do prompt — as partes que você melhorou E as partes que manteve inalteradas.\n\n"
-                "Retorne EXATAMENTE neste formato:\n\n"
-                "<analysis>\n"
-                "[Diagnóstico em markdown: objetivo do agente, o que a simulação revelou, o que foi mudado e por quê]\n"
-                "</analysis>\n\n"
-                "<improved_prompt>\n"
-                "[Prompt COMPLETO e INTEGRAL, pronto para ser colado diretamente no agente — NUNCA omita seções]\n"
-                "</improved_prompt>\n\n"
-                "<transcript>\n"
-                "[Transcrição da conversa simulada]\n"
-                "</transcript>"
-            )
-
-            final_user_msg = (
-                f"PROMPT DO AGENTE:\n{payload.prompt_text}\n\n"
-                f"TRANSCRIÇÃO DO TESTE:\n{transcript}\n\n"
-                "Analise e melhore o prompt. Use os delimitadores <analysis>, <improved_prompt> e <transcript>."
-            )
-
-            resp = await client.post(
+            # ── ETAPA 2: Análise + lista de mudanças (SEM gerar prompt completo) ──
+            analysis_resp = await client.post(
                 "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.admin_openrouter_key}",
-                    "HTTP-Referer": "https://axenwp.com",
-                    "X-Title": "AxenWP Admin Prompt Analyzer",
-                },
+                headers=headers,
                 json={
-                    "model": settings.admin_openrouter_model or "openai/gpt-4o",
-                    "max_tokens": 16000,
+                    "model": model,
+                    "max_tokens": 4000,
                     "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": final_user_msg}
+                        {"role": "system", "content": (
+                            "Você é um especialista sênior em Prompt Engineering para agentes de WhatsApp B2B.\n\n"
+                            "Sua tarefa: analisar o prompt do agente com base em uma conversa simulada "
+                            "e listar MUDANÇAS ESPECÍFICAS a serem feitas.\n\n"
+                            "NÃO gere o prompt completo. Apenas analise e liste as mudanças.\n\n"
+                            "Retorne neste formato:\n\n"
+                            "<analysis>\n"
+                            "[Diagnóstico em markdown: objetivo do agente, o que a simulação revelou, "
+                            "pontos fortes, pontos fracos, e o que precisa mudar]\n"
+                            "</analysis>\n\n"
+                            "<changes>\n"
+                            "1. [SEÇÃO: nome] — [AÇÃO: adicionar/alterar/remover/reorganizar] — [O QUE: descrição detalhada da mudança]\n"
+                            "2. ...\n"
+                            "</changes>"
+                        )},
+                        {"role": "user", "content": (
+                            f"PROMPT DO AGENTE:\n{payload.prompt_text}\n\n"
+                            f"TRANSCRIÇÃO DO TESTE:\n{transcript}\n\n"
+                            "Analise e liste as mudanças necessárias."
+                        )}
                     ]
                 }
             )
 
-            if resp.status_code != 200:
-                return {"success": False, "error": f"IA Mestre falhou ({resp.status_code}): {resp.text}"}
+            if analysis_resp.status_code != 200:
+                return {"success": False, "error": f"IA Mestre falhou na análise ({analysis_resp.status_code})."}
 
-            import re
-            resp_json = resp.json()
-            raw_content = resp_json["choices"][0]["message"]["content"]
-            finish_reason = resp_json["choices"][0].get("finish_reason", "")
+            analysis_raw = analysis_resp.json()["choices"][0]["message"]["content"]
+            analysis_text = _extract_tag(analysis_raw, "analysis")
+            changes_text = _extract_tag(analysis_raw, "changes")
 
-            # Verificar se a resposta foi truncada por limite de tokens
-            if finish_reason == "length":
-                logger.warning(f"Resposta da IA Mestre foi truncada (finish_reason=length). Conteúdo pode estar incompleto.")
-
-            def extract_tag(tag: str) -> str:
-                # Usa greedy (.*) para capturar até o ÚLTIMO fechamento da tag
-                m = re.search(rf"<{tag}>(.*)</{tag}>", raw_content, re.DOTALL)
-                return m.group(1).strip() if m else ""
-
-            analysis_text = extract_tag("analysis")
-            improved      = extract_tag("improved_prompt")
-            sim_transcript = extract_tag("transcript") or transcript
-
-            if not analysis_text and not improved:
-                logger.error(f"Delimitadores não encontrados na resposta. Raw: {raw_content[:500]}")
+            if not analysis_text and not changes_text:
+                logger.error(f"Delimitadores não encontrados na análise. Raw: {analysis_raw[:500]}")
                 return {"success": False, "error": "Resposta malformada da IA Mestre."}
 
-            # Se o prompt melhorado veio vazio mas houve truncamento, avisar
-            if not improved and finish_reason == "length":
+            # Se não há mudanças sugeridas, retorna apenas a análise
+            if not changes_text or changes_text.lower().strip() in ["nenhuma", "nenhuma mudança", ""]:
+                return {
+                    "success": True,
+                    "analysis": analysis_text,
+                    "improved_prompt": "",
+                    "simulation_transcript": transcript,
+                }
+
+            # ── ETAPA 3: Aplicar mudanças ao prompt original (chamada focada) ──
+            apply_resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json={
+                    "model": model,
+                    "max_tokens": 16000,
+                    "messages": [
+                        {"role": "system", "content": (
+                            "Você é um editor de prompts. Sua ÚNICA tarefa é receber um prompt original "
+                            "e uma lista de mudanças, e retornar o prompt completo com as mudanças aplicadas.\n\n"
+                            "REGRAS ABSOLUTAS — violá-las é inaceitável:\n"
+                            "1. Retorne o prompt COMPLETO com as mudanças incorporadas\n"
+                            "2. Copie LITERALMENTE, palavra por palavra, todas as seções que NÃO foram alteradas\n"
+                            "3. PROIBIDO usar: '[...]', '[mesma seção]', '[mantido]', '[demais seções iguais]', "
+                            "'[resto do prompt]', '[continua igual]' ou QUALQUER forma de abreviação\n"
+                            "4. PROIBIDO omitir, resumir ou pular qualquer seção, regra, instrução ou parágrafo\n"
+                            "5. O resultado será colado diretamente no agente — qualquer omissão é perda permanente\n"
+                            "6. Retorne APENAS o prompt final. Sem explicações, sem tags XML, sem comentários antes ou depois"
+                        )},
+                        {"role": "user", "content": (
+                            f"PROMPT ORIGINAL (copie integralmente as partes não alteradas):\n"
+                            f"{payload.prompt_text}\n\n"
+                            f"MUDANÇAS A APLICAR:\n{changes_text}\n\n"
+                            "Aplique as mudanças acima e retorne o prompt COMPLETO."
+                        )}
+                    ]
+                }
+            )
+
+            if apply_resp.status_code != 200:
+                return {"success": False, "error": f"IA Mestre falhou ao gerar prompt ({apply_resp.status_code})."}
+
+            apply_json = apply_resp.json()
+            improved = apply_json["choices"][0]["message"]["content"].strip()
+            apply_finish = apply_json["choices"][0].get("finish_reason", "")
+
+            if apply_finish == "length":
+                logger.warning("Prompt melhorado foi truncado (finish_reason=length).")
                 return {
                     "success": False,
-                    "error": "A IA Mestre não conseguiu gerar o prompt completo (resposta truncada). Tente com um prompt menor ou peça melhorias pontuais pelo chat.",
+                    "error": "O prompt melhorado foi truncado por ser muito longo. Tente pedir melhorias pontuais pelo chat.",
                 }
 
             return {
                 "success": True,
                 "analysis": analysis_text,
                 "improved_prompt": improved,
-                "simulation_transcript": sim_transcript,
+                "simulation_transcript": transcript,
             }
     except Exception as e:
         logger.error(f"Erro no analisador de prompt: {e}", exc_info=True)
@@ -260,6 +280,7 @@ async def master_chat(payload: MasterChatRequest):
     """
     Chat iterativo com a IA Mestre. O usuário envia feedback sobre o agente
     e a Mestre revisa o prompt levando em consideração esse feedback.
+    Usa abordagem de 2 etapas: primeiro gera resposta + mudanças, depois aplica ao prompt.
     """
     db = SessionLocal()
     try:
@@ -267,80 +288,106 @@ async def master_chat(payload: MasterChatRequest):
         if not settings or not settings.admin_openrouter_key:
             return {"success": False, "error": "Chave API do Administrador não configurada."}
 
+        model = settings.admin_openrouter_model or "openai/gpt-4o"
+        headers = _openrouter_headers(settings.admin_openrouter_key, "AxenWP Master Chat")
+
+        # ── ETAPA 1: Gerar resposta conversacional + lista de mudanças ──
         system_prompt = (
             "Você é um especialista sênior em Prompt Engineering para agentes de WhatsApp B2B.\n\n"
             "Você já analisou o prompt de um agente e gerou uma sugestão de melhoria. "
-            "Agora está em uma conversa com o dono do agente, que vai te dar feedback sobre o comportamento real do agente.\n\n"
-            "Seu papel nessa conversa:\n"
-            "- Responder de forma direta e consultiva ao feedback do usuário\n"
-            "- Quando o feedback indicar uma mudança necessária no prompt, gerar uma versão revisada\n"
-            "- Quando for apenas uma dúvida ou confirmação, responder sem alterar o prompt\n"
-            "- Ser objetivo — não repita análises longas, vá direto ao ponto\n\n"
-            "REGRA CRÍTICA: Quando gerar um <improved_prompt>, ele DEVE conter o prompt INTEIRO — as partes alteradas E as partes inalteradas. "
-            "NUNCA use placeholders como '[...]', '[mantido]', '[resto do prompt]'. Se omitir algo, será PERDIDO permanentemente.\n\n"
-            "Retorne SEMPRE neste formato:\n\n"
-            "<response>\n"
-            "[Sua resposta conversacional ao feedback do usuário]\n"
-            "</response>\n\n"
-            "<improved_prompt>\n"
-            "[Prompt COMPLETO e INTEGRAL revisado se o feedback exigiu mudança — ou deixe VAZIO se não houve mudança necessária]\n"
-            "</improved_prompt>"
+            "Agora está em uma conversa com o dono do agente, que vai te dar feedback.\n\n"
+            "Seu papel:\n"
+            "- Responder de forma direta e consultiva ao feedback\n"
+            "- Se o feedback exigir mudança, liste as mudanças específicas\n"
+            "- Se for apenas dúvida/confirmação, responda sem listar mudanças\n\n"
+            "Retorne neste formato:\n\n"
+            "<response>\n[Sua resposta conversacional]\n</response>\n\n"
+            "<changes>\n"
+            "[Lista de mudanças específicas se necessário, ou VAZIO se não há mudanças]\n"
+            "</changes>"
         )
 
-        # Monta histórico de mensagens
         messages = [{"role": "system", "content": system_prompt}]
-
-        # Contexto inicial com o estado atual
         context_msg = (
-            f"PROMPT ORIGINAL DO AGENTE:\n{payload.original_prompt}\n\n"
-            f"VERSÃO ATUAL SUGERIDA:\n{payload.current_improved_prompt}"
+            f"PROMPT ATUAL DO AGENTE:\n{payload.current_improved_prompt or payload.original_prompt}"
         )
         messages.append({"role": "user", "content": context_msg})
-        messages.append({"role": "assistant", "content": "Entendido. Tenho o contexto completo do prompt original e da versão melhorada. Pode compartilhar seu feedback."})
+        messages.append({"role": "assistant", "content": "Entendido. Tenho o contexto completo do prompt. Pode compartilhar seu feedback."})
 
-        # Histórico da conversa
         for turn in payload.chat_history:
             messages.append({"role": "user" if turn["from"] == "user" else "assistant", "content": turn["text"]})
 
-        # Mensagem atual
         messages.append({"role": "user", "content": payload.user_message})
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        async with httpx.AsyncClient(timeout=90.0) as client:
             resp = await client.post(
                 "https://openrouter.ai/api/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {settings.admin_openrouter_key}",
-                    "HTTP-Referer": "https://axenwp.com",
-                    "X-Title": "AxenWP Master Chat",
-                },
+                headers=headers,
                 json={
-                    "model": settings.admin_openrouter_model or "openai/gpt-4o",
-                    "max_tokens": 16000,
+                    "model": model,
+                    "max_tokens": 4000,
                     "messages": messages,
                 }
             )
 
-        if resp.status_code != 200:
-            return {"success": False, "error": f"IA Mestre falhou ({resp.status_code})."}
+            if resp.status_code != 200:
+                return {"success": False, "error": f"IA Mestre falhou ({resp.status_code})."}
 
-        import re
-        raw = resp.json()["choices"][0]["message"]["content"]
+            raw = resp.json()["choices"][0]["message"]["content"]
+            response_text = _extract_tag(raw, "response") or raw.strip()
+            changes_text = _extract_tag(raw, "changes")
 
-        response_text = ""
-        m = re.search(r"<response>(.*)</response>", raw, re.DOTALL)
-        if m:
-            response_text = m.group(1).strip()
+            # Se não há mudanças, retorna só a resposta
+            if not changes_text or changes_text.lower().strip() in ["vazio", "nenhuma", ""]:
+                return {
+                    "success": True,
+                    "response": response_text,
+                    "updated_prompt": "",
+                }
 
-        updated_prompt = ""
-        m2 = re.search(r"<improved_prompt>(.*)</improved_prompt>", raw, re.DOTALL)
-        if m2:
-            updated_prompt = m2.group(1).strip()
+            # ── ETAPA 2: Aplicar mudanças ao prompt atual ──
+            current_prompt = payload.current_improved_prompt or payload.original_prompt
 
-        return {
-            "success": True,
-            "response": response_text or raw.strip(),
-            "updated_prompt": updated_prompt,
-        }
+            apply_resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json={
+                    "model": model,
+                    "max_tokens": 16000,
+                    "messages": [
+                        {"role": "system", "content": (
+                            "Você é um editor de prompts. Sua ÚNICA tarefa é receber um prompt original "
+                            "e uma lista de mudanças, e retornar o prompt completo com as mudanças aplicadas.\n\n"
+                            "REGRAS ABSOLUTAS:\n"
+                            "1. Retorne o prompt COMPLETO com as mudanças incorporadas\n"
+                            "2. Copie LITERALMENTE todas as seções NÃO alteradas\n"
+                            "3. PROIBIDO usar: '[...]', '[mesma seção]', '[mantido]', '[demais seções iguais]'\n"
+                            "4. PROIBIDO omitir, resumir ou pular qualquer parte\n"
+                            "5. Retorne APENAS o prompt final, sem explicações ou comentários"
+                        )},
+                        {"role": "user", "content": (
+                            f"PROMPT ORIGINAL:\n{current_prompt}\n\n"
+                            f"MUDANÇAS A APLICAR:\n{changes_text}\n\n"
+                            "Aplique e retorne o prompt COMPLETO."
+                        )}
+                    ]
+                }
+            )
+
+            if apply_resp.status_code != 200:
+                return {
+                    "success": True,
+                    "response": response_text + "\n\n⚠️ Não foi possível gerar o prompt atualizado automaticamente.",
+                    "updated_prompt": "",
+                }
+
+            updated_prompt = apply_resp.json()["choices"][0]["message"]["content"].strip()
+
+            return {
+                "success": True,
+                "response": response_text,
+                "updated_prompt": updated_prompt,
+            }
 
     except Exception as e:
         logger.error(f"Erro no master chat: {e}", exc_info=True)
@@ -371,7 +418,7 @@ async def test_ai_agent(location_id: str, request: Request):
         # Add history
         for h in chat_history[-5:]: # last 5
             messages.append({"role": "user" if h["from"] == "me" else "assistant", "content": h["text"]})
-        
+
         # Current message
         messages.append({"role": "user", "content": user_message})
 
@@ -388,15 +435,13 @@ async def test_ai_agent(location_id: str, request: Request):
                     "messages": messages
                 }
             )
-            
+
             if resp.status_code != 200:
                 return {"success": False, "error": f"Erro na API do Agente: {resp.text}"}
-            
+
             data = resp.json()
             ai_response = data["choices"][0]["message"]["content"]
             return {"success": True, "response": ai_response}
     except Exception as e:
         logger.error(f"Erro no chat tester: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
-
-
