@@ -31,7 +31,30 @@ async def refresh_tokens_job():
     logger.info("Executando job periódico de refresh de tokens...")
     await token_manager.refresh_all_tokens()
 
-from data.database import Base, engine
+from data.database import Base, engine, SessionLocal
+from data.models import ChatHistory
+
+# =============================================================================
+# Limpeza periódica de histórico antigo
+# =============================================================================
+def cleanup_old_chat_history(days: int = 30):
+    """Remove entradas de chat_histories com mais de `days` dias."""
+    from datetime import datetime, timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    db = SessionLocal()
+    try:
+        deleted = db.query(ChatHistory).filter(ChatHistory.created_at < cutoff).delete()
+        db.commit()
+        if deleted:
+            logger.info(f"Limpeza de histórico: {deleted} mensagens antigas removidas (>{days} dias).")
+        else:
+            logger.debug("Limpeza de histórico: nenhuma mensagem antiga encontrada.")
+    except Exception as e:
+        logger.error(f"Erro na limpeza de histórico: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 
 # =============================================================================
 # Ciclo de Vida do FastAPI (Start/Shutdown)
@@ -57,9 +80,11 @@ async def lifespan(app: FastAPI):
     # E roda imediatamente na subida
     logger.info("Axen WP Server iniciando...")
     scheduler.add_job(refresh_tokens_job, "interval", hours=12)
+    scheduler.add_job(cleanup_old_chat_history, "interval", hours=24)
     scheduler.start()
     
     await refresh_tokens_job()
+    cleanup_old_chat_history()
     
     yield
     
