@@ -3,7 +3,7 @@ import re
 import base64
 import tempfile
 import os
-from typing import List, Optional, Tuple
+from typing import List, Optional
 from datetime import datetime
 
 import httpx
