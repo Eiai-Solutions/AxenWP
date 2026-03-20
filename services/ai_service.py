@@ -228,9 +228,8 @@ class AIEngine:
             memory.add_ai_message(ai_text)
 
             # ── Decisão: responder com áudio ou texto ──
-            should_send_audio = False
-            if self.agent_config.always_reply_with_audio or is_audio:
-                should_send_audio = True
+            # Regra: cliente mandou áudio → responde áudio / cliente mandou texto → responde texto
+            should_send_audio = is_audio
 
             # Exceção: fallback para texto se a resposta contém conteúdo especial
             # (R$, URLs, endereços, CPF, CNPJ, telefone, etc.)

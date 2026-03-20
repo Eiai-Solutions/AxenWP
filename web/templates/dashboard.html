@@ -87,7 +87,6 @@
 
             document.getElementById('ai_elevenlabs_api_key').value = elevenlabsKey || '';
             document.getElementById('ai_groq_api_key').value = groqKey || '';
-            document.getElementById('ai_always_reply_with_audio').checked = String(alwaysAudio).toLowerCase() === 'true';
 
             const debounceVal = parseFloat(btn.dataset.aidebounce) || 1.5;
             const debounceInput = document.getElementById('ai_debounce_seconds');
@@ -1262,25 +1261,28 @@
                     <!-- TAB: VOICE -->
                     <div id="ai_tab_voice" class="ai-tab-content space-y-6 hidden">
 
-                        <div
-                            class="flex items-center justify-between bg-black/40 border border-gray-800 p-4 rounded-xl">
-                            <div>
-                                <p class="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
-                                    <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor"
-                                        viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z">
-                                        </path>
-                                    </svg>
-                                    Always Reply with Audio
+                        <div class="bg-black/40 border border-gray-800 p-4 rounded-xl">
+                            <p class="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
+                                <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor"
+                                    viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z">
+                                    </path>
+                                </svg>
+                                Modo de Resposta Inteligente
+                            </p>
+                            <div class="mt-2 space-y-1.5">
+                                <p class="text-[11px] text-gray-400 flex items-center gap-2">
+                                    <span class="text-brand-red font-bold">1.</span>
+                                    Cliente envia <span class="text-white font-bold">texto</span> &rarr; agente responde com <span class="text-white font-bold">texto</span>
                                 </p>
-                                <p class="text-xs text-gray-500 mt-1">If enabled, every AI text response will be
-                                    converted to speech and sent as a WhatsApp Audio (PTT).</p>
-                            </div>
-                            <div class="flex items-center">
-                                <input type="checkbox" id="ai_always_reply_with_audio" name="always_reply_with_audio"
-                                    value="true"
-                                    class="w-5 h-5 text-brand-red bg-gray-900 border-gray-700 rounded focus:ring-brand-red focus:ring-2">
+                                <p class="text-[11px] text-gray-400 flex items-center gap-2">
+                                    <span class="text-brand-red font-bold">2.</span>
+                                    Cliente envia <span class="text-white font-bold">audio</span> &rarr; agente responde com <span class="text-white font-bold">audio</span>
+                                </p>
+                                <p class="text-[11px] text-gray-500 flex items-center gap-2 mt-1 pl-4 border-l-2 border-gray-800">
+                                    Excecao: se a resposta contiver valores (R$), enderecos, links ou dados especiais, o agente responde com texto para evitar erros de pronuncia.
+                                </p>
                             </div>
                         </div>
 

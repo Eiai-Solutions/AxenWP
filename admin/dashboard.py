@@ -122,6 +122,7 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
                 "api_key": agent.api_key,
                 "elevenlabs_api_key": agent.elevenlabs_api_key,
                 "elevenlabs_voice_id": agent.elevenlabs_voice_id,
+                "groq_api_key": agent.groq_api_key,
                 "always_reply_with_audio": agent.always_reply_with_audio,
                 "is_active": agent.is_active,
                 "debounce_seconds": float(agent.debounce_seconds) if agent.debounce_seconds is not None else 1.5,
