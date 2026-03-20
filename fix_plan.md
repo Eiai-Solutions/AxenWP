@@ -25,7 +25,7 @@
 - **Impact:** Deprecation warnings, eventual removal in future Python versions
 - **Fix:** Replace with `datetime.now(timezone.utc)`
 
-### 5. Remove unused `always_reply_with_audio` column
+### 5. [DONE] Remove unused `always_reply_with_audio` column
 - **Problem:** Column exists in AIAgent model but is never read in application code (replaced by smart audio detection)
 - **Impact:** Dead code / schema confusion
 - **Fix:** Migration to drop column + remove from model

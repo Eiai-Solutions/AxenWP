@@ -60,7 +60,6 @@ class AIAgent(Base):
     # ElevenLabs - Fase 3 Voz
     elevenlabs_api_key = Column(String(255), nullable=True)
     elevenlabs_voice_id = Column(String(100), nullable=True)
-    always_reply_with_audio = Column(Boolean, default=False)
 
     # ElevenLabs - Voice Settings
     elevenlabs_speed = Column(Float, default=1.0, nullable=True)
