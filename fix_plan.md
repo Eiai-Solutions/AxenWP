@@ -8,7 +8,7 @@
 - **Fix:** Add a scheduled cleanup job that removes entries older than 30 days
 - **Files:** `main.py`, `services/ai_service.py` or new cleanup utility
 
-### 2. Async DB operations in chat history (sync blocking event loop)
+### 2. [DONE] Async DB operations in chat history (sync blocking event loop)
 - **Problem:** `PostgresChatMessageHistory.messages`, `add_user_message`, `add_ai_message` use sync `SessionLocal()` inside async `generate_response()`, blocking the event loop
 - **Impact:** Increased latency on every AI response, reduced throughput under load
 - **Fix:** Convert to async sessions or run sync operations in `asyncio.to_thread()`

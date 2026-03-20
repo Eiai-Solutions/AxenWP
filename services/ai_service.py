@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import base64
@@ -99,18 +100,14 @@ class PostgresChatMessageHistory:
         self.session_id = session_id
         self.max_history = 20 # Mantém o contexto de no máximo N mensagens
 
-    @property
-    def messages(self) -> List[BaseMessage]:
+    def _fetch_messages_sync(self) -> List[BaseMessage]:
+        """Sync DB fetch — meant to be called via asyncio.to_thread()."""
         db = SessionLocal()
         try:
-            # Pega as últimas N mensagens
             records = db.query(ChatHistory).filter(
                 ChatHistory.session_id == self.session_id
             ).order_by(ChatHistory.id.desc()).limit(self.max_history).all()
-            
-            # Reverte para ficar em ordem cronológica p/ o modelo
             records.reverse()
-            
             msgs = []
             for r in records:
                 if r.message_type == "human":
@@ -120,14 +117,13 @@ class PostgresChatMessageHistory:
             return msgs
         finally:
             db.close()
-            
-    def add_user_message(self, message: str) -> None:
-        self._add_message("human", message)
-        
-    def add_ai_message(self, message: str) -> None:
-        self._add_message("ai", message)
-        
-    def _add_message(self, type_: str, content: str) -> None:
+
+    async def aget_messages(self) -> List[BaseMessage]:
+        """Async wrapper that runs the sync DB query in a thread."""
+        return await asyncio.to_thread(self._fetch_messages_sync)
+
+    def _add_message_sync(self, type_: str, content: str) -> None:
+        """Sync DB write — meant to be called via asyncio.to_thread()."""
         db = SessionLocal()
         try:
             history = ChatHistory(
@@ -142,6 +138,12 @@ class PostgresChatMessageHistory:
             db.rollback()
         finally:
             db.close()
+
+    async def add_user_message(self, message: str) -> None:
+        await asyncio.to_thread(self._add_message_sync, "human", message)
+
+    async def add_ai_message(self, message: str) -> None:
+        await asyncio.to_thread(self._add_message_sync, "ai", message)
 
 
 class AIEngine:
@@ -201,8 +203,8 @@ class AIEngine:
         session_id = f"{self.agent_config.location_id}_{user_phone}"
         memory = PostgresChatMessageHistory(session_id)
 
-        # Recupera histórico
-        past_messages = memory.messages
+        # Recupera histórico (async — não bloqueia o event loop)
+        past_messages = await memory.aget_messages()
         logger.info(f"Histórico carregado para {user_phone}: {len(past_messages)} mensagens (session: {session_id})")
 
         # Monta as mensagens diretamente (sem template string) para evitar
@@ -220,8 +222,8 @@ class AIEngine:
             ai_text = response.content
 
             # Se deu certo, salva ambas as mensagens no banco (Humano + IA)
-            memory.add_user_message(actual_message)
-            memory.add_ai_message(ai_text)
+            await memory.add_user_message(actual_message)
+            await memory.add_ai_message(ai_text)
             logger.info(f"Histórico salvo para {user_phone}: user='{actual_message[:50]}...' ai='{ai_text[:50]}...'")
 
             # ── Decisão: responder com áudio ou texto ──
@@ -282,7 +284,8 @@ class AIService:
     # Cache: location_id -> (updated_at, AIEngine)
     _engine_cache: dict = {}
 
-    def get_agent_for_tenant(self, location_id: str) -> Optional[AIEngine]:
+    def _get_agent_for_tenant_sync(self, location_id: str) -> Optional[AIEngine]:
+        """Sync DB lookup — meant to be called via asyncio.to_thread()."""
         db = SessionLocal()
         try:
             agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
@@ -300,7 +303,10 @@ class AIService:
             return engine
         finally:
             db.close()
-            
+
+    async def get_agent_for_tenant(self, location_id: str) -> Optional[AIEngine]:
+        return await asyncio.to_thread(self._get_agent_for_tenant_sync, location_id)
+
     async def process_incoming_message(
         self, location_id: str, remote_jid: str, text_content: str,
         is_audio: bool = False, audio_url: Optional[str] = None,
@@ -308,7 +314,7 @@ class AIService:
         """
         Gatilho unificado. Executa o Agente caso o inquilino tenha ativado e retorna um dict p/ zapi_receiver.
         """
-        engine = self.get_agent_for_tenant(location_id)
+        engine = await self.get_agent_for_tenant(location_id)
         if not engine:
             return None
 
