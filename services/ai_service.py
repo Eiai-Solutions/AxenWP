@@ -242,8 +242,9 @@ class AIEngine:
                 try:
                     logger.info(f"Gerando áudio via ElevenLabs (VoiceID: {self.agent_config.elevenlabs_voice_id})...")
                     async with httpx.AsyncClient(timeout=30.0) as client:
+                        # output_format=ogg_opus → formato nativo de mensagem de voz do WhatsApp (PTT com ondas)
                         response_el = await client.post(
-                            f"https://api.elevenlabs.io/v1/text-to-speech/{self.agent_config.elevenlabs_voice_id}",
+                            f"https://api.elevenlabs.io/v1/text-to-speech/{self.agent_config.elevenlabs_voice_id}?output_format=ogg_opus",
                             headers={
                                 "xi-api-key": self.agent_config.elevenlabs_api_key,
                                 "Content-Type": "application/json"
@@ -258,7 +259,7 @@ class AIEngine:
                         if response_el.status_code == 200:
                             audio_content = response_el.content
                             b64_audio = base64.b64encode(audio_content).decode("utf-8")
-                            return {"type": "audio", "content": f"data:audio/mpeg;base64,{b64_audio}", "text": ai_text}
+                            return {"type": "audio", "content": f"data:audio/ogg;base64,{b64_audio}", "text": ai_text}
                         else:
                             logger.error(f"Erro ao gerar ElevenLabs: {response_el.text}. Fallback texto.")
                 except Exception as ex_el:
