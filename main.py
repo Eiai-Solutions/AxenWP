@@ -76,9 +76,22 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# CORS: restrito a origens configuradas; em debug mode permite tudo
+_cors_origins = (
+    [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+    if settings.allowed_origins
+    else []
+)
+if not _cors_origins and not settings.debug:
+    logger.warning(
+        "ALLOWED_ORIGINS nao configurado e DEBUG=false. "
+        "CORS bloqueara requests cross-origin. "
+        "Configure ALLOWED_ORIGINS no .env."
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins if _cors_origins else (["*"] if settings.debug else []),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -130,4 +143,4 @@ async def health_check():
 
 if __name__ == "__main__":
     logger.info(f"Starting uvicorn server on {settings.host}:{settings.port}...")
-    uvicorn.run("main:app", host=settings.host, port=settings.port, reload=True)
+    uvicorn.run("main:app", host=settings.host, port=settings.port, reload=settings.debug)

@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     zapi_webhook_secret: str = Field(
         default="", description="Token para validar webhooks do Z-API"
     )
+    allowed_origins: str = Field(
+        default="",
+        description="Origens permitidas para CORS (separadas por virgula). Ex: https://app.example.com,https://admin.example.com"
+    )
+    debug: bool = Field(default=False, description="Modo debug (habilita reload, CORS permissivo, etc.)")
 
     # Logs
     log_level: str = Field(default="INFO")
