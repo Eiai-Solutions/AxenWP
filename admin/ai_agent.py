@@ -166,13 +166,16 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                 "O que você NÃO deve fazer:\n"
                 "- Mudar coisas só por mudar\n"
                 "- Simplificar ao ponto de perder instruções funcionais críticas (como tools, integrações, regras de negócio específicas)\n"
-                "- Usar placeholders como '[...]', '[mantido]', '[resto do prompt]' — o improved_prompt deve ser completo e pronto para uso\n\n"
+                "- Usar placeholders como '[...]', '[mantido]', '[resto do prompt]' — o improved_prompt deve ser completo e pronto para uso\n"
+                "- Resumir, omitir ou abreviar QUALQUER parte do prompt dentro de <improved_prompt>. Ele DEVE conter o prompt inteiro, palavra por palavra das partes não alteradas, com as melhorias incorporadas\n\n"
+                "REGRA CRÍTICA: O conteúdo de <improved_prompt> será colado DIRETAMENTE no agente. Se você omitir qualquer seção, regra ou instrução do original, ela será PERDIDA permanentemente. "
+                "Sempre inclua 100% do prompt — as partes que você melhorou E as partes que manteve inalteradas.\n\n"
                 "Retorne EXATAMENTE neste formato:\n\n"
                 "<analysis>\n"
                 "[Diagnóstico em markdown: objetivo do agente, o que a simulação revelou, o que foi mudado e por quê]\n"
                 "</analysis>\n\n"
                 "<improved_prompt>\n"
-                "[Prompt completo, pronto para ser colado diretamente no agente]\n"
+                "[Prompt COMPLETO e INTEGRAL, pronto para ser colado diretamente no agente — NUNCA omita seções]\n"
                 "</improved_prompt>\n\n"
                 "<transcript>\n"
                 "[Transcrição da conversa simulada]\n"
@@ -194,7 +197,7 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                 },
                 json={
                     "model": settings.admin_openrouter_model or "openai/gpt-4o",
-                    "max_tokens": 8000,
+                    "max_tokens": 16000,
                     "messages": [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": final_user_msg}
@@ -206,10 +209,17 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                 return {"success": False, "error": f"IA Mestre falhou ({resp.status_code}): {resp.text}"}
 
             import re
-            raw_content = resp.json()["choices"][0]["message"]["content"]
+            resp_json = resp.json()
+            raw_content = resp_json["choices"][0]["message"]["content"]
+            finish_reason = resp_json["choices"][0].get("finish_reason", "")
+
+            # Verificar se a resposta foi truncada por limite de tokens
+            if finish_reason == "length":
+                logger.warning(f"Resposta da IA Mestre foi truncada (finish_reason=length). Conteúdo pode estar incompleto.")
 
             def extract_tag(tag: str) -> str:
-                m = re.search(rf"<{tag}>(.*?)</{tag}>", raw_content, re.DOTALL)
+                # Usa greedy (.*) para capturar até o ÚLTIMO fechamento da tag
+                m = re.search(rf"<{tag}>(.*)</{tag}>", raw_content, re.DOTALL)
                 return m.group(1).strip() if m else ""
 
             analysis_text = extract_tag("analysis")
@@ -219,6 +229,13 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
             if not analysis_text and not improved:
                 logger.error(f"Delimitadores não encontrados na resposta. Raw: {raw_content[:500]}")
                 return {"success": False, "error": "Resposta malformada da IA Mestre."}
+
+            # Se o prompt melhorado veio vazio mas houve truncamento, avisar
+            if not improved and finish_reason == "length":
+                return {
+                    "success": False,
+                    "error": "A IA Mestre não conseguiu gerar o prompt completo (resposta truncada). Tente com um prompt menor ou peça melhorias pontuais pelo chat.",
+                }
 
             return {
                 "success": True,
@@ -259,12 +276,14 @@ async def master_chat(payload: MasterChatRequest):
             "- Quando o feedback indicar uma mudança necessária no prompt, gerar uma versão revisada\n"
             "- Quando for apenas uma dúvida ou confirmação, responder sem alterar o prompt\n"
             "- Ser objetivo — não repita análises longas, vá direto ao ponto\n\n"
+            "REGRA CRÍTICA: Quando gerar um <improved_prompt>, ele DEVE conter o prompt INTEIRO — as partes alteradas E as partes inalteradas. "
+            "NUNCA use placeholders como '[...]', '[mantido]', '[resto do prompt]'. Se omitir algo, será PERDIDO permanentemente.\n\n"
             "Retorne SEMPRE neste formato:\n\n"
             "<response>\n"
             "[Sua resposta conversacional ao feedback do usuário]\n"
             "</response>\n\n"
             "<improved_prompt>\n"
-            "[Prompt revisado completo se o feedback exigiu mudança — ou deixe VAZIO se não houve mudança necessária]\n"
+            "[Prompt COMPLETO e INTEGRAL revisado se o feedback exigiu mudança — ou deixe VAZIO se não houve mudança necessária]\n"
             "</improved_prompt>"
         )
 
@@ -296,7 +315,7 @@ async def master_chat(payload: MasterChatRequest):
                 },
                 json={
                     "model": settings.admin_openrouter_model or "openai/gpt-4o",
-                    "max_tokens": 8000,
+                    "max_tokens": 16000,
                     "messages": messages,
                 }
             )
@@ -308,12 +327,12 @@ async def master_chat(payload: MasterChatRequest):
         raw = resp.json()["choices"][0]["message"]["content"]
 
         response_text = ""
-        m = re.search(r"<response>(.*?)</response>", raw, re.DOTALL)
+        m = re.search(r"<response>(.*)</response>", raw, re.DOTALL)
         if m:
             response_text = m.group(1).strip()
 
         updated_prompt = ""
-        m2 = re.search(r"<improved_prompt>(.*?)</improved_prompt>", raw, re.DOTALL)
+        m2 = re.search(r"<improved_prompt>(.*)</improved_prompt>", raw, re.DOTALL)
         if m2:
             updated_prompt = m2.group(1).strip()
 
