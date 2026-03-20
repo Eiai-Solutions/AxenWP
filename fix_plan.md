@@ -30,7 +30,7 @@
 - **Impact:** Dead code / schema confusion
 - **Fix:** Migration to drop column + remove from model
 
-### 6. Add test infrastructure
+### 6. [DONE] Add test infrastructure
 - **Problem:** Zero test files in the project
 - **Impact:** No regression safety net, risky deploys
 - **Fix:** Add pytest setup + initial tests for core services (ai_service, token_manager)
