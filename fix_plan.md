@@ -20,7 +20,7 @@
 
 ## Priority: MEDIUM
 
-### 4. Replace deprecated `datetime.utcnow()` calls
+### 4. [DONE] Replace deprecated `datetime.utcnow()` calls
 - **Problem:** `datetime.utcnow()` is deprecated in Python 3.12+ (used in models.py defaults)
 - **Impact:** Deprecation warnings, eventual removal in future Python versions
 - **Fix:** Replace with `datetime.now(timezone.utc)`
