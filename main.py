@@ -14,6 +14,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from utils.logger import logger
 from utils.config import settings
 from auth.token_manager import token_manager
+from services.ghl_service import ghl_service
+from services.zapi_service import zapi_service
 
 # Importa as rotas
 from auth.oauth import router as oauth_router
@@ -31,7 +33,30 @@ async def refresh_tokens_job():
     logger.info("Executando job periódico de refresh de tokens...")
     await token_manager.refresh_all_tokens()
 
-from data.database import Base, engine
+from data.database import Base, engine, SessionLocal
+from data.models import ChatHistory
+
+# =============================================================================
+# Limpeza periódica de histórico antigo
+# =============================================================================
+def cleanup_old_chat_history(days: int = 30):
+    """Remove entradas de chat_histories com mais de `days` dias."""
+    from datetime import datetime, timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    db = SessionLocal()
+    try:
+        deleted = db.query(ChatHistory).filter(ChatHistory.created_at < cutoff).delete()
+        db.commit()
+        if deleted:
+            logger.info(f"Limpeza de histórico: {deleted} mensagens antigas removidas (>{days} dias).")
+        else:
+            logger.debug("Limpeza de histórico: nenhuma mensagem antiga encontrada.")
+    except Exception as e:
+        logger.error(f"Erro na limpeza de histórico: {e}")
+        db.rollback()
+    finally:
+        db.close()
+
 
 # =============================================================================
 # Ciclo de Vida do FastAPI (Start/Shutdown)
@@ -56,14 +81,24 @@ async def lifespan(app: FastAPI):
     # Inicializa scheduler de token refresh a cada 12 horas (proteção)
     # E roda imediatamente na subida
     logger.info("Axen WP Server iniciando...")
+    from webhooks.zapi_receiver import cleanup_stale_debounce_entries
     scheduler.add_job(refresh_tokens_job, "interval", hours=12)
+    scheduler.add_job(cleanup_old_chat_history, "interval", hours=24)
+    scheduler.add_job(cleanup_stale_debounce_entries, "interval", minutes=10)
     scheduler.start()
     
+    # Inicializa clientes HTTP compartilhados
+    await ghl_service.startup()
+    await zapi_service.startup()
+
     await refresh_tokens_job()
-    
+    cleanup_old_chat_history()
+
     yield
-    
+
     logger.info("Desligando servidor...")
+    await ghl_service.shutdown()
+    await zapi_service.shutdown()
     scheduler.shutdown()
 
 # =============================================================================
@@ -76,9 +111,22 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# CORS: restrito a origens configuradas; em debug mode permite tudo
+_cors_origins = (
+    [o.strip() for o in settings.allowed_origins.split(",") if o.strip()]
+    if settings.allowed_origins
+    else []
+)
+if not _cors_origins and not settings.debug:
+    logger.warning(
+        "ALLOWED_ORIGINS nao configurado e DEBUG=false. "
+        "CORS bloqueara requests cross-origin. "
+        "Configure ALLOWED_ORIGINS no .env."
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins if _cors_origins else (["*"] if settings.debug else []),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -108,10 +156,30 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Retorna estado do servidor e os tenants ativos."""
+    """Retorna estado do servidor, conectividade do DB e os tenants ativos."""
+    import asyncio
+    from sqlalchemy import text
+
+    # Verify database connectivity
+    db_ok = False
+    try:
+        def _check_db():
+            db = SessionLocal()
+            try:
+                db.execute(text("SELECT 1"))
+                return True
+            finally:
+                db.close()
+        db_ok = await asyncio.to_thread(_check_db)
+    except Exception as e:
+        logger.error(f"Health check: DB unreachable — {e}")
+
+    if not db_ok:
+        return {"status": "unhealthy", "database": "unreachable"}
+
     tenants = token_manager.get_all_tenants()
     active_tenants = []
-    
+
     for t in tenants:
         active_tenants.append({
             "company": t.company_name,
@@ -120,9 +188,10 @@ async def health_check():
             "zapi_configured": bool(t.zapi_instance_id and t.zapi_token),
             "zapi_instance_id": t.zapi_instance_id
         })
-        
+
     return {
         "status": "healthy",
+        "database": "connected",
         "tenants_loaded": len(tenants),
         "tenants": active_tenants
     }
@@ -130,4 +199,4 @@ async def health_check():
 
 if __name__ == "__main__":
     logger.info(f"Starting uvicorn server on {settings.host}:{settings.port}...")
-    uvicorn.run("main:app", host=settings.host, port=settings.port, reload=True)
+    uvicorn.run("main:app", host=settings.host, port=settings.port, reload=settings.debug)

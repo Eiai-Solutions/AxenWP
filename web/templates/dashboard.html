@@ -73,7 +73,6 @@
             const isActive = btn.dataset.aiisactive;
             const elevenlabsKey = btn.dataset.aielevenlabskey;
             const elevenlabsVoiceId = btn.dataset.aielevenlabsvoice;
-            const alwaysAudio = btn.dataset.aialwaysaudio;
             const groqKey = btn.dataset.aigroqkey;
 
             document.getElementById('ai_location_id').value = locationId;
@@ -814,7 +813,6 @@
                                     data-aielspeed="{{ tenant.ai_agent_data.elevenlabs_speed if tenant.ai_agent_data else '1.0' }}"
                                     data-aielstability="{{ tenant.ai_agent_data.elevenlabs_stability if tenant.ai_agent_data else '0.5' }}"
                                     data-aielsimilarity="{{ tenant.ai_agent_data.elevenlabs_similarity if tenant.ai_agent_data else '0.75' }}"
-                                    data-aialwaysaudio="{{ tenant.ai_agent_data.always_reply_with_audio if tenant.ai_agent_data else 'False' }}"
                                     data-aigroqkey="{{ (tenant.ai_agent_data.groq_api_key | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.groq_api_key else '' }}"
                                     data-aidebounce="{{ tenant.ai_agent_data.debounce_seconds if tenant.ai_agent_data else '1.5' }}"
                                     onclick="openAIAgentModal(this)"

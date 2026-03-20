@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from data.database import get_db, SessionLocal
 from data.models import Tenant, AIAgent, SystemSettings
 from auth.token_manager import token_manager
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 
 router = APIRouter(prefix="/admin/agents", tags=["admin_agents"])
@@ -31,7 +31,6 @@ async def save_agent_settings(
     elevenlabs_stability: float = Form(0.5),
     elevenlabs_similarity: float = Form(0.75),
     groq_api_key: Optional[str] = Form(None),
-    always_reply_with_audio: bool = Form(False),
     is_active: bool = Form(False),
     debounce_seconds: float = Form(1.5)
 ):
@@ -62,10 +61,9 @@ async def save_agent_settings(
         agent.elevenlabs_stability = max(0.0, min(float(elevenlabs_stability), 1.0))
         agent.elevenlabs_similarity = max(0.0, min(float(elevenlabs_similarity), 1.0))
         agent.groq_api_key = groq_api_key
-        agent.always_reply_with_audio = always_reply_with_audio
         agent.is_active = is_active
         agent.debounce_seconds = max(0.5, min(float(debounce_seconds), 30.0))
-        agent.updated_at = datetime.utcnow()
+        agent.updated_at = datetime.now(timezone.utc)
 
         db.commit()
         logger.info(f"Configurações do Agente IA atualizadas para o Tenant {location_id}.")

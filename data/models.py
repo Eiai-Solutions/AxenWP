@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, ForeignKey, Text, Float
 from sqlalchemy.orm import relationship
 
@@ -26,7 +26,7 @@ class Tenant(Base):
     # State flags
     is_active = Column(Boolean, default=True)
 
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(String, default=lambda: datetime.now(timezone.utc).isoformat())
 
     @property
     def is_token_expired(self) -> bool:
@@ -60,7 +60,6 @@ class AIAgent(Base):
     # ElevenLabs - Fase 3 Voz
     elevenlabs_api_key = Column(String(255), nullable=True)
     elevenlabs_voice_id = Column(String(100), nullable=True)
-    always_reply_with_audio = Column(Boolean, default=False)
 
     # ElevenLabs - Voice Settings
     elevenlabs_speed = Column(Float, default=1.0, nullable=True)
@@ -120,7 +119,7 @@ class ContactMapping(Base):
     location_id = Column(String, index=True)
     phone_or_lid = Column(String, index=True) # O identificador que a Z-API nos manda (ex: 5511999999999 ou 12345678@lid)
     ghl_contact_id = Column(String, index=True) # O ID real do contato no GHL
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(String, default=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class MessageMapping(Base):
@@ -135,7 +134,7 @@ class MessageMapping(Base):
     ghl_message_id = Column(String, index=True) # O ID original do GHL (payload.messageId)
     location_id = Column(String, index=True)
     status = Column(String, default="pending")
-    created_at = Column(String, default=lambda: datetime.utcnow().isoformat())
+    created_at = Column(String, default=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class SystemSettings(Base):

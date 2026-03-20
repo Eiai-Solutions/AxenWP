@@ -13,6 +13,25 @@ class ZAPIService:
 
     BASE_URL = "https://api.z-api.io"
 
+    def __init__(self):
+        self._client: httpx.AsyncClient | None = None
+
+    async def startup(self):
+        """Initialize the shared HTTP client. Call during app startup."""
+        self._client = httpx.AsyncClient(timeout=30.0)
+
+    async def shutdown(self):
+        """Close the shared HTTP client. Call during app shutdown."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            raise RuntimeError("ZAPIService.startup() was not called")
+        return self._client
+
     def _build_url(self, instance_id: str, token: str, endpoint: str) -> str:
         """Monta a URL completa do endpoint Z-API."""
         return f"{self.BASE_URL}/instances/{instance_id}/token/{token}/{endpoint}"
@@ -152,26 +171,25 @@ class ZAPIService:
     ) -> dict | None:
         """Executa um POST genérico para a Z-API."""
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    url,
-                    json=payload,
-                    headers=self._get_headers(client_token),
-                )
+            response = await self.client.post(
+                url,
+                json=payload,
+                headers=self._get_headers(client_token),
+            )
 
-                if response.status_code in (200, 201):
-                    data = response.json()
-                    logger.info(
-                        f"Z-API enviou mensagem com sucesso: "
-                        f"phone={payload.get('phone')}, zapiMessageId={data.get('zapiMessageId', 'N/A')}"
-                    )
-                    return data
-                else:
-                    logger.error(
-                        f"Erro Z-API: status={response.status_code}, "
-                        f"url={url}, body={response.text}"
-                    )
-                    return None
+            if response.status_code in (200, 201):
+                data = response.json()
+                logger.info(
+                    f"Z-API enviou mensagem com sucesso: "
+                    f"phone={payload.get('phone')}, zapiMessageId={data.get('zapiMessageId', 'N/A')}"
+                )
+                return data
+            else:
+                logger.error(
+                    f"Erro Z-API: status={response.status_code}, "
+                    f"url={url}, body={response.text}"
+                )
+                return None
 
         except Exception as e:
             logger.error(f"Exceção ao chamar Z-API: {e}")
@@ -194,10 +212,9 @@ class ZAPIService:
         """
         url = self._build_url(instance_id, token, "status")
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(url, headers=self._get_headers(client_token))
-                if response.status_code == 200:
-                    return response.json()
+            response = await self.client.get(url, headers=self._get_headers(client_token), timeout=10.0)
+            if response.status_code == 200:
+                return response.json()
         except Exception as e:
             logger.error(f"Erro ao buscar status Z-API: {e}")
         return None
@@ -211,10 +228,9 @@ class ZAPIService:
         """
         url = self._build_url(instance_id, token, "qr-code/image")
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.get(url, headers=self._get_headers(client_token))
-                if response.status_code == 200:
-                    return response.json() # Retorna {"value": "data:image/png;base64,..."}
+            response = await self.client.get(url, headers=self._get_headers(client_token), timeout=15.0)
+            if response.status_code == 200:
+                return response.json()  # Retorna {"value": "data:image/png;base64,..."}
         except Exception as e:
             logger.error(f"Erro ao buscar QR Code Z-API: {e}")
         return None

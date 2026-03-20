@@ -14,10 +14,29 @@ class GHLService:
     """Serviço para interagir com a API do GoHighLevel."""
 
     BASE_URL = settings.ghl_api_base
-    
+
     # Cache para os mapeamentos de Custom Fields por Location ID
     # formato: {"location_id": {"Nome do Campo": "id_do_campo"}}
     _custom_fields_cache = {}
+
+    def __init__(self):
+        self._client: httpx.AsyncClient | None = None
+
+    async def startup(self):
+        """Initialize the shared HTTP client. Call during app startup."""
+        self._client = httpx.AsyncClient(timeout=30.0)
+
+    async def shutdown(self):
+        """Close the shared HTTP client. Call during app shutdown."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            raise RuntimeError("GHLService.startup() was not called")
+        return self._client
 
     async def _get_headers(self, location_id: str) -> dict | None:
         """Monta os headers com o token válido do tenant."""
@@ -77,32 +96,31 @@ class GHLService:
             payload["attachments"] = attachments
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.BASE_URL}/conversations/messages/inbound",
-                    json=payload,
-                    headers=headers,
+            response = await self.client.post(
+                f"{self.BASE_URL}/conversations/messages/inbound",
+                json=payload,
+                headers=headers,
+            )
+
+            if response.status_code in (200, 201):
+                data = response.json()
+                logger.info(
+                    f"Mensagem inbound registrada no GHL: "
+                    f"phone={formatted_phone}, location={location_id}"
                 )
+                return data
+            else:
+                body_data = {}
+                try:
+                    body_data = response.json()
+                except:
+                    body_data = {"text": response.text}
 
-                if response.status_code in (200, 201):
-                    data = response.json()
-                    logger.info(
-                        f"Mensagem inbound registrada no GHL: "
-                        f"phone={formatted_phone}, location={location_id}"
-                    )
-                    return data
-                else:
-                    body_data = {}
-                    try:
-                        body_data = response.json()
-                    except:
-                        body_data = {"text": response.text}
-
-                    logger.error(
-                        f"Erro ao registrar inbound no GHL: "
-                        f"status={response.status_code}, body={response.text}"
-                    )
-                    return {"error": True, "status_code": response.status_code, "body": body_data}
+                logger.error(
+                    f"Erro ao registrar inbound no GHL: "
+                    f"status={response.status_code}, body={response.text}"
+                )
+                return {"error": True, "status_code": response.status_code, "body": body_data}
 
         except Exception as e:
             logger.error(f"Exceção ao enviar inbound para GHL: {e}")
@@ -132,24 +150,23 @@ class GHLService:
             }
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.put(
-                    f"{self.BASE_URL}/conversations/messages/{message_id}/status",
-                    json=payload,
-                    headers=headers,
-                )
+            response = await self.client.put(
+                f"{self.BASE_URL}/conversations/messages/{message_id}/status",
+                json=payload,
+                headers=headers,
+            )
 
-                if response.status_code == 200:
-                    logger.info(
-                        f"Status da mensagem {message_id} atualizado para '{status}'"
-                    )
-                    return True
-                else:
-                    logger.error(
-                        f"Erro ao atualizar status da mensagem: "
-                        f"status={response.status_code}, body={response.text}"
-                    )
-                    return False
+            if response.status_code == 200:
+                logger.info(
+                    f"Status da mensagem {message_id} atualizado para '{status}'"
+                )
+                return True
+            else:
+                logger.error(
+                    f"Erro ao atualizar status da mensagem: "
+                    f"status={response.status_code}, body={response.text}"
+                )
+                return False
 
         except Exception as e:
             logger.error(f"Exceção ao atualizar status de mensagem: {e}")
@@ -165,20 +182,19 @@ class GHLService:
             return None
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    f"{self.BASE_URL}/contacts/{contact_id}",
-                    headers=headers,
-                )
+            response = await self.client.get(
+                f"{self.BASE_URL}/contacts/{contact_id}",
+                headers=headers,
+            )
 
-                if response.status_code == 200:
-                    data = response.json()
-                    return data.get("contact", {})
-                else:
-                    logger.warning(
-                        f"Busca de contato por ID retornou status {response.status_code}: {response.text}"
-                    )
-                    return None
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("contact", {})
+            else:
+                logger.warning(
+                    f"Busca de contato por ID retornou status {response.status_code}: {response.text}"
+                )
+                return None
         except Exception as e:
             logger.error(f"Exceção ao buscar contato por ID: {e}")
             return None
@@ -198,18 +214,17 @@ class GHLService:
 
         async def _do_search(query_phone: str):
             try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    response = await client.get(
-                        f"{self.BASE_URL}/contacts/search",
-                        params={"query": query_phone, "locationId": location_id},
-                        headers=headers,
-                    )
-                    if response.status_code == 200:
-                        data = response.json()
-                        contacts = data.get("contacts", [])
-                        if contacts:
-                            return contacts[0]
-                    return None
+                response = await self.client.get(
+                    f"{self.BASE_URL}/contacts/search",
+                    params={"query": query_phone, "locationId": location_id},
+                    headers=headers,
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    contacts = data.get("contacts", [])
+                    if contacts:
+                        return contacts[0]
+                return None
             except Exception as e:
                 logger.error(f"Exceção ao buscar contato ({query_phone}): {e}")
                 return None
@@ -274,19 +289,18 @@ class GHLService:
             payload["email"] = email
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    f"{self.BASE_URL}/contacts/",
-                    json=payload,
-                    headers=headers,
-                )
-                if response.status_code in (200, 201):
-                    data = response.json()
-                    logger.info(f"Novo contato criado no GHL: {phone}")
-                    return data.get("contact", {})
-                else:
-                    logger.error(f"Erro ao criar contato {phone}: {response.text}")
-                    return None
+            response = await self.client.post(
+                f"{self.BASE_URL}/contacts/",
+                json=payload,
+                headers=headers,
+            )
+            if response.status_code in (200, 201):
+                data = response.json()
+                logger.info(f"Novo contato criado no GHL: {phone}")
+                return data.get("contact", {})
+            else:
+                logger.error(f"Erro ao criar contato {phone}: {response.text}")
+                return None
         except Exception as e:
             logger.error(f"Exceção ao criar contato: {e}")
             return None
@@ -301,25 +315,24 @@ class GHLService:
             return None
             
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.get(
-                    f"{self.BASE_URL}/locations/{location_id}/customFields",
-                    headers=headers,
-                )
-                if response.status_code == 200:
-                    data = response.json()
-                    fields = data.get("customFields", [])
-                    
-                    if location_id not in self._custom_fields_cache:
-                        self._custom_fields_cache[location_id] = {}
-                        
-                    for field in fields:
-                        self._custom_fields_cache[location_id][field["name"]] = field["id"]
-                        
-                    return self._custom_fields_cache[location_id].get(field_name)
-                else:
-                    logger.warning(f"Erro ao buscar Custom Fields da location {location_id}: {response.text}")
-                    return None
+            response = await self.client.get(
+                f"{self.BASE_URL}/locations/{location_id}/customFields",
+                headers=headers,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                fields = data.get("customFields", [])
+
+                if location_id not in self._custom_fields_cache:
+                    self._custom_fields_cache[location_id] = {}
+
+                for field in fields:
+                    self._custom_fields_cache[location_id][field["name"]] = field["id"]
+
+                return self._custom_fields_cache[location_id].get(field_name)
+            else:
+                logger.warning(f"Erro ao buscar Custom Fields da location {location_id}: {response.text}")
+                return None
         except Exception as e:
             logger.error(f"Exceção ao buscar custom fields: {e}")
             return None
