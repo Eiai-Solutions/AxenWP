@@ -13,11 +13,12 @@ Gerado em: 2026-03-20
 - **Risco:** CSRF, acesso nao autorizado
 - **Fix:** Restringir origins para dominio(s) especifico(s) via env var `ALLOWED_ORIGINS`
 
-### 2. Senha admin padrao hardcoded
+### 2. [DONE] Senha admin padrao hardcoded
 - **Arquivo:** `admin/dashboard.py:23`
 - **Problema:** `ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")` — se .env nao for configurado, admin fica aberto com senha trivial
 - **Risco:** Acesso nao autorizado ao painel admin
 - **Fix:** Exigir variavel de ambiente; falhar no startup se nao definida
+- **Implementado:** `_get_admin_password()` + `settings.admin_password` — RuntimeError em producao se nao definido, fallback em DEBUG, warning para senhas fracas
 
 ### 3. Webhooks sem validacao de assinatura
 - **Arquivos:** `webhooks/zapi_receiver.py:318-340`, `webhooks/ghl_provider.py:270-291`
@@ -243,3 +244,4 @@ Gerado em: 2026-03-20
 - [x] Project audited (2026-03-20)
 - [x] #1 CORS permissivo — adicionado ALLOWED_ORIGINS env var + DEBUG mode fallback (2026-03-20)
 - [x] #11 Hot reload em producao — condicionado a DEBUG env var (2026-03-20)
+- [x] #2 Senha admin hardcoded — _get_admin_password() com fail-fast em producao + weak password warning (2026-03-20)

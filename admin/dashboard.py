@@ -7,20 +7,38 @@ from fastapi import APIRouter, Request, Form, Depends, Cookie
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
-import os
 import hmac
 import hashlib
 
 from utils.logger import logger
-from utils.config import settings
+from utils.config import settings as app_settings
 from auth.token_manager import token_manager
 from services.zapi_service import zapi_service
 
 router = APIRouter(prefix="/admin", tags=["Admin UI"])
 templates = Jinja2Templates(directory="web/templates")
 
-# Config da senha do Painel
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+# Config da senha do Painel — lida via settings (env var ADMIN_PASSWORD)
+_WEAK_PASSWORDS = {"admin123", "admin", "password", "123456", ""}
+
+
+def _get_admin_password() -> str:
+    """Retorna a senha admin configurada. Falha se nao definida em producao."""
+    pw = app_settings.admin_password
+    if not pw and app_settings.debug:
+        logger.warning("ADMIN_PASSWORD nao definido — usando fallback 'admin123' (modo DEBUG).")
+        return "admin123"
+    if not pw:
+        raise RuntimeError(
+            "ADMIN_PASSWORD nao configurado. "
+            "Defina a variavel de ambiente ADMIN_PASSWORD antes de iniciar em producao."
+        )
+    if pw in _WEAK_PASSWORDS:
+        logger.warning(
+            "ADMIN_PASSWORD e uma senha fraca conhecida. "
+            "Troque por uma senha forte em producao."
+        )
+    return pw
 
 
 def _make_session_token(password: str) -> str:
@@ -30,7 +48,7 @@ def _make_session_token(password: str) -> str:
 
 def verify_admin(admin_session: Optional[str] = Cookie(None)) -> bool:
     """Valida se o cookie da sessão é um token HMAC válido."""
-    expected = _make_session_token(ADMIN_PASSWORD)
+    expected = _make_session_token(_get_admin_password())
     return hmac.compare_digest(admin_session or "", expected)
 
 
@@ -41,7 +59,7 @@ async def login_page(request: Request, error: str = None):
 
 @router.post("/login")
 async def do_login(password: str = Form(...)):
-    if password == ADMIN_PASSWORD:
+    if password == _get_admin_password():
         response = RedirectResponse(url="/admin/dashboard", status_code=303)
         response.set_cookie(
             key="admin_session",

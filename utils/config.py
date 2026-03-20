@@ -30,6 +30,9 @@ class Settings(BaseSettings):
     port: int = Field(default=8000)
 
     # Segurança
+    admin_password: str = Field(
+        default="", description="Senha do painel admin. OBRIGATORIA em producao."
+    )
     zapi_webhook_secret: str = Field(
         default="", description="Token para validar webhooks do Z-API"
     )
