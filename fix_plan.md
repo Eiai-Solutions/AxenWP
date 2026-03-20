@@ -37,7 +37,7 @@
 
 ## Priority: LOW
 
-### 7. Shared httpx client for GHL/Z-API services
+### 7. [DONE] Shared httpx client for GHL/Z-API services
 - **Problem:** New `httpx.AsyncClient` created per-request in ghl_service and zapi_service
 - **Impact:** Connection overhead, no HTTP/2 multiplexing or keep-alive benefits
 - **Fix:** Use a module-level or app-level shared client with proper lifecycle

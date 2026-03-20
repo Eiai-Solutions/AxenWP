@@ -14,6 +14,8 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from utils.logger import logger
 from utils.config import settings
 from auth.token_manager import token_manager
+from services.ghl_service import ghl_service
+from services.zapi_service import zapi_service
 
 # Importa as rotas
 from auth.oauth import router as oauth_router
@@ -83,12 +85,18 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(cleanup_old_chat_history, "interval", hours=24)
     scheduler.start()
     
+    # Inicializa clientes HTTP compartilhados
+    await ghl_service.startup()
+    await zapi_service.startup()
+
     await refresh_tokens_job()
     cleanup_old_chat_history()
-    
+
     yield
-    
+
     logger.info("Desligando servidor...")
+    await ghl_service.shutdown()
+    await zapi_service.shutdown()
     scheduler.shutdown()
 
 # =============================================================================
