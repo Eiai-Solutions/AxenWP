@@ -81,8 +81,10 @@ async def lifespan(app: FastAPI):
     # Inicializa scheduler de token refresh a cada 12 horas (proteção)
     # E roda imediatamente na subida
     logger.info("Axen WP Server iniciando...")
+    from webhooks.zapi_receiver import cleanup_stale_debounce_entries
     scheduler.add_job(refresh_tokens_job, "interval", hours=12)
     scheduler.add_job(cleanup_old_chat_history, "interval", hours=24)
+    scheduler.add_job(cleanup_stale_debounce_entries, "interval", minutes=10)
     scheduler.start()
     
     # Inicializa clientes HTTP compartilhados

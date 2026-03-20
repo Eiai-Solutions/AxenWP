@@ -42,7 +42,7 @@
 - **Impact:** Connection overhead, no HTTP/2 multiplexing or keep-alive benefits
 - **Fix:** Use a module-level or app-level shared client with proper lifecycle
 
-### 8. Debounce dict memory management
+### 8. [DONE] Debounce dict memory management
 - **Problem:** `_ai_pending_tasks`, `_ai_message_buffers`, `_ai_debounce_config` dicts in zapi_receiver could accumulate stale entries if tasks fail unexpectedly
 - **Impact:** Minor memory leak over long uptimes
 - **Fix:** Add periodic cleanup or use WeakValueDictionary patterns

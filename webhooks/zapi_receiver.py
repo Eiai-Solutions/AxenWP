@@ -28,6 +28,18 @@ _ai_message_buffers: Dict[str, list] = {}          # contact_key -> [(text, is_a
 _ai_debounce_config: Dict[str, float] = {}         # contact_key -> debounce_seconds
 
 
+def cleanup_stale_debounce_entries():
+    """Remove entries from debounce dicts whose tasks are done (completed/failed).
+    Called periodically via APScheduler to prevent minor memory leaks."""
+    stale_keys = [k for k, t in _ai_pending_tasks.items() if t.done()]
+    for key in stale_keys:
+        _ai_pending_tasks.pop(key, None)
+        _ai_message_buffers.pop(key, None)
+        _ai_debounce_config.pop(key, None)
+    if stale_keys:
+        logger.debug(f"Debounce cleanup: removed {len(stale_keys)} stale entries.")
+
+
 async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant, contact_key: str):
     """Aguarda o debounce e depois processa a IA com todas as mensagens acumuladas."""
     try:
