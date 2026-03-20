@@ -26,6 +26,9 @@ async def save_agent_settings(
     api_key: Optional[str] = Form(None),
     elevenlabs_api_key: Optional[str] = Form(None),
     elevenlabs_voice_id: Optional[str] = Form(None),
+    elevenlabs_speed: float = Form(1.0),
+    elevenlabs_stability: float = Form(0.5),
+    elevenlabs_similarity: float = Form(0.75),
     groq_api_key: Optional[str] = Form(None),
     always_reply_with_audio: bool = Form(False),
     is_active: bool = Form(False),
@@ -54,6 +57,9 @@ async def save_agent_settings(
         agent.api_key = api_key
         agent.elevenlabs_api_key = elevenlabs_api_key
         agent.elevenlabs_voice_id = elevenlabs_voice_id
+        agent.elevenlabs_speed = max(0.25, min(float(elevenlabs_speed), 4.0))
+        agent.elevenlabs_stability = max(0.0, min(float(elevenlabs_stability), 1.0))
+        agent.elevenlabs_similarity = max(0.0, min(float(elevenlabs_similarity), 1.0))
         agent.groq_api_key = groq_api_key
         agent.always_reply_with_audio = always_reply_with_audio
         agent.is_active = is_active

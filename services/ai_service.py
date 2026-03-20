@@ -243,6 +243,10 @@ class AIEngine:
                     logger.info(f"Gerando áudio via ElevenLabs (VoiceID: {self.agent_config.elevenlabs_voice_id})...")
                     async with httpx.AsyncClient(timeout=30.0) as client:
                         # output_format=ogg_opus → formato nativo de mensagem de voz do WhatsApp (PTT com ondas)
+                        speed = float(self.agent_config.elevenlabs_speed or 1.0)
+                        stability = float(self.agent_config.elevenlabs_stability or 0.5)
+                        similarity = float(self.agent_config.elevenlabs_similarity or 0.75)
+
                         response_el = await client.post(
                             f"https://api.elevenlabs.io/v1/text-to-speech/{self.agent_config.elevenlabs_voice_id}?output_format=ogg_opus",
                             headers={
@@ -252,7 +256,11 @@ class AIEngine:
                             json={
                                 "text": ai_text,
                                 "model_id": "eleven_multilingual_v2",
-                                "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
+                                "voice_settings": {
+                                    "stability": stability,
+                                    "similarity_boost": similarity,
+                                    "speed": speed,
+                                }
                             }
                         )
 
