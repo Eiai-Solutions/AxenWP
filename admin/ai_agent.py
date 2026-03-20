@@ -119,6 +119,76 @@ def _extract_tag(text: str, tag: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+def _apply_diffs(original: str, diffs_text: str) -> str:
+    """
+    Aplica diffs no formato <<<FIND>>>...<<<REPLACE>>>...<<<END>>> ao prompt original.
+    O LLM nunca precisa gerar o prompt completo — só os trechos que mudam.
+    O Python faz o find/replace preservando 100% do conteúdo inalterado.
+    """
+    result = original
+    # Parse dos blocos de diff
+    blocks = re.findall(
+        r'<<<FIND>>>(.*?)<<<REPLACE>>>(.*?)<<<END>>>',
+        diffs_text,
+        re.DOTALL,
+    )
+
+    applied = 0
+    for find_text, replace_text in blocks:
+        find_text = find_text.strip()
+        replace_text = replace_text.strip()
+
+        if not find_text:
+            continue
+
+        if find_text in result:
+            result = result.replace(find_text, replace_text, 1)
+            applied += 1
+        else:
+            # Fallback: tentar match mais flexível (ignorando espaços extras)
+            find_normalized = re.sub(r'\s+', r'\\s+', re.escape(find_text))
+            m = re.search(find_normalized, result)
+            if m:
+                result = result[:m.start()] + replace_text + result[m.end():]
+                applied += 1
+            else:
+                logger.warning(f"Diff não encontrado no prompt: '{find_text[:80]}...'")
+
+    # Se há blocos <<<APPEND>>> para adicionar conteúdo novo ao final
+    appends = re.findall(r'<<<APPEND>>>(.*?)<<<END>>>', diffs_text, re.DOTALL)
+    for append_text in appends:
+        append_text = append_text.strip()
+        if append_text:
+            result = result.rstrip() + "\n\n" + append_text
+            applied += 1
+
+    logger.info(f"Diffs aplicados: {applied}/{len(blocks) + len(appends)}")
+    return result
+
+
+_DIFF_SYSTEM_PROMPT = (
+    "Você é um editor de prompts. Sua tarefa é gerar PATCHES (diffs) para modificar um prompt.\n\n"
+    "FORMATO OBRIGATÓRIO — use exatamente este formato para cada mudança:\n\n"
+    "<<<FIND>>>\n"
+    "[trecho EXATO do prompt original que deve ser alterado — copie literalmente]\n"
+    "<<<REPLACE>>>\n"
+    "[novo conteúdo que substitui o trecho acima]\n"
+    "<<<END>>>\n\n"
+    "Para ADICIONAR conteúdo novo ao final do prompt (seções novas):\n"
+    "<<<APPEND>>>\n"
+    "[conteúdo a adicionar no final]\n"
+    "<<<END>>>\n\n"
+    "Para REMOVER um trecho, use <<<REPLACE>>> vazio:\n"
+    "<<<FIND>>>\n[trecho a remover]\n<<<REPLACE>>>\n<<<END>>>\n\n"
+    "REGRAS:\n"
+    "- O texto em <<<FIND>>> DEVE ser uma cópia exata do prompt original (mesma capitalização, pontuação, quebras de linha)\n"
+    "- Inclua contexto suficiente no FIND para ser único (pelo menos 2-3 linhas)\n"
+    "- NUNCA gere o prompt completo — apenas os diffs\n"
+    "- Cada bloco é um patch independente\n"
+    "- Gere apenas os patches, sem explicações antes ou depois"
+)
+
+
 class AnalyzeRequest(BaseModel):
     prompt_text: str
 
@@ -211,48 +281,38 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                     "simulation_transcript": transcript,
                 }
 
-            # ── ETAPA 3: Aplicar mudanças ao prompt original (chamada focada) ──
+            # ── ETAPA 3: Gerar DIFFS e aplicar programaticamente ──
             apply_resp = await client.post(
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers=headers,
                 json={
                     "model": model,
-                    "max_tokens": 16000,
+                    "max_tokens": 8000,
                     "messages": [
-                        {"role": "system", "content": (
-                            "Você é um editor de prompts. Sua ÚNICA tarefa é receber um prompt original "
-                            "e uma lista de mudanças, e retornar o prompt completo com as mudanças aplicadas.\n\n"
-                            "REGRAS ABSOLUTAS — violá-las é inaceitável:\n"
-                            "1. Retorne o prompt COMPLETO com as mudanças incorporadas\n"
-                            "2. Copie LITERALMENTE, palavra por palavra, todas as seções que NÃO foram alteradas\n"
-                            "3. PROIBIDO usar: '[...]', '[mesma seção]', '[mantido]', '[demais seções iguais]', "
-                            "'[resto do prompt]', '[continua igual]' ou QUALQUER forma de abreviação\n"
-                            "4. PROIBIDO omitir, resumir ou pular qualquer seção, regra, instrução ou parágrafo\n"
-                            "5. O resultado será colado diretamente no agente — qualquer omissão é perda permanente\n"
-                            "6. Retorne APENAS o prompt final. Sem explicações, sem tags XML, sem comentários antes ou depois"
-                        )},
+                        {"role": "system", "content": _DIFF_SYSTEM_PROMPT},
                         {"role": "user", "content": (
-                            f"PROMPT ORIGINAL (copie integralmente as partes não alteradas):\n"
-                            f"{payload.prompt_text}\n\n"
+                            f"PROMPT ORIGINAL:\n{payload.prompt_text}\n\n"
                             f"MUDANÇAS A APLICAR:\n{changes_text}\n\n"
-                            "Aplique as mudanças acima e retorne o prompt COMPLETO."
+                            "Gere os patches no formato <<<FIND>>>...<<<REPLACE>>>...<<<END>>>."
                         )}
                     ]
                 }
             )
 
             if apply_resp.status_code != 200:
-                return {"success": False, "error": f"IA Mestre falhou ao gerar prompt ({apply_resp.status_code})."}
+                return {"success": False, "error": f"IA Mestre falhou ao gerar diffs ({apply_resp.status_code})."}
 
-            apply_json = apply_resp.json()
-            improved = apply_json["choices"][0]["message"]["content"].strip()
-            apply_finish = apply_json["choices"][0].get("finish_reason", "")
+            diffs_raw = apply_resp.json()["choices"][0]["message"]["content"].strip()
+            improved = _apply_diffs(payload.prompt_text, diffs_raw)
 
-            if apply_finish == "length":
-                logger.warning("Prompt melhorado foi truncado (finish_reason=length).")
+            # Se nenhum diff foi aplicado, retorna o original com aviso
+            if improved == payload.prompt_text:
+                logger.warning("Nenhum diff foi aplicado com sucesso ao prompt.")
                 return {
-                    "success": False,
-                    "error": "O prompt melhorado foi truncado por ser muito longo. Tente pedir melhorias pontuais pelo chat.",
+                    "success": True,
+                    "analysis": analysis_text,
+                    "improved_prompt": "",
+                    "simulation_transcript": transcript,
                 }
 
             return {
@@ -343,7 +403,7 @@ async def master_chat(payload: MasterChatRequest):
                     "updated_prompt": "",
                 }
 
-            # ── ETAPA 2: Aplicar mudanças ao prompt atual ──
+            # ── ETAPA 2: Gerar DIFFS e aplicar programaticamente ──
             current_prompt = payload.current_improved_prompt or payload.original_prompt
 
             apply_resp = await client.post(
@@ -351,22 +411,13 @@ async def master_chat(payload: MasterChatRequest):
                 headers=headers,
                 json={
                     "model": model,
-                    "max_tokens": 16000,
+                    "max_tokens": 8000,
                     "messages": [
-                        {"role": "system", "content": (
-                            "Você é um editor de prompts. Sua ÚNICA tarefa é receber um prompt original "
-                            "e uma lista de mudanças, e retornar o prompt completo com as mudanças aplicadas.\n\n"
-                            "REGRAS ABSOLUTAS:\n"
-                            "1. Retorne o prompt COMPLETO com as mudanças incorporadas\n"
-                            "2. Copie LITERALMENTE todas as seções NÃO alteradas\n"
-                            "3. PROIBIDO usar: '[...]', '[mesma seção]', '[mantido]', '[demais seções iguais]'\n"
-                            "4. PROIBIDO omitir, resumir ou pular qualquer parte\n"
-                            "5. Retorne APENAS o prompt final, sem explicações ou comentários"
-                        )},
+                        {"role": "system", "content": _DIFF_SYSTEM_PROMPT},
                         {"role": "user", "content": (
                             f"PROMPT ORIGINAL:\n{current_prompt}\n\n"
                             f"MUDANÇAS A APLICAR:\n{changes_text}\n\n"
-                            "Aplique e retorne o prompt COMPLETO."
+                            "Gere os patches no formato <<<FIND>>>...<<<REPLACE>>>...<<<END>>>."
                         )}
                     ]
                 }
@@ -375,11 +426,12 @@ async def master_chat(payload: MasterChatRequest):
             if apply_resp.status_code != 200:
                 return {
                     "success": True,
-                    "response": response_text + "\n\n⚠️ Não foi possível gerar o prompt atualizado automaticamente.",
+                    "response": response_text,
                     "updated_prompt": "",
                 }
 
-            updated_prompt = apply_resp.json()["choices"][0]["message"]["content"].strip()
+            diffs_raw = apply_resp.json()["choices"][0]["message"]["content"].strip()
+            updated_prompt = _apply_diffs(current_prompt, diffs_raw)
 
             return {
                 "success": True,
