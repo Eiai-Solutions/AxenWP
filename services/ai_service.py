@@ -9,7 +9,6 @@ from datetime import datetime
 import httpx
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from data.database import SessionLocal
 from data.models import AIAgent, ChatHistory, Tenant
@@ -204,28 +203,26 @@ class AIEngine:
 
         # Recupera histórico
         past_messages = memory.messages
+        logger.info(f"Histórico carregado para {user_phone}: {len(past_messages)} mensagens (session: {session_id})")
 
-        # Constrói o template base (a "conciência" e o prompt)
-        prompt_template = ChatPromptTemplate.from_messages([
-            ("system", self.agent_config.prompt),
-            MessagesPlaceholder(variable_name="history"),
-            ("human", "{input}")
-        ])
-
-        chain = prompt_template | self.llm
+        # Monta as mensagens diretamente (sem template string) para evitar
+        # conflito com {} no prompt do usuário
+        messages_for_llm: list[BaseMessage] = [
+            SystemMessage(content=self.agent_config.prompt),
+            *past_messages,
+            HumanMessage(content=actual_message),
+        ]
 
         try:
             # Invoca o LLM de forma assíncrona para não bloquear o event loop
-            response = await chain.ainvoke({
-                "history": past_messages,
-                "input": actual_message
-            })
+            response = await self.llm.ainvoke(messages_for_llm)
 
             ai_text = response.content
 
             # Se deu certo, salva ambas as mensagens no banco (Humano + IA)
             memory.add_user_message(actual_message)
             memory.add_ai_message(ai_text)
+            logger.info(f"Histórico salvo para {user_phone}: user='{actual_message[:50]}...' ai='{ai_text[:50]}...'")
 
             # ── Decisão: responder com áudio ou texto ──
             # Regra: cliente mandou áudio → responde áudio / cliente mandou texto → responde texto
