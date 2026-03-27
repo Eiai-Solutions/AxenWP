@@ -126,6 +126,8 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
             "location_id": t.location_id,
             "company_name": t.company_name,
             "is_active": t.is_active,
+            "mode": getattr(t, "mode", "ghl") or "ghl",
+            "is_token_expired": t.is_token_expired if getattr(t, "mode", "ghl") == "ghl" else False,
             "zapi_instance_id": t.zapi_instance_id,
             "zapi_token": t.zapi_token,
             "zapi_client_token": t.zapi_client_token,
@@ -186,6 +188,25 @@ async def toggle_tenant_automation(
     except Exception as e:
         logger.error(f"Erro ao alternar status da instância: {e}")
         return RedirectResponse(url="/admin/dashboard?err=Erro interno ao tentar alternar o status.", status_code=303)
+
+
+@router.post("/tenant/{location_id}/delete")
+async def delete_tenant(
+    location_id: str,
+    authenticated: bool = Depends(verify_admin)
+):
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    tenant = token_manager.get_tenant(location_id)
+    if not tenant:
+        return RedirectResponse(url="/admin/dashboard?err=Empresa não encontrada.", status_code=303)
+
+    company_name = tenant.company_name
+    success = token_manager.delete_tenant(location_id)
+    if success:
+        return RedirectResponse(url=f"/admin/dashboard?msg=Instância '{company_name}' removida com sucesso.", status_code=303)
+    return RedirectResponse(url="/admin/dashboard?err=Erro ao remover instância.", status_code=303)
 
 
 @router.post("/tenant/{location_id}/zapi")
@@ -293,4 +314,32 @@ async def onboard_new_company(
     }
     url = f"/oauth/install?{urlencode(params)}"
     return RedirectResponse(url=url, status_code=303)
+
+
+@router.post("/onboard-whatsapp")
+async def onboard_whatsapp_only(
+    company_name: str = Form(...),
+    zapi_instance_id: str = Form(...),
+    zapi_token: str = Form(...),
+    zapi_client_token: str = Form(""),
+    authenticated: bool = Depends(verify_admin)
+):
+    """Cria um tenant WhatsApp-only sem integração com CRM."""
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    try:
+        tenant = token_manager.create_whatsapp_tenant(
+            company_name=company_name.strip(),
+            zapi_instance_id=zapi_instance_id.strip(),
+            zapi_token=zapi_token.strip(),
+            zapi_client_token=zapi_client_token.strip(),
+        )
+        return RedirectResponse(
+            url=f"/admin/dashboard?msg=Instância WhatsApp '{tenant.company_name}' criada com sucesso!",
+            status_code=303
+        )
+    except Exception as e:
+        logger.error(f"Erro ao criar tenant WhatsApp-only: {e}")
+        return RedirectResponse(url=f"/admin/dashboard?err=Erro ao criar instância: {str(e)}", status_code=303)
 

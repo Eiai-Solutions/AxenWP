@@ -22,7 +22,10 @@ class Tenant(Base):
     
     # GHL App Configs
     conversation_provider_id = Column(String, nullable=True)
-    
+
+    # Mode: "ghl" (CRM integrado) ou "whatsapp_only" (direto no WhatsApp, sem CRM)
+    mode = Column(String, default="ghl")
+
     # State flags
     is_active = Column(Boolean, default=True)
 

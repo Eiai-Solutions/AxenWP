@@ -3,6 +3,7 @@ Gerenciamento de tokens OAuth do GoHighLevel usando PostgreSQL (SQLAlchemy).
 Renova tokens automaticamente quando expiram.
 """
 
+import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -90,6 +91,52 @@ class TokenManager:
                 tenant.zapi_client_token = client_token
                 db.commit()
                 logger.info(f"Credenciais Z-API salvas no banco para {tenant.company_name}")
+        finally:
+            db.close()
+
+    def create_whatsapp_tenant(
+        self,
+        company_name: str,
+        zapi_instance_id: str,
+        zapi_token: str,
+        zapi_client_token: str = "",
+    ) -> Tenant:
+        """Cria um tenant WhatsApp-only (sem GHL/CRM)."""
+        location_id = f"wp_{uuid.uuid4().hex[:12]}"
+        db = SessionLocal()
+        try:
+            tenant = Tenant(
+                location_id=location_id,
+                company_name=company_name,
+                mode="whatsapp_only",
+                zapi_instance_id=zapi_instance_id,
+                zapi_token=zapi_token,
+                zapi_client_token=zapi_client_token,
+                is_active=True,
+            )
+            db.add(tenant)
+            db.commit()
+            db.refresh(tenant)
+            logger.info(f"Tenant WhatsApp-only '{company_name}' ({location_id}) criado.")
+            return tenant
+        finally:
+            db.close()
+
+    def delete_tenant(self, location_id: str) -> bool:
+        """Deleta um tenant e todos os dados relacionados (cascade)."""
+        db = SessionLocal()
+        try:
+            tenant = self.get_tenant(location_id, db=db)
+            if not tenant:
+                return False
+            db.delete(tenant)
+            db.commit()
+            logger.info(f"Tenant {location_id} deletado com sucesso.")
+            return True
+        except Exception as e:
+            logger.error(f"Erro ao deletar tenant {location_id}: {e}")
+            db.rollback()
+            return False
         finally:
             db.close()
 

@@ -68,7 +68,7 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
         if len(messages) > 1:
             logger.info(f"🧠 Debounce: combinando {len(messages)} mensagens de {phone} em uma única chamada IA.")
         else:
-            logger.info(f"🧠 Agente IA ativado para contato {contact_id}. Gerando resposta...")
+            logger.info(f"🧠 Agente IA ativado para contato {contact_id or phone}. Gerando resposta...")
 
         from services.ai_service import ai_service
 
@@ -80,9 +80,10 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
 
         ai_type = ai_response.get("type", "text")
         ai_content = ai_response.get("content", "")
-        ai_text_for_ghl = ai_response.get("text", ai_content)
 
         logger.info(f"🤖 IA respondeu ({ai_type}), enviando via Z-API...")
+
+        is_whatsapp_only = getattr(tenant, "mode", "ghl") == "whatsapp_only"
 
         if ai_type == "audio":
             sent_data = await zapi_service.send_audio(
@@ -93,7 +94,7 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
                 client_token=tenant.zapi_client_token,
                 record_audio=True
             )
-            if sent_data:
+            if sent_data and not is_whatsapp_only:
                 zapi_message_id = sent_data.get("zapiMessageId")
                 outbound_resp = await ghl_service.send_inbound_message(
                     location_id=location_id,
@@ -127,7 +128,7 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
                     client_token=tenant.zapi_client_token,
                     delay_typing=delay
                 )
-                if sent_data:
+                if sent_data and not is_whatsapp_only:
                     zapi_message_id = sent_data.get("zapiMessageId")
                     outbound_resp = await ghl_service.send_inbound_message(
                         location_id=location_id,
@@ -212,119 +213,126 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
     if not content_message and isinstance(payload.get("text"), str):
         content_message = payload["text"]
 
-    # 1. Tentar achar o mapeamento no banco de dados local primeiro (útil para @lid e velocidade)
-    contact_id = token_manager.get_mapped_contact_id(location_id, phone)
-    
-    if not contact_id:
-        # Se é um @lid e não está no banco, nem adianta pesquisar na API Oficial porque a API do GHL não busca lid.
-        # Mas se for telefone normal, tentamos achar lá pra ver se já existe.
-        if "@lid" not in phone:
-            contact = await ghl_service.search_contact_by_phone(location_id, phone)
-            if contact and "id" in contact:
-                contact_id = contact["id"]
-        
-        # Se ainda não temos um contact_id, criamos um novo
+    is_whatsapp_only = getattr(tenant, "mode", "ghl") == "whatsapp_only"
+    contact_id = None
+
+    # =========================================================================
+    # MODO GHL: registra contato e mensagem no CRM
+    # =========================================================================
+    if not is_whatsapp_only:
+        # 1. Tentar achar o mapeamento no banco de dados local primeiro (útil para @lid e velocidade)
+        contact_id = token_manager.get_mapped_contact_id(location_id, phone)
+
         if not contact_id:
-            logger.info(f"Contato {phone} não encontrado. Criando novo no GHL...")
-            sender_name = payload.get("senderName") or payload.get("participantName") or ""
-            # Se vier só o lid, criamos o nome como "Lead do WhatsApp" para não ficar feio no CRM
-            if not sender_name and "@lid" in phone:
-                sender_name = "Lead do WhatsApp (Anúncio)"
-                
-            new_contact = await ghl_service.create_contact(location_id, phone, name=sender_name)
-            if new_contact and "id" in new_contact:
-                contact_id = new_contact["id"]
-        
-        # 2. Se agora temos um contact_id (achado ou recém-criado), SALVAMOS no banco local
-        if contact_id:
-            token_manager.save_contact_mapping(location_id, phone, contact_id)
+            if "@lid" not in phone:
+                contact = await ghl_service.search_contact_by_phone(location_id, phone)
+                if contact and "id" in contact:
+                    contact_id = contact["id"]
 
-    if not contact_id:
-        logger.error(f"Impossível registrar inbound: Falha ao obter/criar contactId para o telefone {phone}")
-        return
+            if not contact_id:
+                logger.info(f"Contato {phone} não encontrado. Criando novo no GHL...")
+                sender_name = payload.get("senderName") or payload.get("participantName") or ""
+                if not sender_name and "@lid" in phone:
+                    sender_name = "Lead do WhatsApp (Anúncio)"
 
-    # Registrar no CRM
-    resp = await ghl_service.send_inbound_message(
-        location_id=location_id,
-        phone=phone,
-        message=content_message,
-        attachments=attachments,
-        conversation_provider_id=tenant.conversation_provider_id,
-        contact_id=contact_id,
-    )
+                new_contact = await ghl_service.create_contact(location_id, phone, name=sender_name)
+                if new_contact and "id" in new_contact:
+                    contact_id = new_contact["id"]
 
-    # Detecção de contato deletado no GHL manualmente pelo usuário
-    if resp and isinstance(resp, dict) and resp.get("error"):
-        if resp.get("status_code") == 400 and "Contact not found/deleted" in str(resp.get("body", {})):
-            logger.warning(f"Contato {contact_id} deletado no GHL. Limpando cache e recriando...")
-            token_manager.delete_contact_mapping(location_id, phone)
-            
-            # Recria o contato do zero
-            sender_name = payload.get("senderName") or payload.get("participantName") or ""
-            if not sender_name and "@lid" in phone:
-                sender_name = "Lead do WhatsApp (Anúncio)"
-                
-            new_contact = await ghl_service.create_contact(location_id, phone, name=sender_name)
-            if new_contact and "id" in new_contact:
-                contact_id = new_contact["id"]
+            if contact_id:
                 token_manager.save_contact_mapping(location_id, phone, contact_id)
-                
-                # Tenta enviar de novo
-                resp = await ghl_service.send_inbound_message(
-                    location_id=location_id,
-                    phone=phone,
-                    message=content_message,
-                    attachments=attachments,
-                    conversation_provider_id=tenant.conversation_provider_id,
-                    contact_id=contact_id,
-                )
-    
-    if resp and not resp.get("error"):
+
+        if not contact_id:
+            logger.error(f"Impossível registrar inbound: Falha ao obter/criar contactId para o telefone {phone}")
+            return
+
+        # Registrar no CRM
+        resp = await ghl_service.send_inbound_message(
+            location_id=location_id,
+            phone=phone,
+            message=content_message,
+            attachments=attachments,
+            conversation_provider_id=tenant.conversation_provider_id,
+            contact_id=contact_id,
+        )
+
+        # Detecção de contato deletado no GHL manualmente pelo usuário
+        if resp and isinstance(resp, dict) and resp.get("error"):
+            if resp.get("status_code") == 400 and "Contact not found/deleted" in str(resp.get("body", {})):
+                logger.warning(f"Contato {contact_id} deletado no GHL. Limpando cache e recriando...")
+                token_manager.delete_contact_mapping(location_id, phone)
+
+                sender_name = payload.get("senderName") or payload.get("participantName") or ""
+                if not sender_name and "@lid" in phone:
+                    sender_name = "Lead do WhatsApp (Anúncio)"
+
+                new_contact = await ghl_service.create_contact(location_id, phone, name=sender_name)
+                if new_contact and "id" in new_contact:
+                    contact_id = new_contact["id"]
+                    token_manager.save_contact_mapping(location_id, phone, contact_id)
+
+                    resp = await ghl_service.send_inbound_message(
+                        location_id=location_id,
+                        phone=phone,
+                        message=content_message,
+                        attachments=attachments,
+                        conversation_provider_id=tenant.conversation_provider_id,
+                        contact_id=contact_id,
+                    )
+
+        if not resp or resp.get("error"):
+            logger.error(f"Falha ao transferir inbound ({phone}) para GHL no tenant {location_id}.")
+            return
+
         logger.info(f"Sucesso ao registrar inbound ({phone}) no GHL para tenant {location_id}.")
 
-        # =========================================================================
-        # INTEGRAÇÃO AGENTE IA NATIVO — com debounce anti-duplicata
-        # =========================================================================
-        try:
+    # =========================================================================
+    # INTEGRAÇÃO AGENTE IA NATIVO — com debounce anti-duplicata
+    # =========================================================================
+    try:
+        # No modo WhatsApp-only, verifica se o agente IA está ativo diretamente
+        # No modo GHL, verifica pelo custom field "Status IA" do contato
+        if is_whatsapp_only:
+            from data.database import SessionLocal as _SL2
+            from data.models import AIAgent as _AIAgent2
+            _db2 = _SL2()
+            try:
+                _agent2 = _db2.query(_AIAgent2).filter(_AIAgent2.location_id == location_id).first()
+                is_ai_active = bool(_agent2 and _agent2.is_active)
+            finally:
+                _db2.close()
+        else:
             is_ai_active = await ghl_service.is_ai_active_for_contact(location_id, contact_id)
-            if is_ai_active:
-                contact_key = f"{location_id}:{phone}"
 
-                # Lê o debounce configurado no agente deste tenant
-                from services.ai_service import ai_service as _ai_svc
-                from data.database import SessionLocal as _SL
-                from data.models import AIAgent as _AIAgent
-                _db = _SL()
-                try:
-                    _agent = _db.query(_AIAgent).filter(_AIAgent.location_id == location_id).first()
-                    debounce = float(_agent.debounce_seconds) if _agent and _agent.debounce_seconds is not None else DEFAULT_DEBOUNCE_SECONDS
-                except Exception:
-                    debounce = DEFAULT_DEBOUNCE_SECONDS
-                finally:
-                    _db.close()
+        if is_ai_active:
+            contact_key = f"{location_id}:{phone}"
 
-                # Acumula a mensagem no buffer desse contato
-                if contact_key not in _ai_message_buffers:
-                    _ai_message_buffers[contact_key] = []
-                _ai_message_buffers[contact_key].append((content_message, is_audio, audio_url))
+            from data.database import SessionLocal as _SL
+            from data.models import AIAgent as _AIAgent
+            _db = _SL()
+            try:
+                _agent = _db.query(_AIAgent).filter(_AIAgent.location_id == location_id).first()
+                debounce = float(_agent.debounce_seconds) if _agent and _agent.debounce_seconds is not None else DEFAULT_DEBOUNCE_SECONDS
+            except Exception:
+                debounce = DEFAULT_DEBOUNCE_SECONDS
+            finally:
+                _db.close()
 
-                # Armazena o debounce configurado (sobrescreve com o último valor — ok)
-                _ai_debounce_config[contact_key] = debounce
+            if contact_key not in _ai_message_buffers:
+                _ai_message_buffers[contact_key] = []
+            _ai_message_buffers[contact_key].append((content_message, is_audio, audio_url))
 
-                # Cancela o timer anterior se o usuário enviou outra mensagem antes do delay
-                existing = _ai_pending_tasks.get(contact_key)
-                if existing and not existing.done():
-                    existing.cancel()
+            _ai_debounce_config[contact_key] = debounce
 
-                # Agenda nova tarefa com delay de debounce
-                _ai_pending_tasks[contact_key] = asyncio.create_task(
-                    _run_ai_response(location_id, phone, contact_id, tenant, contact_key)
-                )
-        except Exception as ai_e:
-            logger.error(f"Erro durante agendamento do motor IA: {ai_e}")
-            
-    else:
-        logger.error(f"Falha ao transferir inbound ({phone}) para GHL no tenant {location_id}.")
+            existing = _ai_pending_tasks.get(contact_key)
+            if existing and not existing.done():
+                existing.cancel()
+
+            _ai_pending_tasks[contact_key] = asyncio.create_task(
+                _run_ai_response(location_id, phone, contact_id, tenant, contact_key)
+            )
+    except Exception as ai_e:
+        logger.error(f"Erro durante agendamento do motor IA: {ai_e}")
 
 
 @router.post("/inbound/{location_id}")
