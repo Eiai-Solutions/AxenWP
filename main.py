@@ -23,6 +23,7 @@ from webhooks.ghl_provider import router as ghl_webhook_router
 from webhooks.zapi_receiver import router as zapi_webhook_router
 from admin.dashboard import router as admin_router
 from admin.ai_agent import router as admin_ai_agent_router
+from public.onboarding import router as onboarding_router
 
 # =============================================================================
 # Configuração do APScheduler (Tokens)
@@ -138,6 +139,7 @@ app.include_router(ghl_webhook_router)
 app.include_router(zapi_webhook_router)
 app.include_router(admin_router)
 app.include_router(admin_ai_agent_router)
+app.include_router(onboarding_router)
 
 
 # Montagem de arquivos estáticos

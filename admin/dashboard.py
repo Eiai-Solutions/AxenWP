@@ -3,8 +3,10 @@ Rotas do Admin Dashboard.
 Fornece interface baseada em cookies + jinja2 para gerenciar tenants.
 """
 
+import uuid
+
 from fastapi import APIRouter, Request, Form, Depends, Cookie
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
 import hmac
@@ -188,6 +190,37 @@ async def toggle_tenant_automation(
     except Exception as e:
         logger.error(f"Erro ao alternar status da instância: {e}")
         return RedirectResponse(url="/admin/dashboard?err=Erro interno ao tentar alternar o status.", status_code=303)
+
+
+@router.post("/tenant/{location_id}/generate-form-link")
+async def generate_form_link(
+    request: Request,
+    location_id: str,
+    authenticated: bool = Depends(verify_admin)
+):
+    """Gera ou retorna o link do formulário de onboarding para um tenant."""
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+
+    from data.database import SessionLocal
+    from data.models import Tenant
+    db = SessionLocal()
+    try:
+        tenant = db.query(Tenant).filter(Tenant.location_id == location_id).first()
+        if not tenant:
+            return JSONResponse({"success": False, "error": "Tenant não encontrado."}, status_code=404)
+
+        # Gera token se ainda não tem
+        if not tenant.form_token:
+            tenant.form_token = uuid.uuid4().hex
+            db.commit()
+
+        base_url = str(request.base_url).rstrip("/")
+        form_url = f"{base_url}/form/{tenant.form_token}"
+
+        return JSONResponse({"success": True, "url": form_url})
+    finally:
+        db.close()
 
 
 @router.post("/tenant/{location_id}/delete")

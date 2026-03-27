@@ -72,6 +72,30 @@
             document.getElementById('whatsappOnlyModal').classList.add('hidden');
         }
 
+        async function generateFormLink(locationId) {
+            const btn = document.getElementById('formLinkBtn_' + locationId);
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="animate-pulse">...</span>';
+
+            try {
+                const resp = await fetch('/admin/tenant/' + locationId + '/generate-form-link', {
+                    method: 'POST',
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    await navigator.clipboard.writeText(data.url);
+                    btn.innerHTML = '<svg class="w-3.5 h-3.5 inline-block text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg> <span class="text-green-400">Copied!</span>';
+                    setTimeout(() => { btn.innerHTML = originalText; }, 2500);
+                } else {
+                    btn.innerHTML = '<span class="text-red-400">Erro</span>';
+                    setTimeout(() => { btn.innerHTML = originalText; }, 2000);
+                }
+            } catch (e) {
+                btn.innerHTML = '<span class="text-red-400">Erro</span>';
+                setTimeout(() => { btn.innerHTML = originalText; }, 2000);
+            }
+        }
+
         function openDeleteModal(locationId, companyName) {
             document.getElementById('delete_company_name').innerText = companyName;
             document.getElementById('form_delete_tenant').action = '/admin/tenant/' + locationId + '/delete';
@@ -848,6 +872,17 @@
                                         </path>
                                     </svg>
                                     Agent AI
+                                </button>
+                                <button
+                                    onclick="generateFormLink('{{ tenant.location_id }}')"
+                                    class="text-purple-400 hover:text-white text-[10px] font-semibold uppercase tracking-widest transition-colors font-mono mt-0.5"
+                                    title="Gerar link do formulario de onboarding"
+                                    id="formLinkBtn_{{ tenant.location_id }}">
+                                    <svg class="w-3.5 h-3.5 inline-block mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                                    </svg>
+                                    Form
                                 </button>
                                 <button
                                     onclick="openZAPIModal('{{ tenant.location_id }}', '{{ tenant.company_name | forceescape }}', '{{ tenant.zapi_instance_id or '' }}', '{{ tenant.zapi_token or '' }}', '{{ tenant.zapi_client_token or '' }}')"

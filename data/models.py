@@ -26,6 +26,9 @@ class Tenant(Base):
     # Mode: "ghl" (CRM integrado) ou "whatsapp_only" (direto no WhatsApp, sem CRM)
     mode = Column(String, default="ghl")
 
+    # Form token para formulário público de onboarding
+    form_token = Column(String, nullable=True, unique=True, index=True)
+
     # State flags
     is_active = Column(Boolean, default=True)
 
