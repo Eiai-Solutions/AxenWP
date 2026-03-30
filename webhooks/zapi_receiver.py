@@ -27,17 +27,34 @@ _ai_pending_tasks: Dict[str, asyncio.Task] = {}   # contact_key -> Task
 _ai_message_buffers: Dict[str, list] = {}          # contact_key -> [(text, is_audio, audio_url), ...]
 _ai_debounce_config: Dict[str, float] = {}         # contact_key -> debounce_seconds
 
+# Dedup: guarda os zapiMessageId que NÓS enviamos para ignorar quando voltarem como callback
+_sent_message_ids: Dict[str, float] = {}           # zapiMessageId -> timestamp
+_SENT_IDS_MAX_AGE = 300  # 5 minutos
+
+
+def _track_sent_message(zapi_message_id: str):
+    """Registra um messageId enviado por nós para evitar reprocessamento via callback."""
+    import time
+    if zapi_message_id:
+        _sent_message_ids[zapi_message_id] = time.time()
+
 
 def cleanup_stale_debounce_entries():
     """Remove entries from debounce dicts whose tasks are done (completed/failed).
     Called periodically via APScheduler to prevent minor memory leaks."""
+    import time
     stale_keys = [k for k, t in _ai_pending_tasks.items() if t.done()]
     for key in stale_keys:
         _ai_pending_tasks.pop(key, None)
         _ai_message_buffers.pop(key, None)
         _ai_debounce_config.pop(key, None)
-    if stale_keys:
-        logger.debug(f"Debounce cleanup: removed {len(stale_keys)} stale entries.")
+    # Limpa messageIds antigos (>5min)
+    now = time.time()
+    stale_ids = [mid for mid, ts in _sent_message_ids.items() if now - ts > _SENT_IDS_MAX_AGE]
+    for mid in stale_ids:
+        _sent_message_ids.pop(mid, None)
+    if stale_keys or stale_ids:
+        logger.debug(f"Cleanup: {len(stale_keys)} debounce, {len(stale_ids)} sent_ids removidos.")
 
 
 async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant, contact_key: str):
@@ -94,6 +111,8 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
                 client_token=tenant.zapi_client_token,
                 record_audio=True
             )
+            if sent_data:
+                _track_sent_message(sent_data.get("zapiMessageId"))
             if sent_data and not is_whatsapp_only:
                 zapi_message_id = sent_data.get("zapiMessageId")
                 outbound_resp = await ghl_service.send_inbound_message(
@@ -128,6 +147,8 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
                     client_token=tenant.zapi_client_token,
                     delay_typing=delay
                 )
+                if sent_data:
+                    _track_sent_message(sent_data.get("zapiMessageId"))
                 if sent_data and not is_whatsapp_only:
                     zapi_message_id = sent_data.get("zapiMessageId")
                     outbound_resp = await ghl_service.send_inbound_message(
@@ -166,19 +187,30 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
         logger.info(f"Z-API Inbound abortado: Automação desativada para {location_id}.")
         return
 
-    # Apenas logamos as infos para facilitar debug
     phone = payload.get("phone", "")
     message_type = payload.get("type", "")
     is_group = payload.get("isGroup", False)
     from_me = payload.get("fromMe", False)
+    msg_id = payload.get("messageId") or payload.get("ids", [None])[0] if payload.get("ids") else payload.get("messageId")
+
+    logger.debug(
+        f"Z-API webhook raw: location={location_id} type={message_type} "
+        f"fromMe={from_me} phone={phone} msgId={msg_id}"
+    )
 
     # Filtrar mensagens indesejadas
     if is_group:
         logger.debug(f"Ignorando mensagem de grupo.")
         return
     if from_me:
-        logger.debug(f"Ignorando mensagem enviada por nós mesmos.")
+        logger.debug(f"Ignorando mensagem fromMe=true.")
         return
+
+    # Dedup: ignorar callbacks de mensagens que NÓS enviamos via Z-API
+    if msg_id and msg_id in _sent_message_ids:
+        logger.debug(f"Ignorando callback de mensagem enviada por nós (dedup): {msg_id}")
+        return
+
     # Aceita apenas eventos de mensagem recebida
     if message_type not in ["ReceivedCallback", "MessageReceived"]:
         logger.debug(f"Ignorando evento de tipo '{message_type}' (não é mensagem recebida).")
