@@ -349,6 +349,65 @@ async def onboard_new_company(
     return RedirectResponse(url=url, status_code=303)
 
 
+@router.get("/api/usage/{location_id}")
+async def get_usage_data(
+    location_id: str,
+    period: str = "30d",
+    authenticated: bool = Depends(verify_admin)
+):
+    """Retorna dados de uso/custo de um tenant agrupados por serviço e por dia."""
+    if not authenticated:
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    from datetime import datetime, timedelta, timezone
+    from sqlalchemy import func, cast, Date
+    from data.database import SessionLocal
+    from data.models import UsageLog
+
+    days = int(period.replace("d", "")) if period.endswith("d") else 30
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    db = SessionLocal()
+    try:
+        logs = db.query(UsageLog).filter(
+            UsageLog.location_id == location_id,
+            UsageLog.created_at >= since,
+        ).all()
+
+        # Resumo por serviço
+        by_service = {}
+        daily = {}
+        for log in logs:
+            svc = log.service
+            if svc not in by_service:
+                by_service[svc] = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "characters": 0, "cost_usd": 0.0}
+            by_service[svc]["calls"] += 1
+            by_service[svc]["input_tokens"] += log.input_tokens or 0
+            by_service[svc]["output_tokens"] += log.output_tokens or 0
+            by_service[svc]["characters"] += log.characters or 0
+            by_service[svc]["cost_usd"] += log.cost_usd or 0.0
+
+            day_key = log.created_at.strftime("%Y-%m-%d") if log.created_at else "unknown"
+            if day_key not in daily:
+                daily[day_key] = {"calls": 0, "cost_usd": 0.0}
+            daily[day_key]["calls"] += 1
+            daily[day_key]["cost_usd"] += log.cost_usd or 0.0
+
+        total_calls = sum(s["calls"] for s in by_service.values())
+        total_cost = sum(s["cost_usd"] for s in by_service.values())
+
+        return JSONResponse({
+            "location_id": location_id,
+            "period_days": days,
+            "total_calls": total_calls,
+            "total_cost_usd": round(total_cost, 4),
+            "by_service": by_service,
+            "daily": dict(sorted(daily.items())),
+        })
+    finally:
+        db.close()
+
+
 @router.post("/onboard-whatsapp")
 async def onboard_whatsapp_only(
     company_name: str = Form(...),

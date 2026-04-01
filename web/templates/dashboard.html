@@ -159,6 +159,86 @@
             document.getElementById('aiAgentModal').classList.add('hidden');
         }
 
+        async function loadUsageData() {
+            const locationId = document.getElementById('ai_location_id').value;
+            const period = document.getElementById('costs_period').value;
+            const loadingEl = document.getElementById('costs_loading');
+            const emptyEl = document.getElementById('costs_empty');
+            const dataEl = document.getElementById('costs_data');
+
+            loadingEl.classList.remove('hidden');
+            emptyEl.classList.add('hidden');
+            dataEl.classList.add('hidden');
+
+            try {
+                const resp = await fetch(`/admin/api/usage/${locationId}?period=${period}`);
+                const data = await resp.json();
+                loadingEl.classList.add('hidden');
+
+                if (data.total_calls === 0) {
+                    emptyEl.classList.remove('hidden');
+                    return;
+                }
+
+                dataEl.classList.remove('hidden');
+
+                // Summary cards
+                document.getElementById('costs_total_calls').textContent = data.total_calls.toLocaleString();
+                document.getElementById('costs_total_cost').textContent = '$' + data.total_cost_usd.toFixed(4);
+
+                let totalTokens = 0;
+                let totalChars = 0;
+                for (const [svc, info] of Object.entries(data.by_service)) {
+                    totalTokens += (info.input_tokens || 0) + (info.output_tokens || 0);
+                    totalChars += info.characters || 0;
+                }
+                document.getElementById('costs_total_tokens').textContent = totalTokens.toLocaleString();
+                document.getElementById('costs_total_chars').textContent = totalChars.toLocaleString();
+
+                // Service breakdown table
+                const serviceColors = { openrouter: 'text-blue-400', elevenlabs: 'text-purple-400', groq: 'text-green-400' };
+                const serviceIcons = { openrouter: '🤖', elevenlabs: '🗣️', groq: '🎙️' };
+                const tbody = document.getElementById('costs_service_rows');
+                tbody.innerHTML = '';
+                for (const [svc, info] of Object.entries(data.by_service)) {
+                    const color = serviceColors[svc] || 'text-gray-300';
+                    const icon = serviceIcons[svc] || '⚡';
+                    tbody.innerHTML += `<tr class="hover:bg-gray-800/30 transition-colors">
+                        <td class="px-4 py-3 font-mono font-bold ${color}">${icon} ${svc.charAt(0).toUpperCase() + svc.slice(1)}</td>
+                        <td class="px-4 py-3 text-right text-gray-300 font-mono">${info.calls.toLocaleString()}</td>
+                        <td class="px-4 py-3 text-right text-gray-400 font-mono">${(info.input_tokens || 0).toLocaleString()}</td>
+                        <td class="px-4 py-3 text-right text-gray-400 font-mono">${(info.output_tokens || 0).toLocaleString()}</td>
+                        <td class="px-4 py-3 text-right text-gray-400 font-mono">${(info.characters || 0).toLocaleString()}</td>
+                        <td class="px-4 py-3 text-right text-brand-red font-mono font-bold">$${info.cost_usd.toFixed(4)}</td>
+                    </tr>`;
+                }
+
+                // Daily bar chart
+                const dailyEntries = Object.entries(data.daily);
+                const barsEl = document.getElementById('costs_daily_bars');
+                const labelsEl = document.getElementById('costs_daily_labels');
+                barsEl.innerHTML = '';
+                labelsEl.innerHTML = '';
+
+                if (dailyEntries.length > 0) {
+                    const maxCalls = Math.max(...dailyEntries.map(([, d]) => d.calls));
+                    for (const [day, info] of dailyEntries) {
+                        const heightPct = maxCalls > 0 ? Math.max((info.calls / maxCalls) * 100, 4) : 4;
+                        const shortDay = day.slice(5); // MM-DD
+                        barsEl.innerHTML += `<div class="flex-1 bg-brand-red/60 hover:bg-brand-red rounded-t transition-colors cursor-default relative group" style="height: ${heightPct}%" title="${day}: ${info.calls} calls">
+                            <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-gray-900 text-[9px] text-white font-mono px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-gray-700">${info.calls}</div>
+                        </div>`;
+                        labelsEl.innerHTML += `<div class="flex-1 text-center text-[8px] text-gray-600 font-mono truncate">${shortDay}</div>`;
+                    }
+                }
+
+            } catch (err) {
+                loadingEl.classList.add('hidden');
+                emptyEl.classList.remove('hidden');
+                console.error('Error loading usage data:', err);
+            }
+        }
+
         async function openQRModal(locationId, companyName) {
             document.getElementById('qr_company_name').innerText = companyName;
             const qrContainer = document.getElementById('qr_image_container');
@@ -1372,6 +1452,9 @@
                         <button type="button" id="btn_ai_tab_tester" onclick="switchAITab('tester', this)"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">🚀
                             Tester (Simulator)</button>
+                        <button type="button" id="btn_ai_tab_costs" onclick="switchAITab('costs', this); loadUsageData();"
+                            class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">💰
+                            Costs</button>
                     </nav>
 
                     <!-- TAB: SETTINGS -->
@@ -1668,6 +1751,89 @@
                             </h4>
                             <div id="tester_analysis_content"
                                 class="text-xs text-gray-300 font-mono leading-relaxed max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-brand-red/50 scrollbar-track-transparent pr-2">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: COSTS -->
+                    <div id="ai_tab_costs" class="ai-tab-content space-y-4 hidden">
+                        <!-- Period selector -->
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-xs font-bold text-white uppercase tracking-widest font-mono">Usage & Costs</h3>
+                            <select id="costs_period" onchange="loadUsageData()"
+                                class="input-dark px-3 py-1.5 rounded-lg text-xs font-mono">
+                                <option value="7d">Last 7 days</option>
+                                <option value="30d" selected>Last 30 days</option>
+                                <option value="90d">Last 90 days</option>
+                            </select>
+                        </div>
+
+                        <!-- Loading state -->
+                        <div id="costs_loading" class="hidden text-center py-8">
+                            <span class="text-gray-500 text-xs font-mono animate-pulse">Loading usage data...</span>
+                        </div>
+
+                        <!-- Empty state -->
+                        <div id="costs_empty" class="hidden text-center py-12">
+                            <svg class="w-10 h-10 text-gray-700 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                            </svg>
+                            <p class="text-gray-500 text-xs font-mono uppercase tracking-widest">No usage data yet</p>
+                            <p class="text-gray-600 text-[10px] font-mono mt-1">Data will appear as the AI processes messages.</p>
+                        </div>
+
+                        <!-- Data content -->
+                        <div id="costs_data" class="hidden space-y-4">
+                            <!-- Summary cards -->
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div class="bg-black/40 border border-gray-800 rounded-xl p-4 text-center">
+                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total Calls</p>
+                                    <p id="costs_total_calls" class="text-2xl font-display font-extrabold text-white">0</p>
+                                </div>
+                                <div class="bg-black/40 border border-gray-800 rounded-xl p-4 text-center">
+                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total Cost</p>
+                                    <p id="costs_total_cost" class="text-2xl font-display font-extrabold text-brand-red">$0.00</p>
+                                </div>
+                                <div class="bg-black/40 border border-gray-800 rounded-xl p-4 text-center">
+                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total Tokens</p>
+                                    <p id="costs_total_tokens" class="text-2xl font-display font-extrabold text-white">0</p>
+                                </div>
+                                <div class="bg-black/40 border border-gray-800 rounded-xl p-4 text-center">
+                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">TTS Characters</p>
+                                    <p id="costs_total_chars" class="text-2xl font-display font-extrabold text-white">0</p>
+                                </div>
+                            </div>
+
+                            <!-- Per-service breakdown -->
+                            <div class="bg-black/40 border border-gray-800 rounded-xl overflow-hidden">
+                                <div class="px-4 py-3 border-b border-gray-800">
+                                    <p class="text-[10px] text-gray-400 uppercase tracking-widest font-mono font-bold">Breakdown by Service</p>
+                                </div>
+                                <table class="w-full text-left text-xs">
+                                    <thead>
+                                        <tr class="text-[10px] text-gray-500 uppercase font-mono border-b border-gray-800/50">
+                                            <th class="px-4 py-2.5">Service</th>
+                                            <th class="px-4 py-2.5 text-right">Calls</th>
+                                            <th class="px-4 py-2.5 text-right">Input Tokens</th>
+                                            <th class="px-4 py-2.5 text-right">Output Tokens</th>
+                                            <th class="px-4 py-2.5 text-right">Characters</th>
+                                            <th class="px-4 py-2.5 text-right">Cost (USD)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="costs_service_rows" class="divide-y divide-gray-800/40">
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Daily breakdown -->
+                            <div class="bg-black/40 border border-gray-800 rounded-xl overflow-hidden">
+                                <div class="px-4 py-3 border-b border-gray-800">
+                                    <p class="text-[10px] text-gray-400 uppercase tracking-widest font-mono font-bold">Daily Activity</p>
+                                </div>
+                                <div class="p-4">
+                                    <div id="costs_daily_bars" class="flex items-end gap-1 h-32"></div>
+                                    <div id="costs_daily_labels" class="flex gap-1 mt-1 overflow-x-auto"></div>
+                                </div>
                             </div>
                         </div>
                     </div>

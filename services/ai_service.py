@@ -12,9 +12,33 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 
 from data.database import SessionLocal
-from data.models import AIAgent, ChatHistory, Tenant
+from data.models import AIAgent, ChatHistory, UsageLog
 
 logger = logging.getLogger(__name__)
+
+
+def _save_usage_log(location_id: str, service: str, model: str = None,
+                    input_tokens: int = 0, output_tokens: int = 0,
+                    characters: int = 0, cost_usd: float = 0.0):
+    """Salva um registro de uso de API no banco (sync, chamar via to_thread)."""
+    db = SessionLocal()
+    try:
+        log = UsageLog(
+            location_id=location_id,
+            service=service,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            characters=characters,
+            cost_usd=cost_usd,
+        )
+        db.add(log)
+        db.commit()
+    except Exception as e:
+        logger.error(f"Erro ao salvar usage log: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 
 async def transcribe_audio(audio_url: str, groq_api_key: str) -> Optional[str]:
@@ -194,6 +218,16 @@ class AIEngine:
             transcription = await transcribe_audio(audio_url, self.agent_config.groq_api_key)
             if transcription:
                 actual_message = transcription
+                # Log de uso Groq (STT)
+                try:
+                    await asyncio.to_thread(
+                        _save_usage_log,
+                        location_id=self.agent_config.location_id,
+                        service="groq",
+                        model="whisper-large-v3",
+                    )
+                except Exception as e_log:
+                    logger.warning(f"Falha ao salvar usage log Groq: {e_log}")
             else:
                 logger.warning("Falha na transcrição. Usando mensagem original como fallback.")
         elif is_audio and not self.agent_config.groq_api_key:
@@ -220,6 +254,26 @@ class AIEngine:
             response = await self.llm.ainvoke(messages_for_llm)
 
             ai_text = response.content
+
+            # ── Log de uso OpenRouter ──
+            try:
+                usage = getattr(response, 'usage_metadata', None) or {}
+                if isinstance(usage, dict):
+                    in_tok = usage.get('input_tokens', 0)
+                    out_tok = usage.get('output_tokens', 0)
+                else:
+                    in_tok = getattr(usage, 'input_tokens', 0)
+                    out_tok = getattr(usage, 'output_tokens', 0)
+                await asyncio.to_thread(
+                    _save_usage_log,
+                    location_id=self.agent_config.location_id,
+                    service="openrouter",
+                    model=self.agent_config.model,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                )
+            except Exception as e_log:
+                logger.warning(f"Falha ao salvar usage log OpenRouter: {e_log}")
 
             # Se deu certo, salva ambas as mensagens no banco (Humano + IA)
             await memory.add_user_message(actual_message)
@@ -266,6 +320,16 @@ class AIEngine:
                         if response_el.status_code == 200:
                             audio_content = response_el.content
                             b64_audio = base64.b64encode(audio_content).decode("utf-8")
+                            # Log de uso ElevenLabs (TTS)
+                            try:
+                                await asyncio.to_thread(
+                                    _save_usage_log,
+                                    location_id=self.agent_config.location_id,
+                                    service="elevenlabs",
+                                    characters=len(ai_text),
+                                )
+                            except Exception as e_log:
+                                logger.warning(f"Falha ao salvar usage log ElevenLabs: {e_log}")
                             return {"type": "audio", "content": f"data:audio/ogg;base64,{b64_audio}", "text": ai_text}
                         else:
                             logger.error(f"Erro ao gerar ElevenLabs: {response_el.text}. Fallback texto.")

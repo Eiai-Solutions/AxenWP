@@ -143,6 +143,24 @@ class MessageMapping(Base):
     created_at = Column(String, default=lambda: datetime.now(timezone.utc).isoformat())
 
 
+class UsageLog(Base):
+    """
+    Registra cada chamada de API para rastrear custos por tenant.
+    Serviços: openrouter, elevenlabs, groq
+    """
+    __tablename__ = "usage_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    location_id = Column(String, ForeignKey("tenants.location_id", ondelete="CASCADE"), nullable=False, index=True)
+    service = Column(String(50), nullable=False, index=True)  # openrouter, elevenlabs, groq
+    model = Column(String(100), nullable=True)  # ex: openai/gpt-4o
+    input_tokens = Column(Integer, default=0)
+    output_tokens = Column(Integer, default=0)
+    characters = Column(Integer, default=0)  # para ElevenLabs (TTS)
+    cost_usd = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class SystemSettings(Base):
     """
     Tabela de configuração global do sistema (apenas 1 registro esperado id=1).
