@@ -89,40 +89,72 @@ async def _handle_qualification(location_id: str, phone: str, contact_id: str, t
 
     opp_id = None
 
-    # Criar oportunidade no GHL (apenas no modo GHL)
-    if not is_whatsapp_only and pipeline_id and stage_id and contact_id:
-        # Mapear campos coletados → custom fields da oportunidade
-        custom_fields = []
-        for field_def in qualification_fields:
-            ghl_field_id = field_def.get("ghl_field_id")
-            key = field_def.get("key")
-            if ghl_field_id and key and key in qualified_data:
-                custom_fields.append({
-                    "id": ghl_field_id,
-                    "field_value": qualified_data[key],
-                })
+    # Criar oportunidade no GHL se tiver token válido (funciona em qualquer modo)
+    has_ghl_token = await token_manager.get_valid_token(location_id) is not None
 
-        # Nome da oportunidade
-        lead_name = qualified_data.get("nome") or qualified_data.get("name") or qualified_data.get("nome_completo") or phone
-        opp_name = f"{lead_name} - WhatsApp Lead"
+    if has_ghl_token and pipeline_id and stage_id:
+        # Se modo whatsapp_only, não temos contact_id do fluxo de mensagens
+        # Precisamos criar/buscar o contato no GHL primeiro
+        ghl_contact_id = contact_id
+        if not ghl_contact_id:
+            # Buscar contato existente ou criar novo no GHL
+            existing_contact = await ghl_service.search_contact_by_phone(location_id, phone)
+            if existing_contact and "id" in existing_contact:
+                ghl_contact_id = existing_contact["id"]
+            else:
+                lead_name = qualified_data.get("nome") or qualified_data.get("name") or qualified_data.get("nome_completo") or phone
+                new_contact = await ghl_service.create_contact(location_id, phone, name=lead_name)
+                if new_contact and "id" in new_contact:
+                    ghl_contact_id = new_contact["id"]
+                    token_manager.save_contact_mapping(location_id, phone, ghl_contact_id)
 
-        result = await ghl_service.create_opportunity(
-            location_id=location_id,
-            pipeline_id=pipeline_id,
-            stage_id=stage_id,
-            contact_id=contact_id,
-            name=opp_name,
-            custom_fields=custom_fields if custom_fields else None,
-            notes=summary,
-        )
+        if ghl_contact_id:
+            # Mapear campos coletados → custom fields da oportunidade
+            custom_fields = []
+            for field_def in qualification_fields:
+                ghl_field_id = field_def.get("ghl_field_id")
+                key = field_def.get("key")
+                if ghl_field_id and key and key in qualified_data:
+                    custom_fields.append({
+                        "id": ghl_field_id,
+                        "field_value": qualified_data[key],
+                    })
 
-        if result and not result.get("error"):
-            opp_id = result.get("id")
-            logger.info(f"Oportunidade criada para lead {phone}: {opp_id}")
+            # Nome da oportunidade
+            lead_name = qualified_data.get("nome") or qualified_data.get("name") or qualified_data.get("nome_completo") or phone
+            opp_name = f"{lead_name} - WhatsApp Lead"
+
+            result = await ghl_service.create_opportunity(
+                location_id=location_id,
+                pipeline_id=pipeline_id,
+                stage_id=stage_id,
+                contact_id=ghl_contact_id,
+                name=opp_name,
+                custom_fields=custom_fields if custom_fields else None,
+                notes=summary,
+            )
+
+            if result and not result.get("error"):
+                opp_id = result.get("id")
+                logger.info(f"Oportunidade criada para lead {phone}: {opp_id}")
+            else:
+                logger.error(f"Falha ao criar oportunidade para lead {phone}: {result}")
+
+            # Desativar IA via custom field (apenas se não for whatsapp_only)
+            if not is_whatsapp_only:
+                field_id = await ghl_service._get_custom_field_id_by_name(location_id, "Status IA")
+                if field_id:
+                    await ghl_service.update_contact(location_id, ghl_contact_id, {
+                        "customFields": [{"id": field_id, "field_value": "Desativada"}]
+                    })
+                    logger.info(f"Status IA desativado para contato {ghl_contact_id} após qualificação")
         else:
-            logger.error(f"Falha ao criar oportunidade para lead {phone}: {result}")
+            logger.error(f"Qualificação: não foi possível obter/criar contato GHL para {phone}")
 
-    # Salvar registro de lead qualificado
+    elif pipeline_id and stage_id and not has_ghl_token:
+        logger.warning(f"Qualificação configurada mas sem token GHL para {location_id}. Oportunidade não criada.")
+
+    # Salvar registro de lead qualificado (sempre, mesmo sem GHL)
     _dbq2 = _SLQ()
     try:
         ql = QualifiedLead(
@@ -140,17 +172,7 @@ async def _handle_qualification(location_id: str, phone: str, contact_id: str, t
         _dbq2.rollback()
     finally:
         _dbq2.close()
-
-    # Desativar IA para este contato
-    if not is_whatsapp_only and contact_id:
-        # Modo GHL: atualizar custom field "Status IA" para "Desativada"
-        field_id = await ghl_service._get_custom_field_id_by_name(location_id, "Status IA")
-        if field_id:
-            await ghl_service.update_contact(location_id, contact_id, {
-                "customFields": [{"id": field_id, "field_value": "Desativada"}]
-            })
-            logger.info(f"Status IA desativado para contato {contact_id} após qualificação")
-    # No modo whatsapp_only, QualifiedLead serve como flag — o AI service já verifica
+    # No modo whatsapp_only, QualifiedLead serve como flag de desativação — o AI service já verifica
 
 
 async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant, contact_key: str):

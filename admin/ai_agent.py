@@ -110,12 +110,10 @@ async def get_ghl_pipelines(location_id: str):
         tenant = token_manager.get_tenant(location_id)
         if not tenant:
             return {"success": False, "error": "Tenant não encontrado."}
-        if getattr(tenant, "mode", "ghl") == "whatsapp_only":
-            return {"success": False, "error": "Tenant em modo WhatsApp-only. Pipelines GHL não disponíveis."}
 
         token = await token_manager.get_valid_token(location_id)
         if not token:
-            return {"success": False, "error": "Sem token GHL válido. Verifique a conexão OAuth do tenant."}
+            return {"success": False, "error": "Sem token GHL válido. Conecte o CRM nas configurações da instância."}
 
         result = await ghl_service.get_pipelines(location_id)
         if result.get("error"):
@@ -133,12 +131,10 @@ async def get_ghl_custom_fields(location_id: str, model: str = "opportunity"):
         tenant = token_manager.get_tenant(location_id)
         if not tenant:
             return {"success": False, "error": "Tenant não encontrado."}
-        if getattr(tenant, "mode", "ghl") == "whatsapp_only":
-            return {"success": False, "error": "Tenant em modo WhatsApp-only. Custom fields GHL não disponíveis."}
 
         token = await token_manager.get_valid_token(location_id)
         if not token:
-            return {"success": False, "error": "Sem token GHL válido. Verifique a conexão OAuth do tenant."}
+            return {"success": False, "error": "Sem token GHL válido. Conecte o CRM nas configurações da instância."}
 
         fields = await ghl_service.get_custom_fields(location_id, model=model)
         if fields is None:

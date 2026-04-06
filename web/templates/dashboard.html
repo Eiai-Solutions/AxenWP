@@ -112,10 +112,20 @@
             // Store data for sub-actions
             window._instanceSettingsData = { locationId, companyName, mode, clientId, zapiInstanceId, zapiToken, zapiClientToken };
 
-            // Show/hide reconnect CRM based on mode
+            // Show reconnect/connect CRM for all tenants
             const reconnectCard = document.getElementById('instance_card_reconnect');
             if (reconnectCard) {
-                reconnectCard.classList.toggle('hidden', mode === 'whatsapp_only' || !clientId);
+                // Sempre visível — whatsapp_only pode conectar CRM só para qualificação
+                reconnectCard.classList.remove('hidden');
+                const reconnectTitle = reconnectCard.querySelector('.instance-card-title');
+                const reconnectDesc = reconnectCard.querySelector('.instance-card-desc');
+                if (!clientId) {
+                    if (reconnectTitle) reconnectTitle.textContent = 'Conectar CRM';
+                    if (reconnectDesc) reconnectDesc.textContent = 'Conectar ao GHL para enviar leads qualificados';
+                } else {
+                    if (reconnectTitle) reconnectTitle.textContent = 'Reconectar CRM';
+                    if (reconnectDesc) reconnectDesc.textContent = 'Re-autorizar OAuth do GHL (atualizar permissoes)';
+                }
             }
 
             document.getElementById('instanceSettingsModal').classList.remove('hidden');
@@ -135,7 +145,15 @@
             } else if (action === 'zapi') {
                 openZAPIModal(d.locationId, d.companyName, d.zapiInstanceId, d.zapiToken, d.zapiClientToken);
             } else if (action === 'reconnect') {
-                window.location.href = `/oauth/install?company=${encodeURIComponent(d.companyName)}&ci=${d.clientId}&ui_redirect=1`;
+                if (d.clientId) {
+                    window.location.href = `/oauth/install?company=${encodeURIComponent(d.companyName)}&ci=${d.clientId}&ui_redirect=1`;
+                } else {
+                    // Tenant sem credenciais GHL — abrir modal para informar Client ID/Secret
+                    openNewCompanyModal();
+                    // Preencher com o nome da empresa
+                    const nameInput = document.getElementById('new_company_name');
+                    if (nameInput) nameInput.value = d.companyName;
+                }
             } else if (action === 'form') {
                 generateFormLink(d.locationId);
             } else if (action === 'delete') {
@@ -1562,8 +1580,8 @@
                         </svg>
                     </div>
                     <div>
-                        <p class="text-sm font-bold text-white group-hover:text-yellow-400 transition-colors">Reconectar CRM</p>
-                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Re-autorizar OAuth do GHL (atualizar permissoes)</p>
+                        <p class="instance-card-title text-sm font-bold text-white group-hover:text-yellow-400 transition-colors">Reconectar CRM</p>
+                        <p class="instance-card-desc text-[10px] text-gray-500 font-mono uppercase tracking-widest">Re-autorizar OAuth do GHL (atualizar permissoes)</p>
                     </div>
                 </button>
 
