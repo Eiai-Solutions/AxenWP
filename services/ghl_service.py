@@ -376,17 +376,19 @@ class GHLService:
             logger.error(f"Exceção ao buscar pipelines: {e}")
             return {"error": True, "message": str(e)}
 
-    async def get_custom_fields(self, location_id: str, model: str = "contact") -> list | None:
+    async def get_custom_fields(self, location_id: str, model: str = "contact") -> dict:
         """
         Lista custom fields da location por modelo (contact ou opportunity).
         GET /locations/{locationId}/customFields?model={model}
+        Retorna dict com "fields" ou "error".
         """
         headers = await self._get_headers(location_id)
         if not headers:
-            return None
+            return {"error": True, "message": "Sem token válido"}
 
         ghl_loc = self._resolve_ghl_location_id(location_id)
         try:
+            # Buscar custom fields do modelo solicitado
             params = {}
             if model and model != "contact":
                 params["model"] = model
@@ -398,13 +400,26 @@ class GHLService:
             )
             if response.status_code == 200:
                 data = response.json()
-                return data.get("customFields", [])
+                fields = data.get("customFields", [])
+
+                # Se pediu opportunity e veio vazio, buscar campos de contato como alternativa
+                if not fields and model == "opportunity":
+                    logger.info("Nenhum custom field de oportunidade encontrado. Buscando campos de contato...")
+                    resp2 = await self.client.get(
+                        f"{self.BASE_URL}/locations/{ghl_loc}/customFields",
+                        headers=headers,
+                    )
+                    if resp2.status_code == 200:
+                        fields = resp2.json().get("customFields", [])
+
+                return {"fields": fields}
             else:
-                logger.error(f"Erro ao buscar custom fields ({model}): status={response.status_code}, body={response.text}")
-                return None
+                body = response.text[:500]
+                logger.error(f"Erro ao buscar custom fields ({model}): status={response.status_code}, body={body}")
+                return {"error": True, "message": f"GHL API retornou {response.status_code}: {body}"}
         except Exception as e:
             logger.error(f"Exceção ao buscar custom fields ({model}): {e}")
-            return None
+            return {"error": True, "message": str(e)}
 
     async def create_opportunity(
         self,

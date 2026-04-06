@@ -136,10 +136,10 @@ async def get_ghl_custom_fields(location_id: str, model: str = "opportunity"):
         if not token:
             return {"success": False, "error": "Sem token GHL válido. Conecte o CRM nas configurações da instância."}
 
-        fields = await ghl_service.get_custom_fields(location_id, model=model)
-        if fields is None:
-            return {"success": False, "error": "Falha ao buscar custom fields da API do GHL."}
-        return {"success": True, "fields": fields}
+        result = await ghl_service.get_custom_fields(location_id, model=model)
+        if result.get("error"):
+            return {"success": False, "error": result.get("message", "Erro desconhecido")}
+        return {"success": True, "fields": result.get("fields", [])}
     except Exception as e:
         logger.error(f"Erro ao buscar custom fields GHL: {e}")
 
