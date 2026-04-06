@@ -207,7 +207,9 @@
                     });
                     if (select.value) onQualPipelineChange();
                 } else {
-                    select.innerHTML = '<option value="">Failed to load</option>';
+                    const errMsg = data.error || 'Failed to load';
+                    select.innerHTML = `<option value="">${errMsg}</option>`;
+                    alert('Pipelines: ' + errMsg);
                 }
             } catch(e) {
                 select.innerHTML = '<option value="">Error loading pipelines</option>';
@@ -246,9 +248,12 @@
                             sel.innerHTML += `<option value="${f.id}" ${selected}>${f.name} (${f.dataType || 'text'})</option>`;
                         });
                     });
+                } else {
+                    alert('Custom Fields: ' + (data.error || 'Failed to load'));
                 }
             } catch(e) {
                 console.error('Error loading custom fields:', e);
+                alert('Error loading custom fields: ' + e.message);
             }
         }
 

@@ -106,9 +106,20 @@ async def save_agent_settings(
 async def get_ghl_pipelines(location_id: str):
     """Busca pipelines (funis de oportunidades) do GHL para o tenant."""
     try:
+        # Verificar se tenant existe e tem token
+        tenant = token_manager.get_tenant(location_id)
+        if not tenant:
+            return {"success": False, "error": "Tenant não encontrado."}
+        if getattr(tenant, "mode", "ghl") == "whatsapp_only":
+            return {"success": False, "error": "Tenant em modo WhatsApp-only. Pipelines GHL não disponíveis."}
+
+        token = await token_manager.get_valid_token(location_id)
+        if not token:
+            return {"success": False, "error": "Sem token GHL válido. Verifique a conexão OAuth do tenant."}
+
         pipelines = await ghl_service.get_pipelines(location_id)
         if pipelines is None:
-            return {"success": False, "error": "Falha ao buscar pipelines do GHL"}
+            return {"success": False, "error": "Falha ao buscar pipelines da API do GHL. Verifique os logs."}
         return {"success": True, "pipelines": pipelines}
     except Exception as e:
         logger.error(f"Erro ao buscar pipelines GHL: {e}")
@@ -119,13 +130,22 @@ async def get_ghl_pipelines(location_id: str):
 async def get_ghl_custom_fields(location_id: str, model: str = "opportunity"):
     """Busca custom fields do GHL por modelo (contact ou opportunity)."""
     try:
+        tenant = token_manager.get_tenant(location_id)
+        if not tenant:
+            return {"success": False, "error": "Tenant não encontrado."}
+        if getattr(tenant, "mode", "ghl") == "whatsapp_only":
+            return {"success": False, "error": "Tenant em modo WhatsApp-only. Custom fields GHL não disponíveis."}
+
+        token = await token_manager.get_valid_token(location_id)
+        if not token:
+            return {"success": False, "error": "Sem token GHL válido. Verifique a conexão OAuth do tenant."}
+
         fields = await ghl_service.get_custom_fields(location_id, model=model)
         if fields is None:
-            return {"success": False, "error": "Falha ao buscar custom fields do GHL"}
+            return {"success": False, "error": "Falha ao buscar custom fields da API do GHL."}
         return {"success": True, "fields": fields}
     except Exception as e:
         logger.error(f"Erro ao buscar custom fields GHL: {e}")
-        return {"success": False, "error": str(e)}
 
 
 @router.get("/elevenlabs/voices")
