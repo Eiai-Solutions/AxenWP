@@ -337,15 +337,15 @@ class GHLService:
             logger.error(f"Exceção ao buscar custom fields: {e}")
             return None
 
-    async def get_pipelines(self, location_id: str) -> list | None:
+    async def get_pipelines(self, location_id: str) -> dict:
         """
         Lista os pipelines (oportunidades) da location.
         GET /opportunities/pipelines?locationId={locationId}
-        Retorna lista de pipelines com stages inline.
+        Retorna dict com "pipelines" ou "error".
         """
         headers = await self._get_headers(location_id)
         if not headers:
-            return None
+            return {"error": True, "message": "Sem token válido"}
 
         try:
             response = await self.client.get(
@@ -355,13 +355,14 @@ class GHLService:
             )
             if response.status_code == 200:
                 data = response.json()
-                return data.get("pipelines", [])
+                return {"pipelines": data.get("pipelines", [])}
             else:
-                logger.error(f"Erro ao buscar pipelines: status={response.status_code}, body={response.text}")
-                return None
+                body = response.text[:500]
+                logger.error(f"Erro ao buscar pipelines: status={response.status_code}, body={body}")
+                return {"error": True, "message": f"GHL API retornou {response.status_code}: {body}"}
         except Exception as e:
             logger.error(f"Exceção ao buscar pipelines: {e}")
-            return None
+            return {"error": True, "message": str(e)}
 
     async def get_custom_fields(self, location_id: str, model: str = "contact") -> list | None:
         """

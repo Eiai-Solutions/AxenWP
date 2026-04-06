@@ -117,10 +117,10 @@ async def get_ghl_pipelines(location_id: str):
         if not token:
             return {"success": False, "error": "Sem token GHL válido. Verifique a conexão OAuth do tenant."}
 
-        pipelines = await ghl_service.get_pipelines(location_id)
-        if pipelines is None:
-            return {"success": False, "error": "Falha ao buscar pipelines da API do GHL. Verifique os logs."}
-        return {"success": True, "pipelines": pipelines}
+        result = await ghl_service.get_pipelines(location_id)
+        if result.get("error"):
+            return {"success": False, "error": result.get("message", "Erro desconhecido")}
+        return {"success": True, "pipelines": result.get("pipelines", [])}
     except Exception as e:
         logger.error(f"Erro ao buscar pipelines GHL: {e}")
         return {"success": False, "error": str(e)}
