@@ -300,7 +300,10 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                     )}]
                 }
             )
-            transcript = sim_resp.json()["choices"][0]["message"]["content"] if sim_resp.status_code == 200 else "Falha na simulação."
+            if sim_resp.status_code != 200:
+                err_detail = sim_resp.text[:200] if sim_resp.text else ""
+                return {"success": False, "error": f"Falha na simulação (status {sim_resp.status_code}, modelo: {model}). {err_detail}"}
+            transcript = sim_resp.json()["choices"][0]["message"]["content"]
 
             # ── ETAPA 2: Análise + lista de mudanças (SEM gerar prompt completo) ──
             analysis_resp = await client.post(
@@ -346,7 +349,8 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
             )
 
             if analysis_resp.status_code != 200:
-                return {"success": False, "error": f"IA Mestre falhou na análise ({analysis_resp.status_code})."}
+                err_detail = analysis_resp.text[:200] if analysis_resp.text else ""
+                return {"success": False, "error": f"IA Mestre falhou na análise (status {analysis_resp.status_code}, modelo: {model}). {err_detail}"}
 
             analysis_raw = analysis_resp.json()["choices"][0]["message"]["content"]
             analysis_text = _extract_tag(analysis_raw, "analysis")
