@@ -80,6 +80,41 @@ class TokenManager:
         finally:
             db.close()
             
+    def link_ghl_to_existing_tenant(
+        self,
+        existing_location_id: str,
+        ghl_location_id: str,
+        access_token: str,
+        refresh_token: str,
+        expires_in: int,
+        client_id: str = "",
+        client_secret: str = "",
+    ) -> Optional[Tenant]:
+        """Vincula credenciais GHL a um tenant existente (whatsapp_only → CRM para qualificação)."""
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+
+        db = SessionLocal()
+        try:
+            tenant = self.get_tenant(existing_location_id, db=db)
+            if not tenant:
+                logger.error(f"Tenant {existing_location_id} não encontrado para vincular CRM.")
+                return None
+
+            tenant.ghl_location_id = ghl_location_id
+            tenant.client_id = client_id or tenant.client_id
+            tenant.client_secret = client_secret or tenant.client_secret
+            tenant.access_token = access_token
+            tenant.refresh_token = refresh_token
+            tenant.token_expires_at = expires_at.isoformat()
+
+            db.commit()
+            db.refresh(tenant)
+
+            logger.info(f"CRM vinculado ao tenant {tenant.company_name} ({existing_location_id}), ghl_location_id={ghl_location_id}")
+            return tenant
+        finally:
+            db.close()
+
     def update_zapi_credentials(self, location_id: str, instance_id: str, token: str, client_token: str = ""):
         """Atualiza as credenciais Z-API de um determinado tenant."""
         db = SessionLocal()

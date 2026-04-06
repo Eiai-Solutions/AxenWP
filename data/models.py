@@ -26,6 +26,9 @@ class Tenant(Base):
     # Mode: "ghl" (CRM integrado) ou "whatsapp_only" (direto no WhatsApp, sem CRM)
     mode = Column(String, default="ghl")
 
+    # GHL Location ID separado (para tenants whatsapp_only que conectam CRM só para qualificação)
+    ghl_location_id = Column(String, nullable=True)
+
     # Form token para formulário público de onboarding
     form_token = Column(String, nullable=True, unique=True, index=True)
 

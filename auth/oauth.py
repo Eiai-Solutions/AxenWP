@@ -32,17 +32,19 @@ async def oauth_install(
     company: str = Query(..., description="Nome da empresa"),
     ci: str = Query(None, description="Custom Client ID from UI"),
     cs: str = Query(None, description="Custom Client Secret from UI"),
-    ui_redirect: str = Query(None)
+    ui_redirect: str = Query(None),
+    existing: str = Query(None, description="Location ID de tenant existente para vincular CRM"),
 ):
     """
     Inicia o fluxo de instalação OAuth para uma nova empresa.
+    Se 'existing' for passado, vincula o CRM a um tenant existente (whatsapp_only).
     Redireciona o usuário para a tela de autorização do GHL.
     """
     client_id = ci or settings.ghl_client_id
-    
+
     # Se veio do UI, guarda em memória temporária os dados para o callback resgatar pela sessão/origem
     state_key = company
-    _temp_oauth_secrets[state_key] = {"ci": client_id, "cs": cs or settings.ghl_client_secret, "redirect": ui_redirect}
+    _temp_oauth_secrets[state_key] = {"ci": client_id, "cs": cs or settings.ghl_client_secret, "redirect": ui_redirect, "existing": existing}
 
     params = {
         "response_type": "code",
@@ -82,6 +84,7 @@ async def oauth_callback(
     client_id = temp_data.get("ci", settings.ghl_client_id)
     client_secret = temp_data.get("cs", settings.ghl_client_secret)
     ui_redirect = temp_data.get("redirect")
+    existing_location_id = temp_data.get("existing")
 
     if error:
         logger.error(f"Erro no OAuth callback: {error}")
@@ -143,17 +146,39 @@ async def oauth_callback(
         )
 
     # Extrair dados da resposta
-    location_id = data.get("locationId", "")
+    ghl_location_id = data.get("locationId", "")
     company_id = data.get("companyId", "")
-    user_id = data.get("userId", "")
 
-    if not location_id:
+    if not ghl_location_id:
         logger.warning("locationId não retornado no token. Verificando companyId...")
 
-    # Registrar o tenant
+    # Se estamos vinculando CRM a um tenant existente (whatsapp_only)
+    if existing_location_id:
+        tenant = token_manager.link_ghl_to_existing_tenant(
+            existing_location_id=existing_location_id,
+            ghl_location_id=ghl_location_id or company_id,
+            access_token=data["access_token"],
+            refresh_token=data["refresh_token"],
+            expires_in=data.get("expires_in", 86399),
+            client_id=client_id,
+            client_secret=client_secret,
+        )
+        if not tenant:
+            if ui_redirect:
+                return RedirectResponse(url=f"/admin/dashboard?err=Tenant {existing_location_id} não encontrado.", status_code=303)
+            return JSONResponse(status_code=404, content={"error": "Tenant não encontrado"})
+
+        logger.info(f"✅ CRM vinculado ao tenant existente: {tenant.company_name} (ghl_location_id={ghl_location_id})")
+
+        if ui_redirect:
+            return RedirectResponse(url=f"/admin/dashboard?msg=CRM conectado para {tenant.company_name} com sucesso!", status_code=303)
+
+        return JSONResponse(status_code=200, content={"success": True, "message": "CRM vinculado com sucesso!"})
+
+    # Registrar novo tenant (fluxo padrão)
     tenant = token_manager.register_tenant(
-        location_id=location_id or company_id,
-        company_name=state or f"Empresa-{location_id or company_id}",
+        location_id=ghl_location_id or company_id,
+        company_name=state or f"Empresa-{ghl_location_id or company_id}",
         access_token=data["access_token"],
         refresh_token=data["refresh_token"],
         expires_in=data.get("expires_in", 86399),

@@ -38,6 +38,13 @@ class GHLService:
             raise RuntimeError("GHLService.startup() was not called")
         return self._client
 
+    def _resolve_ghl_location_id(self, location_id: str) -> str:
+        """Retorna o ghl_location_id do tenant se existir, senão o location_id original."""
+        tenant = token_manager.get_tenant(location_id)
+        if tenant and getattr(tenant, 'ghl_location_id', None):
+            return tenant.ghl_location_id
+        return location_id
+
     async def _get_headers(self, location_id: str) -> dict | None:
         """Monta os headers com o token válido do tenant."""
         token = await token_manager.get_valid_token(location_id)
@@ -212,11 +219,13 @@ class GHLService:
         if not headers:
             return None
 
+        ghl_loc = self._resolve_ghl_location_id(location_id)
+
         async def _do_search(query_phone: str):
             try:
                 response = await self.client.get(
                     f"{self.BASE_URL}/contacts/search",
-                    params={"query": query_phone, "locationId": location_id},
+                    params={"query": query_phone, "locationId": ghl_loc},
                     headers=headers,
                 )
                 if response.status_code == 200:
@@ -272,9 +281,10 @@ class GHLService:
         if not headers:
             return None
 
+        ghl_loc = self._resolve_ghl_location_id(location_id)
         first_name = name or phone
         payload = {
-            "locationId": location_id,
+            "locationId": ghl_loc,
             "firstName": first_name,
         }
         
@@ -309,14 +319,15 @@ class GHLService:
         """Busca e faz cache do ID de um Custom Field com base no seu nome."""
         if location_id in self._custom_fields_cache and field_name in self._custom_fields_cache[location_id]:
             return self._custom_fields_cache[location_id][field_name]
-            
+
         headers = await self._get_headers(location_id)
         if not headers:
             return None
-            
+
+        ghl_loc = self._resolve_ghl_location_id(location_id)
         try:
             response = await self.client.get(
-                f"{self.BASE_URL}/locations/{location_id}/customFields",
+                f"{self.BASE_URL}/locations/{ghl_loc}/customFields",
                 headers=headers,
             )
             if response.status_code == 200:
@@ -347,10 +358,11 @@ class GHLService:
         if not headers:
             return {"error": True, "message": "Sem token válido"}
 
+        ghl_loc = self._resolve_ghl_location_id(location_id)
         try:
             response = await self.client.get(
                 f"{self.BASE_URL}/opportunities/pipelines",
-                params={"locationId": location_id},
+                params={"locationId": ghl_loc},
                 headers=headers,
             )
             if response.status_code == 200:
@@ -373,13 +385,14 @@ class GHLService:
         if not headers:
             return None
 
+        ghl_loc = self._resolve_ghl_location_id(location_id)
         try:
             params = {}
             if model and model != "contact":
                 params["model"] = model
 
             response = await self.client.get(
-                f"{self.BASE_URL}/locations/{location_id}/customFields",
+                f"{self.BASE_URL}/locations/{ghl_loc}/customFields",
                 params=params,
                 headers=headers,
             )
@@ -412,10 +425,11 @@ class GHLService:
         if not headers:
             return None
 
+        ghl_loc = self._resolve_ghl_location_id(location_id)
         payload = {
             "pipelineId": pipeline_id,
             "pipelineStageId": stage_id,
-            "locationId": location_id,
+            "locationId": ghl_loc,
             "contactId": contact_id,
             "name": name,
             "status": "open",

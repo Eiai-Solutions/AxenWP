@@ -146,9 +146,11 @@
                 openZAPIModal(d.locationId, d.companyName, d.zapiInstanceId, d.zapiToken, d.zapiClientToken);
             } else if (action === 'reconnect') {
                 if (d.clientId) {
-                    window.location.href = `/oauth/install?company=${encodeURIComponent(d.companyName)}&ci=${d.clientId}&ui_redirect=1`;
+                    let reconnectUrl = `/oauth/install?company=${encodeURIComponent(d.companyName)}&ci=${d.clientId}&ui_redirect=1`;
+                    if (d.mode === 'whatsapp_only') reconnectUrl += `&existing=${encodeURIComponent(d.locationId)}`;
+                    window.location.href = reconnectUrl;
                 } else {
-                    openConnectCRMModal(d.companyName);
+                    openConnectCRMModal(d.companyName, d.locationId);
                 }
             } else if (action === 'form') {
                 generateFormLink(d.locationId);
@@ -157,9 +159,10 @@
             }
         }
 
-        function openConnectCRMModal(companyName) {
+        function openConnectCRMModal(companyName, locationId) {
             document.getElementById('connect_crm_company').innerText = companyName;
             document.getElementById('connect_crm_company_hidden').value = companyName;
+            document.getElementById('connect_crm_existing_id').value = locationId || '';
             document.getElementById('connect_crm_ci').value = '';
             document.getElementById('connect_crm_cs').value = '';
             document.getElementById('connectCRMModal').classList.remove('hidden');
@@ -171,10 +174,13 @@
 
         function submitConnectCRM() {
             const company = document.getElementById('connect_crm_company_hidden').value;
+            const existingId = document.getElementById('connect_crm_existing_id').value;
             const ci = document.getElementById('connect_crm_ci').value.trim();
             const cs = document.getElementById('connect_crm_cs').value.trim();
             if (!ci) { alert('Informe o Client ID do GHL.'); return; }
-            window.location.href = `/oauth/install?company=${encodeURIComponent(company)}&ci=${encodeURIComponent(ci)}&cs=${encodeURIComponent(cs)}&ui_redirect=1`;
+            let url = `/oauth/install?company=${encodeURIComponent(company)}&ci=${encodeURIComponent(ci)}&cs=${encodeURIComponent(cs)}&ui_redirect=1`;
+            if (existingId) url += `&existing=${encodeURIComponent(existingId)}`;
+            window.location.href = url;
         }
 
         function openAIAgentModal(btn) {
@@ -1643,6 +1649,7 @@
             <h3 class="font-display text-xl font-bold text-white uppercase tracking-tight mb-1">Conectar CRM</h3>
             <p class="text-yellow-500 text-sm font-mono font-bold mb-4" id="connect_crm_company"></p>
             <input type="hidden" id="connect_crm_company_hidden">
+            <input type="hidden" id="connect_crm_existing_id">
 
             <div class="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4 mb-6">
                 <p class="text-sm text-gray-300">Conecte ao GoHighLevel para enviar leads qualificados como oportunidades no CRM. <strong class="text-white">As mensagens continuam direto pelo WhatsApp.</strong></p>
