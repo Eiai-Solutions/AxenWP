@@ -279,14 +279,23 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
 
         model = settings.admin_openrouter_model or "openai/gpt-4o"
         headers = _openrouter_headers(settings.admin_openrouter_key, "AxenWP Prompt Analyzer")
+        _FALLBACK_MODEL = "openai/gpt-4o"
 
         async with httpx.AsyncClient(timeout=90.0) as client:
 
+            # Helper: chama OpenRouter com fallback automático se 404
+            async def _call_openrouter(payload_json: dict) -> httpx.Response:
+                nonlocal model
+                resp = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload_json)
+                if resp.status_code == 404 and model != _FALLBACK_MODEL:
+                    logger.warning(f"Modelo '{model}' não encontrado no OpenRouter (404). Fallback para {_FALLBACK_MODEL}")
+                    model = _FALLBACK_MODEL
+                    payload_json["model"] = model
+                    resp = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload_json)
+                return resp
+
             # ── ETAPA 1: Simular conversa Lead vs Agente ──
-            sim_resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json={
+            sim_resp = await _call_openrouter({
                     "model": model,
                     "messages": [{"role": "user", "content": (
                         "Você é um 'Lead' (cliente em potencial) interessado nos serviços da empresa, "
@@ -298,21 +307,14 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                         "Formato:\nLead: [pergunta]\nAgente: [resposta]\n\n"
                         "Gere 4 turnos realistas."
                     )}]
-                }
-            )
+                })
             if sim_resp.status_code != 200:
                 err_detail = sim_resp.text[:200] if sim_resp.text else ""
                 return {"success": False, "error": f"Falha na simulação (status {sim_resp.status_code}, modelo: {model}). {err_detail}"}
             transcript = sim_resp.json()["choices"][0]["message"]["content"]
 
             # ── ETAPA 2: Análise + lista de mudanças (SEM gerar prompt completo) ──
-            analysis_resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json={
-                    "model": model,
-                    "max_tokens": 4000,
-                    "messages": [
+            analysis_resp = await _call_openrouter({"model": model, "max_tokens": 4000, "messages": [
                         {"role": "system", "content": (
                             "Você é um especialista sênior em Prompt Engineering para agentes de WhatsApp B2B.\n\n"
                             "Sua tarefa: analisar o prompt do agente com base em uma conversa simulada "
@@ -370,10 +372,7 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                 }
 
             # ── ETAPA 3: Gerar DIFFS e aplicar programaticamente ──
-            apply_resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json={
+            apply_resp = await _call_openrouter({
                     "model": model,
                     "max_tokens": 8000,
                     "messages": [
@@ -384,8 +383,7 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
                             "Gere os patches no formato <<<FIND>>>...<<<REPLACE>>>...<<<END>>>."
                         )}
                     ]
-                }
-            )
+                })
 
             if apply_resp.status_code != 200:
                 return {"success": False, "error": f"IA Mestre falhou ao gerar diffs ({apply_resp.status_code})."}
@@ -471,11 +469,20 @@ async def master_chat(payload: MasterChatRequest):
 
         messages.append({"role": "user", "content": payload.user_message})
 
+        _FALLBACK_MODEL = "openai/gpt-4o"
+
         async with httpx.AsyncClient(timeout=90.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json={
+            async def _call_or(payload_json: dict) -> httpx.Response:
+                nonlocal model
+                r = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload_json)
+                if r.status_code == 404 and model != _FALLBACK_MODEL:
+                    logger.warning(f"Modelo '{model}' não encontrado (404). Fallback para {_FALLBACK_MODEL}")
+                    model = _FALLBACK_MODEL
+                    payload_json["model"] = model
+                    r = await client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload_json)
+                return r
+
+            resp = await _call_or({
                     "model": model,
                     "max_tokens": 4000,
                     "messages": messages,
@@ -500,10 +507,7 @@ async def master_chat(payload: MasterChatRequest):
             # ── ETAPA 2: Gerar DIFFS e aplicar programaticamente ──
             current_prompt = payload.current_improved_prompt or payload.original_prompt
 
-            apply_resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json={
+            apply_resp = await _call_or({
                     "model": model,
                     "max_tokens": 8000,
                     "messages": [
