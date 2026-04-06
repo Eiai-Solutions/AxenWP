@@ -57,6 +57,102 @@ def cleanup_stale_debounce_entries():
         logger.debug(f"Cleanup: {len(stale_keys)} debounce, {len(stale_ids)} sent_ids removidos.")
 
 
+async def _handle_qualification(location_id: str, phone: str, contact_id: str, tenant, qualified_data: dict, summary: str):
+    """Cria oportunidade no GHL e desativa a IA para o contato após qualificação."""
+    from data.database import SessionLocal as _SLQ
+    from data.models import AIAgent as _AIAgentQ, QualifiedLead
+
+    is_whatsapp_only = getattr(tenant, "mode", "ghl") == "whatsapp_only"
+
+    # Carregar config do agente
+    _dbq = _SLQ()
+    try:
+        agent = _dbq.query(_AIAgentQ).filter(_AIAgentQ.location_id == location_id).first()
+        if not agent:
+            logger.error(f"Qualificação: agente não encontrado para {location_id}")
+            return
+
+        pipeline_id = agent.qualification_pipeline_id
+        stage_id = agent.qualification_stage_id
+        qualification_fields = agent.qualification_fields or []
+
+        # Verificar duplicação
+        existing = _dbq.query(QualifiedLead).filter(
+            QualifiedLead.location_id == location_id,
+            QualifiedLead.phone == phone,
+        ).first()
+        if existing:
+            logger.info(f"Lead {phone} já qualificado anteriormente. Ignorando duplicação.")
+            return
+    finally:
+        _dbq.close()
+
+    opp_id = None
+
+    # Criar oportunidade no GHL (apenas no modo GHL)
+    if not is_whatsapp_only and pipeline_id and stage_id and contact_id:
+        # Mapear campos coletados → custom fields da oportunidade
+        custom_fields = []
+        for field_def in qualification_fields:
+            ghl_field_id = field_def.get("ghl_field_id")
+            key = field_def.get("key")
+            if ghl_field_id and key and key in qualified_data:
+                custom_fields.append({
+                    "id": ghl_field_id,
+                    "field_value": qualified_data[key],
+                })
+
+        # Nome da oportunidade
+        lead_name = qualified_data.get("nome") or qualified_data.get("name") or qualified_data.get("nome_completo") or phone
+        opp_name = f"{lead_name} - WhatsApp Lead"
+
+        result = await ghl_service.create_opportunity(
+            location_id=location_id,
+            pipeline_id=pipeline_id,
+            stage_id=stage_id,
+            contact_id=contact_id,
+            name=opp_name,
+            custom_fields=custom_fields if custom_fields else None,
+            notes=summary,
+        )
+
+        if result and not result.get("error"):
+            opp_id = result.get("id")
+            logger.info(f"Oportunidade criada para lead {phone}: {opp_id}")
+        else:
+            logger.error(f"Falha ao criar oportunidade para lead {phone}: {result}")
+
+    # Salvar registro de lead qualificado
+    _dbq2 = _SLQ()
+    try:
+        ql = QualifiedLead(
+            location_id=location_id,
+            phone=phone,
+            ghl_opportunity_id=opp_id,
+            qualified_data=qualified_data,
+            summary=summary,
+        )
+        _dbq2.add(ql)
+        _dbq2.commit()
+        logger.info(f"Lead qualificado salvo: {phone} @ {location_id}")
+    except Exception as e:
+        logger.error(f"Erro ao salvar lead qualificado: {e}")
+        _dbq2.rollback()
+    finally:
+        _dbq2.close()
+
+    # Desativar IA para este contato
+    if not is_whatsapp_only and contact_id:
+        # Modo GHL: atualizar custom field "Status IA" para "Desativada"
+        field_id = await ghl_service._get_custom_field_id_by_name(location_id, "Status IA")
+        if field_id:
+            await ghl_service.update_contact(location_id, contact_id, {
+                "customFields": [{"id": field_id, "field_value": "Desativada"}]
+            })
+            logger.info(f"Status IA desativado para contato {contact_id} após qualificação")
+    # No modo whatsapp_only, QualifiedLead serve como flag — o AI service já verifica
+
+
 async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant, contact_key: str):
     """Aguarda o debounce e depois processa a IA com todas as mensagens acumuladas."""
     try:
@@ -94,6 +190,12 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
         )
         if not ai_response:
             return
+
+        # ── Qualificação: se a IA retornou dados de qualificação ──
+        qualified_data = ai_response.get("qualified_data")
+        if qualified_data:
+            summary = ai_response.get("qualification_summary", "")
+            await _handle_qualification(location_id, phone, contact_id, tenant, qualified_data, summary)
 
         ai_type = ai_response.get("type", "text")
         ai_content = ai_response.get("content", "")
@@ -326,11 +428,20 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
         # No modo GHL, verifica pelo custom field "Status IA" do contato
         if is_whatsapp_only:
             from data.database import SessionLocal as _SL2
-            from data.models import AIAgent as _AIAgent2
+            from data.models import AIAgent as _AIAgent2, QualifiedLead as _QL2
             _db2 = _SL2()
             try:
                 _agent2 = _db2.query(_AIAgent2).filter(_AIAgent2.location_id == location_id).first()
                 is_ai_active = bool(_agent2 and _agent2.is_active)
+                # Se ativo, verificar se o lead já foi qualificado (desativa IA para este contato)
+                if is_ai_active:
+                    already_qualified = _db2.query(_QL2).filter(
+                        _QL2.location_id == location_id,
+                        _QL2.phone == phone,
+                    ).first()
+                    if already_qualified:
+                        is_ai_active = False
+                        logger.info(f"Lead {phone} já qualificado. IA desativada (whatsapp_only).")
             finally:
                 _db2.close()
         else:

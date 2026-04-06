@@ -337,6 +337,170 @@ class GHLService:
             logger.error(f"Exceção ao buscar custom fields: {e}")
             return None
 
+    async def get_pipelines(self, location_id: str) -> list | None:
+        """
+        Lista os pipelines (oportunidades) da location.
+        GET /opportunities/pipelines?locationId={locationId}
+        Retorna lista de pipelines com stages inline.
+        """
+        headers = await self._get_headers(location_id)
+        if not headers:
+            return None
+
+        try:
+            response = await self.client.get(
+                f"{self.BASE_URL}/opportunities/pipelines",
+                params={"locationId": location_id},
+                headers=headers,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("pipelines", [])
+            else:
+                logger.error(f"Erro ao buscar pipelines: status={response.status_code}, body={response.text}")
+                return None
+        except Exception as e:
+            logger.error(f"Exceção ao buscar pipelines: {e}")
+            return None
+
+    async def get_custom_fields(self, location_id: str, model: str = "contact") -> list | None:
+        """
+        Lista custom fields da location por modelo (contact ou opportunity).
+        GET /locations/{locationId}/customFields?model={model}
+        """
+        headers = await self._get_headers(location_id)
+        if not headers:
+            return None
+
+        try:
+            params = {}
+            if model and model != "contact":
+                params["model"] = model
+
+            response = await self.client.get(
+                f"{self.BASE_URL}/locations/{location_id}/customFields",
+                params=params,
+                headers=headers,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get("customFields", [])
+            else:
+                logger.error(f"Erro ao buscar custom fields ({model}): status={response.status_code}, body={response.text}")
+                return None
+        except Exception as e:
+            logger.error(f"Exceção ao buscar custom fields ({model}): {e}")
+            return None
+
+    async def create_opportunity(
+        self,
+        location_id: str,
+        pipeline_id: str,
+        stage_id: str,
+        contact_id: str,
+        name: str,
+        custom_fields: list[dict] | None = None,
+        notes: str | None = None,
+        monetary_value: float = 0.0,
+    ) -> dict | None:
+        """
+        Cria uma oportunidade (negócio) no GHL.
+        POST /opportunities/
+        """
+        headers = await self._get_headers(location_id)
+        if not headers:
+            return None
+
+        payload = {
+            "pipelineId": pipeline_id,
+            "pipelineStageId": stage_id,
+            "locationId": location_id,
+            "contactId": contact_id,
+            "name": name,
+            "status": "open",
+            "monetaryValue": monetary_value,
+        }
+
+        if custom_fields:
+            payload["customFields"] = custom_fields
+
+        try:
+            response = await self.client.post(
+                f"{self.BASE_URL}/opportunities/",
+                json=payload,
+                headers=headers,
+            )
+
+            if response.status_code in (200, 201):
+                data = response.json()
+                opp_id = data.get("opportunity", {}).get("id", "?")
+                logger.info(f"Oportunidade criada no GHL: id={opp_id}, contact={contact_id}, location={location_id}")
+
+                # Adicionar notas separadamente se fornecidas
+                if notes and opp_id != "?":
+                    await self._add_opportunity_notes(location_id, opp_id, notes)
+
+                return data.get("opportunity", data)
+            else:
+                body_data = {}
+                try:
+                    body_data = response.json()
+                except:
+                    body_data = {"text": response.text}
+                logger.error(f"Erro ao criar oportunidade: status={response.status_code}, body={response.text}")
+                return {"error": True, "status_code": response.status_code, "body": body_data}
+        except Exception as e:
+            logger.error(f"Exceção ao criar oportunidade: {e}")
+            return {"error": True, "status_code": 500, "body": {"message": str(e)}}
+
+    async def _add_opportunity_notes(self, location_id: str, opportunity_id: str, notes: str) -> bool:
+        """Adiciona notas a uma oportunidade existente via PUT."""
+        headers = await self._get_headers(location_id)
+        if not headers:
+            return False
+
+        try:
+            response = await self.client.put(
+                f"{self.BASE_URL}/opportunities/{opportunity_id}",
+                json={"notes": notes},
+                headers=headers,
+            )
+            if response.status_code == 200:
+                logger.info(f"Notas adicionadas à oportunidade {opportunity_id}")
+                return True
+            else:
+                logger.warning(f"Erro ao adicionar notas à oportunidade: {response.text}")
+                return False
+        except Exception as e:
+            logger.error(f"Exceção ao adicionar notas: {e}")
+            return False
+
+    async def update_contact(self, location_id: str, contact_id: str, data: dict) -> dict | None:
+        """
+        Atualiza um contato no GHL (custom fields, nome, etc).
+        PUT /contacts/{contactId}
+        """
+        headers = await self._get_headers(location_id)
+        if not headers:
+            return None
+
+        try:
+            response = await self.client.put(
+                f"{self.BASE_URL}/contacts/{contact_id}",
+                json=data,
+                headers=headers,
+            )
+            if response.status_code == 200:
+                result = response.json()
+                logger.info(f"Contato {contact_id} atualizado no GHL")
+                return result.get("contact", result)
+            else:
+                logger.error(f"Erro ao atualizar contato {contact_id}: status={response.status_code}, body={response.text}")
+                return None
+        except Exception as e:
+            logger.error(f"Exceção ao atualizar contato: {e}")
+            return None
+
     async def is_ai_active_for_contact(self, location_id: str, contact_id: str) -> bool:
         """
         Verifica se o contato tem o Custom Field 'Status IA' com o valor 'Ativada'.

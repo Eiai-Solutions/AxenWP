@@ -150,6 +150,11 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
                 "groq_api_key": agent.groq_api_key,
                 "is_active": agent.is_active,
                 "debounce_seconds": float(agent.debounce_seconds) if agent.debounce_seconds is not None else 1.5,
+                "qualification_enabled": bool(getattr(agent, 'qualification_enabled', False)),
+                "qualification_pipeline_id": getattr(agent, 'qualification_pipeline_id', '') or '',
+                "qualification_stage_id": getattr(agent, 'qualification_stage_id', '') or '',
+                "qualification_fields": getattr(agent, 'qualification_fields', None) or [],
+                "qualification_summary_prompt": getattr(agent, 'qualification_summary_prompt', '') or '',
             }
         else:
             t_dict["ai_agent_data"] = None

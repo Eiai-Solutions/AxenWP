@@ -6,9 +6,12 @@ import httpx
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+import json
+
 from data.database import get_db, SessionLocal
 from data.models import Tenant, AIAgent, SystemSettings
 from auth.token_manager import token_manager
+from services.ghl_service import ghl_service
 from datetime import datetime, timezone
 from pydantic import BaseModel
 
@@ -32,7 +35,12 @@ async def save_agent_settings(
     elevenlabs_similarity: float = Form(0.75),
     groq_api_key: Optional[str] = Form(None),
     is_active: bool = Form(False),
-    debounce_seconds: float = Form(1.5)
+    debounce_seconds: float = Form(1.5),
+    qualification_enabled: bool = Form(False),
+    qualification_pipeline_id: Optional[str] = Form(None),
+    qualification_stage_id: Optional[str] = Form(None),
+    qualification_fields: Optional[str] = Form(None),
+    qualification_summary_prompt: Optional[str] = Form(None),
 ):
     """
     Cria ou atualiza as configurações do Agente de IA para um Tenant específico.
@@ -63,6 +71,23 @@ async def save_agent_settings(
         agent.groq_api_key = groq_api_key
         agent.is_active = is_active
         agent.debounce_seconds = max(0.5, min(float(debounce_seconds), 30.0))
+
+        # Qualificação de leads
+        agent.qualification_enabled = qualification_enabled
+        agent.qualification_pipeline_id = qualification_pipeline_id or None
+        agent.qualification_stage_id = qualification_stage_id or None
+        agent.qualification_summary_prompt = qualification_summary_prompt or None
+
+        # Parse dos campos de qualificação (JSON string do frontend)
+        if qualification_fields:
+            try:
+                parsed_fields = json.loads(qualification_fields)
+                agent.qualification_fields = parsed_fields if isinstance(parsed_fields, list) else None
+            except (json.JSONDecodeError, ValueError):
+                agent.qualification_fields = None
+        else:
+            agent.qualification_fields = None
+
         agent.updated_at = datetime.now(timezone.utc)
 
         db.commit()
@@ -76,6 +101,32 @@ async def save_agent_settings(
         return RedirectResponse(url="/admin/dashboard?err=Erro+ao+salvar+Agente+IA", status_code=303)
     finally:
         db.close()
+
+@router.get("/{location_id}/ghl/pipelines")
+async def get_ghl_pipelines(location_id: str):
+    """Busca pipelines (funis de oportunidades) do GHL para o tenant."""
+    try:
+        pipelines = await ghl_service.get_pipelines(location_id)
+        if pipelines is None:
+            return {"success": False, "error": "Falha ao buscar pipelines do GHL"}
+        return {"success": True, "pipelines": pipelines}
+    except Exception as e:
+        logger.error(f"Erro ao buscar pipelines GHL: {e}")
+        return {"success": False, "error": str(e)}
+
+
+@router.get("/{location_id}/ghl/custom-fields")
+async def get_ghl_custom_fields(location_id: str, model: str = "opportunity"):
+    """Busca custom fields do GHL por modelo (contact ou opportunity)."""
+    try:
+        fields = await ghl_service.get_custom_fields(location_id, model=model)
+        if fields is None:
+            return {"success": False, "error": "Falha ao buscar custom fields do GHL"}
+        return {"success": True, "fields": fields}
+    except Exception as e:
+        logger.error(f"Erro ao buscar custom fields GHL: {e}")
+        return {"success": False, "error": str(e)}
+
 
 @router.get("/elevenlabs/voices")
 async def get_elevenlabs_voices(api_key: str):

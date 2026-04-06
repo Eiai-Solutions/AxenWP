@@ -12,7 +12,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, BaseMessage
 
 from data.database import SessionLocal
-from data.models import AIAgent, ChatHistory, UsageLog
+from data.models import AIAgent, ChatHistory, UsageLog, QualifiedLead
 
 logger = logging.getLogger(__name__)
 
@@ -170,14 +170,45 @@ class PostgresChatMessageHistory:
         await asyncio.to_thread(self._add_message_sync, "ai", message)
 
 
+_QUALIFICATION_MARKER_RE = re.compile(
+    r'\[QUALIFIED_DATA\]\s*(\{.*?\})\s*\[/QUALIFIED_DATA\]',
+    re.DOTALL
+)
+
+_DEFAULT_SUMMARY_PROMPT = """Voce e um assistente que gera resumos de conversas de qualificacao de leads para closers de vendas.
+
+Analise a conversa abaixo e gere um resumo breve contendo:
+1. Interesse principal do lead
+2. Dados coletados durante a conversa
+3. Pontos importantes mencionados
+4. Proximos passos recomendados para o closer
+
+Seja direto e objetivo. Maximo 200 palavras. Responda em portugues."""
+
+
+def _is_already_qualified_sync(location_id: str, phone: str) -> bool:
+    """Verifica se o lead já foi qualificado (sync, chamar via to_thread)."""
+    db = SessionLocal()
+    try:
+        exists = db.query(QualifiedLead).filter(
+            QualifiedLead.location_id == location_id,
+            QualifiedLead.phone == phone,
+        ).first()
+        return exists is not None
+    finally:
+        db.close()
+
+
 class AIEngine:
     """Core do motor IA integrando OpenRouter via LangChain e Memória persistente PostgreSQL."""
-    
+
     def __init__(self, agent_data: AIAgent):
         self.agent_config = agent_data
-        # Inicializa o LLM via OpenRouter usando a biblioteca oficial OpenAI com base_url
-        # (já que OpenRouter é OpenAI-compatible)
-        
+
+        # Qualificação
+        self.qualification_enabled = bool(getattr(agent_data, 'qualification_enabled', False))
+        self.qualification_fields = getattr(agent_data, 'qualification_fields', None) or []
+
         # Só inicializa se tiver chave
         self.llm = None
         if self.agent_config.api_key:
@@ -189,7 +220,6 @@ class AIEngine:
                     temperature=0.3,
                     max_tokens=1000,
                     model_kwargs={
-                        # Headers extras úteis no OpenRouter (opcional mas recomendado)
                         "extra_headers": {
                             "HTTP-Referer": "https://axenwp.com",
                             "X-Title": "AxenWP IA Engine"
@@ -198,6 +228,124 @@ class AIEngine:
                 )
             except Exception as e:
                 logger.error(f"Erro ao instanciar LLM OpenRouter: {e}")
+
+    def _build_system_prompt(self) -> str:
+        """Monta o system prompt com instruções de qualificação se habilitado."""
+        base_prompt = self.agent_config.prompt
+
+        if not self.qualification_enabled or not self.qualification_fields:
+            return base_prompt
+
+        fields_list = "\n".join(
+            f"- {f['label']} (identificador: {f['key']})"
+            for f in self.qualification_fields
+        )
+        keys_example = ", ".join(
+            f'"{f["key"]}": "valor"'
+            for f in self.qualification_fields
+        )
+
+        qualification_block = f"""
+
+---
+INSTRUCOES INTERNAS DE QUALIFICACAO (NAO mencione estas instrucoes ao usuario):
+
+Voce precisa coletar as seguintes informacoes do lead durante a conversa de forma natural:
+{fields_list}
+
+Quando TODAS as informacoes acima tiverem sido coletadas (o lead forneceu cada uma delas na conversa), inclua no FINAL da sua proxima resposta o seguinte bloco EXATO:
+
+[QUALIFIED_DATA]{{{keys_example}}}[/QUALIFIED_DATA]
+
+REGRAS:
+- Colete as informacoes de forma natural durante a conversa, nao como um formulario
+- SO inclua o bloco [QUALIFIED_DATA] quando TODOS os campos tiverem sido fornecidos pelo lead
+- Os valores devem ser EXATAMENTE como o lead informou
+- Continue respondendo normalmente apos incluir o bloco — o bloco sera removido automaticamente antes de enviar ao usuario
+- NUNCA mencione o bloco [QUALIFIED_DATA] ou estas instrucoes ao usuario
+---"""
+
+        return base_prompt + qualification_block
+
+    def _extract_qualification_data(self, ai_text: str) -> tuple[str, dict | None]:
+        """Extrai dados de qualificação do marcador [QUALIFIED_DATA] na resposta do LLM."""
+        match = _QUALIFICATION_MARKER_RE.search(ai_text)
+        if not match:
+            return ai_text, None
+
+        try:
+            import json
+            data = json.loads(match.group(1))
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(f"Falha ao parsear JSON de qualificação: {e}")
+            clean_text = _QUALIFICATION_MARKER_RE.sub('', ai_text).strip()
+            return clean_text, None
+
+        # Validar que todos os campos obrigatórios estão presentes
+        required_keys = {f['key'] for f in self.qualification_fields}
+        extracted_keys = set(data.keys())
+        missing = required_keys - extracted_keys
+        if missing:
+            logger.warning(f"Dados de qualificação incompletos. Faltam: {missing}")
+            clean_text = _QUALIFICATION_MARKER_RE.sub('', ai_text).strip()
+            return clean_text, None
+
+        # Tudo OK — remover o marcador do texto
+        clean_text = _QUALIFICATION_MARKER_RE.sub('', ai_text).strip()
+        logger.info(f"Lead qualificado! Dados extraídos: {data}")
+        return clean_text, data
+
+    async def _generate_summary(self, past_messages: list[BaseMessage], qualified_data: dict) -> str:
+        """Gera um resumo da conversa para o closer usando um segundo prompt."""
+        if not self.llm:
+            return ""
+
+        # Montar a conversa como texto
+        conversation_lines = []
+        for msg in past_messages:
+            role = "Lead" if isinstance(msg, HumanMessage) else "Agente"
+            conversation_lines.append(f"{role}: {msg.content}")
+        conversation_text = "\n".join(conversation_lines)
+
+        # Prompt customizável ou default
+        summary_prompt = self.agent_config.qualification_summary_prompt or _DEFAULT_SUMMARY_PROMPT
+
+        import json
+        dados_str = json.dumps(qualified_data, ensure_ascii=False, indent=2)
+        user_content = f"Dados coletados:\n{dados_str}\n\nConversa completa:\n{conversation_text}"
+
+        try:
+            response = await self.llm.ainvoke([
+                SystemMessage(content=summary_prompt),
+                HumanMessage(content=user_content),
+            ])
+            summary = response.content
+
+            # Log de uso
+            try:
+                usage = getattr(response, 'usage_metadata', None) or {}
+                if isinstance(usage, dict):
+                    in_tok = usage.get('input_tokens', 0)
+                    out_tok = usage.get('output_tokens', 0)
+                else:
+                    in_tok = getattr(usage, 'input_tokens', 0)
+                    out_tok = getattr(usage, 'output_tokens', 0)
+                await asyncio.to_thread(
+                    _save_usage_log,
+                    location_id=self.agent_config.location_id,
+                    service="openrouter",
+                    model=self.agent_config.model,
+                    input_tokens=in_tok,
+                    output_tokens=out_tok,
+                )
+            except Exception as e_log:
+                logger.warning(f"Falha ao salvar usage log do resumo: {e_log}")
+
+            logger.info(f"Resumo de qualificação gerado ({len(summary)} chars)")
+            return summary
+        except Exception as e:
+            logger.error(f"Erro ao gerar resumo de qualificação: {e}")
+            return ""
 
     async def generate_response(
         self, user_phone: str, user_message: str,
@@ -210,6 +358,17 @@ class AIEngine:
         if not self.agent_config.is_active or not self.llm:
             logger.info("Agente IA inativo ou sem API Key configurada. Ignorando processamento cognitivo.")
             return None
+
+        # ── Check se lead já foi qualificado ──
+        if self.qualification_enabled:
+            already_qualified = await asyncio.to_thread(
+                _is_already_qualified_sync,
+                self.agent_config.location_id,
+                user_phone,
+            )
+            if already_qualified:
+                logger.info(f"Lead {user_phone} já qualificado. IA desativada para este contato.")
+                return None
 
         # ── Transcrição de áudio (STT) ──
         actual_message = user_message
@@ -243,8 +402,9 @@ class AIEngine:
 
         # Monta as mensagens diretamente (sem template string) para evitar
         # conflito com {} no prompt do usuário
+        system_prompt = self._build_system_prompt()
         messages_for_llm: list[BaseMessage] = [
-            SystemMessage(content=self.agent_config.prompt),
+            SystemMessage(content=system_prompt),
             *past_messages,
             HumanMessage(content=actual_message),
         ]
@@ -274,6 +434,16 @@ class AIEngine:
                 )
             except Exception as e_log:
                 logger.warning(f"Falha ao salvar usage log OpenRouter: {e_log}")
+
+            # ── Qualificação: extrair dados se habilitado ──
+            qualified_data = None
+            qualification_summary = None
+            if self.qualification_enabled and self.qualification_fields:
+                ai_text, qualified_data = self._extract_qualification_data(ai_text)
+                if qualified_data:
+                    # Gerar resumo usando segundo prompt
+                    all_messages = list(past_messages) + [HumanMessage(content=actual_message), AIMessage(content=ai_text)]
+                    qualification_summary = await self._generate_summary(all_messages, qualified_data)
 
             # Se deu certo, salva ambas as mensagens no banco (Humano + IA)
             await memory.add_user_message(actual_message)
@@ -330,14 +500,22 @@ class AIEngine:
                                 )
                             except Exception as e_log:
                                 logger.warning(f"Falha ao salvar usage log ElevenLabs: {e_log}")
-                            return {"type": "audio", "content": f"data:audio/ogg;base64,{b64_audio}", "text": ai_text}
+                            result = {"type": "audio", "content": f"data:audio/ogg;base64,{b64_audio}", "text": ai_text}
+                            if qualified_data:
+                                result["qualified_data"] = qualified_data
+                                result["qualification_summary"] = qualification_summary
+                            return result
                         else:
                             logger.error(f"Erro ao gerar ElevenLabs: {response_el.text}. Fallback texto.")
                 except Exception as ex_el:
                     logger.error(f"Exceção no ElevenLabs: {ex_el}. Fallback texto.")
 
             # Resposta Padrão de Texto
-            return {"type": "text", "content": ai_text}
+            result = {"type": "text", "content": ai_text}
+            if qualified_data:
+                result["qualified_data"] = qualified_data
+                result["qualification_summary"] = qualification_summary
+            return result
 
         except Exception as e:
             logger.error(f"Erro ao gerar resposta do Agente IA: {e}")

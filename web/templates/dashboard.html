@@ -148,11 +148,157 @@
             // Set voice if exists, otherwise load won't pre-select it perfectly until fetched, handled in fetch
             document.getElementById('ai_elevenlabs_voice_id').dataset.preselected = elevenlabsVoiceId || '';
 
+            // Qualification tab
+            const qualEnabled = String(btn.dataset.aiqualenabled).toLowerCase() === 'true';
+            document.getElementById('ai_qual_enabled').checked = qualEnabled;
+            document.getElementById('ai_qual_summary_prompt').value = btn.dataset.aiqualsummaryprompt || '';
+
+            // Store saved pipeline/stage IDs for restoration after fetch
+            window._qualSavedPipelineId = btn.dataset.aiqualpipelineid || '';
+            window._qualSavedStageId = btn.dataset.aiqualstageid || '';
+            window._qualPipelinesData = [];
+            window._qualCustomFieldsData = [];
+
+            // Restore pipeline/stage dropdowns
+            const pipelineSelect = document.getElementById('ai_qual_pipeline');
+            pipelineSelect.innerHTML = '<option value="">-- Select Pipeline --</option>';
+            if (window._qualSavedPipelineId) {
+                pipelineSelect.innerHTML += `<option value="${window._qualSavedPipelineId}" selected>${window._qualSavedPipelineId}</option>`;
+            }
+            const stageSelect = document.getElementById('ai_qual_stage');
+            stageSelect.innerHTML = '<option value="">-- Select a pipeline first --</option>';
+            if (window._qualSavedStageId) {
+                stageSelect.innerHTML += `<option value="${window._qualSavedStageId}" selected>${window._qualSavedStageId}</option>`;
+            }
+
+            // Restore fields
+            let savedFields = [];
+            try { savedFields = JSON.parse(btn.dataset.aiqualfields || '[]'); } catch(e) {}
+            const container = document.getElementById('qual_fields_container');
+            container.innerHTML = '';
+            if (savedFields.length > 0) {
+                savedFields.forEach(f => addQualField(f.label, f.key, f.ghl_field_id));
+            }
+            serializeQualFields();
+
             document.getElementById('form_ai_agent').action = '/admin/agents/' + locationId + '/save';
             document.getElementById('aiAgentModal').classList.remove('hidden');
 
             // Default to Settings Tab
             switchAITab('settings');
+        }
+
+        // ── Qualification Tab Functions ──
+
+        async function loadQualPipelines() {
+            const locationId = document.getElementById('ai_location_id').value;
+            if (!locationId) return;
+            const select = document.getElementById('ai_qual_pipeline');
+            select.innerHTML = '<option value="">Loading...</option>';
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/ghl/pipelines`);
+                const data = await resp.json();
+                if (data.success && data.pipelines) {
+                    window._qualPipelinesData = data.pipelines;
+                    select.innerHTML = '<option value="">-- Select Pipeline --</option>';
+                    data.pipelines.forEach(p => {
+                        const selected = p.id === window._qualSavedPipelineId ? 'selected' : '';
+                        select.innerHTML += `<option value="${p.id}" ${selected}>${p.name}</option>`;
+                    });
+                    if (select.value) onQualPipelineChange();
+                } else {
+                    select.innerHTML = '<option value="">Failed to load</option>';
+                }
+            } catch(e) {
+                select.innerHTML = '<option value="">Error loading pipelines</option>';
+            }
+        }
+
+        function onQualPipelineChange() {
+            const pipelineId = document.getElementById('ai_qual_pipeline').value;
+            const stageSelect = document.getElementById('ai_qual_stage');
+            stageSelect.innerHTML = '<option value="">-- Select Stage --</option>';
+            if (!pipelineId) return;
+
+            const pipeline = (window._qualPipelinesData || []).find(p => p.id === pipelineId);
+            if (pipeline && pipeline.stages) {
+                pipeline.stages.forEach(s => {
+                    const selected = s.id === window._qualSavedStageId ? 'selected' : '';
+                    stageSelect.innerHTML += `<option value="${s.id}" ${selected}>${s.name}</option>`;
+                });
+            }
+        }
+
+        async function loadQualCustomFields() {
+            const locationId = document.getElementById('ai_location_id').value;
+            if (!locationId) return;
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/ghl/custom-fields?model=opportunity`);
+                const data = await resp.json();
+                if (data.success && data.fields) {
+                    window._qualCustomFieldsData = data.fields;
+                    // Update all existing field mapping dropdowns
+                    document.querySelectorAll('.qual-ghl-field-select').forEach(sel => {
+                        const currentVal = sel.value;
+                        sel.innerHTML = '<option value="">-- No mapping --</option>';
+                        data.fields.forEach(f => {
+                            const selected = f.id === currentVal ? 'selected' : '';
+                            sel.innerHTML += `<option value="${f.id}" ${selected}>${f.name} (${f.dataType || 'text'})</option>`;
+                        });
+                    });
+                }
+            } catch(e) {
+                console.error('Error loading custom fields:', e);
+            }
+        }
+
+        function addQualField(label, key, ghlFieldId) {
+            label = label || '';
+            key = key || '';
+            ghlFieldId = ghlFieldId || '';
+            const container = document.getElementById('qual_fields_container');
+            const idx = container.children.length;
+            const fieldsOptions = (window._qualCustomFieldsData || []).map(f =>
+                `<option value="${f.id}" ${f.id === ghlFieldId ? 'selected' : ''}>${f.name} (${f.dataType || 'text'})</option>`
+            ).join('');
+
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-2 bg-black/30 border border-gray-800 rounded-lg p-2.5';
+            row.innerHTML = `
+                <input type="text" placeholder="Label (e.g. Full Name)" value="${label}"
+                    class="qual-field-label input-dark flex-1 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
+                <input type="text" placeholder="Key (e.g. nome)" value="${key}"
+                    class="qual-field-key input-dark w-32 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
+                <select class="qual-ghl-field-select input-dark flex-1 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
+                    <option value="">-- No mapping --</option>
+                    ${fieldsOptions}
+                </select>
+                <button type="button" onclick="removeQualField(this)"
+                    class="p-2 text-gray-500 hover:text-red-400 transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            `;
+            container.appendChild(row);
+            serializeQualFields();
+        }
+
+        function removeQualField(btn) {
+            btn.closest('div').remove();
+            serializeQualFields();
+        }
+
+        function serializeQualFields() {
+            const rows = document.querySelectorAll('#qual_fields_container > div');
+            const fields = [];
+            rows.forEach(row => {
+                const label = row.querySelector('.qual-field-label')?.value?.trim() || '';
+                const key = row.querySelector('.qual-field-key')?.value?.trim() || '';
+                const ghlFieldId = row.querySelector('.qual-ghl-field-select')?.value || '';
+                if (label && key) {
+                    fields.push({ label, key, ghl_field_id: ghlFieldId });
+                }
+            });
+            document.getElementById('ai_qual_fields_json').value = JSON.stringify(fields);
         }
 
         function closeAIAgentModal() {
@@ -944,6 +1090,11 @@
                                     data-aielsimilarity="{{ tenant.ai_agent_data.elevenlabs_similarity if tenant.ai_agent_data else '0.75' }}"
                                     data-aigroqkey="{{ (tenant.ai_agent_data.groq_api_key | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.groq_api_key else '' }}"
                                     data-aidebounce="{{ tenant.ai_agent_data.debounce_seconds if tenant.ai_agent_data else '1.5' }}"
+                                    data-aiqualenabled="{{ tenant.ai_agent_data.qualification_enabled if tenant.ai_agent_data else 'False' }}"
+                                    data-aiqualpipelineid="{{ tenant.ai_agent_data.qualification_pipeline_id if tenant.ai_agent_data else '' }}"
+                                    data-aiqualstageid="{{ tenant.ai_agent_data.qualification_stage_id if tenant.ai_agent_data else '' }}"
+                                    data-aiqualfields="{{ (tenant.ai_agent_data.qualification_fields | tojson | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.qualification_fields else '[]' }}"
+                                    data-aiqualsummaryprompt="{{ (tenant.ai_agent_data.qualification_summary_prompt | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.qualification_summary_prompt else '' }}"
                                     onclick="openAIAgentModal(this)"
                                     class="text-brand-red hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-1.5 bg-brand-red/10 px-2.5 py-1.5 rounded-md border border-brand-red/30 mr-2">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1436,7 +1587,7 @@
                     </button>
                 </div>
 
-                <form id="form_ai_agent" method="POST" class="space-y-6">
+                <form id="form_ai_agent" method="POST" class="space-y-6" onsubmit="serializeQualFields()">
                     <input type="hidden" id="ai_location_id" name="location_id">
 
                     <nav class="flex border-b border-gray-800 mb-8 overflow-x-auto scrollbar-none">
@@ -1455,6 +1606,9 @@
                         <button type="button" id="btn_ai_tab_costs" onclick="switchAITab('costs', this); loadUsageData();"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">💰
                             Costs</button>
+                        <button type="button" id="btn_ai_tab_qualification" onclick="switchAITab('qualification', this)"
+                            class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">🎯
+                            Qualification</button>
                     </nav>
 
                     <!-- TAB: SETTINGS -->
@@ -1834,6 +1988,78 @@
                                     <div id="costs_daily_bars" class="flex items-end gap-1 h-32"></div>
                                     <div id="costs_daily_labels" class="flex gap-1 mt-1 overflow-x-auto"></div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: QUALIFICATION -->
+                    <div id="ai_tab_qualification" class="ai-tab-content space-y-6 hidden">
+                        <!-- Enable toggle -->
+                        <div class="flex items-center justify-between bg-black/40 border border-gray-800 p-4 rounded-xl">
+                            <div>
+                                <p class="text-sm font-bold text-white uppercase tracking-wide">Auto-Create Deal</p>
+                                <p class="text-xs text-gray-500 mt-1">When enabled, the AI agent will automatically create a deal in GHL after collecting all required fields from the lead.</p>
+                            </div>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="ai_qual_enabled" name="qualification_enabled" value="true" class="sr-only peer">
+                                <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-brand-red transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                            </label>
+                        </div>
+
+                        <!-- Pipeline + Stage -->
+                        <div id="qual_config_section" class="space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-2">Pipeline</label>
+                                    <div class="flex gap-2">
+                                        <select id="ai_qual_pipeline" name="qualification_pipeline_id" onchange="onQualPipelineChange()"
+                                            class="input-dark w-full px-4 py-2.5 rounded-lg text-sm font-mono">
+                                            <option value="">-- Select Pipeline --</option>
+                                        </select>
+                                        <button type="button" onclick="loadQualPipelines()" title="Fetch pipelines from GHL"
+                                            class="px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors text-xs">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-2">Stage</label>
+                                    <select id="ai_qual_stage" name="qualification_stage_id"
+                                        class="input-dark w-full px-4 py-2.5 rounded-lg text-sm font-mono">
+                                        <option value="">-- Select a pipeline first --</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Required Fields -->
+                            <div>
+                                <div class="flex items-center justify-between mb-3">
+                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono">Required Fields</label>
+                                    <div class="flex gap-2">
+                                        <button type="button" onclick="loadQualCustomFields()" title="Fetch custom fields from GHL"
+                                            class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors text-[10px] font-mono uppercase tracking-widest">
+                                            Fetch GHL Fields
+                                        </button>
+                                        <button type="button" onclick="addQualField()"
+                                            class="px-3 py-1.5 bg-brand-red/20 hover:bg-brand-red/30 border border-brand-red/40 rounded-lg text-brand-red text-[10px] font-mono uppercase tracking-widest transition-colors">
+                                            + Add Field
+                                        </button>
+                                    </div>
+                                </div>
+                                <p class="text-[10px] text-gray-600 font-mono mb-3">Define the fields the AI needs to collect from the lead. Map each to a GHL opportunity custom field.</p>
+                                <div id="qual_fields_container" class="space-y-2">
+                                    <!-- Dynamic rows inserted by JS -->
+                                </div>
+                                <input type="hidden" id="ai_qual_fields_json" name="qualification_fields" value="[]">
+                            </div>
+
+                            <!-- Summary Prompt Override -->
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-2">Summary Prompt (Optional)</label>
+                                <p class="text-[10px] text-gray-600 font-mono mb-2">Override the default summary prompt. Leave empty to use the built-in template that generates a brief report for the closer.</p>
+                                <textarea id="ai_qual_summary_prompt" name="qualification_summary_prompt" rows="4"
+                                    class="input-dark w-full px-4 py-3 rounded-lg text-sm font-mono resize-y"
+                                    placeholder="Leave empty for default: generates a summary with lead interest, collected data, key points, and next steps for the closer."></textarea>
                             </div>
                         </div>
                     </div>

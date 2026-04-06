@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, ForeignKey, Text, Float
+from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, ForeignKey, Text, Float, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from data.database import Base
@@ -78,9 +78,16 @@ class AIAgent(Base):
     is_active = Column(Boolean, default=False)
     debounce_seconds = Column(Float, default=1.5, nullable=True)
 
+    # Qualificação de leads
+    qualification_enabled = Column(Boolean, default=False)
+    qualification_pipeline_id = Column(String, nullable=True)
+    qualification_stage_id = Column(String, nullable=True)
+    qualification_fields = Column(JSON, nullable=True)  # [{label, key, ghl_field_id}]
+    qualification_summary_prompt = Column(Text, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relações
     tenant = relationship("Tenant", back_populates="ai_agent")
 
@@ -159,6 +166,24 @@ class UsageLog(Base):
     characters = Column(Integer, default=0)  # para ElevenLabs (TTS)
     cost_usd = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class QualifiedLead(Base):
+    """
+    Registra leads qualificados pelo agente IA.
+    Previne duplicação de oportunidades e serve como flag de desativação
+    da IA para o contato (especialmente no modo whatsapp_only).
+    """
+    __tablename__ = "qualified_leads"
+    __table_args__ = (UniqueConstraint("location_id", "phone", name="uq_qualified_lead_location_phone"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    location_id = Column(String, ForeignKey("tenants.location_id", ondelete="CASCADE"), nullable=False, index=True)
+    phone = Column(String, nullable=False, index=True)
+    ghl_opportunity_id = Column(String, nullable=True)
+    qualified_data = Column(JSON, nullable=True)
+    summary = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class SystemSettings(Base):
