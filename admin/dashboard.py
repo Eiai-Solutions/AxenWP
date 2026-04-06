@@ -133,6 +133,7 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
             "zapi_instance_id": t.zapi_instance_id,
             "zapi_token": t.zapi_token,
             "zapi_client_token": t.zapi_client_token,
+            "client_id": t.client_id,
         }
         
         agent = agent_map.get(t.location_id)
