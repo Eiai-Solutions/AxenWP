@@ -232,7 +232,7 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
         else:
             import re
 
-            chunks = [c.strip() for c in re.split(r'(?<=[.?!])\s+(?=[A-Z0-9À-ÖØ-Þ*])', ai_content) if c.strip()]
+            chunks = [c.strip() for c in re.split(r'\n\n+', ai_content) if c.strip()]
             if not chunks:
                 chunks = [ai_content.strip()]
 
