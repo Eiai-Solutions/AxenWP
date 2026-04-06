@@ -148,17 +148,33 @@
                 if (d.clientId) {
                     window.location.href = `/oauth/install?company=${encodeURIComponent(d.companyName)}&ci=${d.clientId}&ui_redirect=1`;
                 } else {
-                    // Tenant sem credenciais GHL — abrir modal para informar Client ID/Secret
-                    openNewCompanyModal();
-                    // Preencher com o nome da empresa
-                    const nameInput = document.getElementById('new_company_name');
-                    if (nameInput) nameInput.value = d.companyName;
+                    openConnectCRMModal(d.companyName);
                 }
             } else if (action === 'form') {
                 generateFormLink(d.locationId);
             } else if (action === 'delete') {
                 openDeleteModal(d.locationId, d.companyName);
             }
+        }
+
+        function openConnectCRMModal(companyName) {
+            document.getElementById('connect_crm_company').innerText = companyName;
+            document.getElementById('connect_crm_company_hidden').value = companyName;
+            document.getElementById('connect_crm_ci').value = '';
+            document.getElementById('connect_crm_cs').value = '';
+            document.getElementById('connectCRMModal').classList.remove('hidden');
+        }
+
+        function closeConnectCRMModal() {
+            document.getElementById('connectCRMModal').classList.add('hidden');
+        }
+
+        function submitConnectCRM() {
+            const company = document.getElementById('connect_crm_company_hidden').value;
+            const ci = document.getElementById('connect_crm_ci').value.trim();
+            const cs = document.getElementById('connect_crm_cs').value.trim();
+            if (!ci) { alert('Informe o Client ID do GHL.'); return; }
+            window.location.href = `/oauth/install?company=${encodeURIComponent(company)}&ci=${encodeURIComponent(ci)}&cs=${encodeURIComponent(cs)}&ui_redirect=1`;
         }
 
         function openAIAgentModal(btn) {
@@ -1612,6 +1628,42 @@
                         <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Remover permanentemente esta instancia</p>
                     </div>
                 </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Conectar CRM -->
+    <div id="connectCRMModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-md" onclick="closeConnectCRMModal()"></div>
+        <div class="relative glass-panel rounded-2xl border border-yellow-500/30 w-full max-w-md p-8 z-10">
+            <button onclick="closeConnectCRMModal()" class="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+
+            <h3 class="font-display text-xl font-bold text-white uppercase tracking-tight mb-1">Conectar CRM</h3>
+            <p class="text-yellow-500 text-sm font-mono font-bold mb-4" id="connect_crm_company"></p>
+            <input type="hidden" id="connect_crm_company_hidden">
+
+            <div class="bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-4 mb-6">
+                <p class="text-sm text-gray-300">Conecte ao GoHighLevel para enviar leads qualificados como oportunidades no CRM. <strong class="text-white">As mensagens continuam direto pelo WhatsApp.</strong></p>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-1.5">OAuth Client ID</label>
+                    <input type="text" id="connect_crm_ci" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" placeholder="Cole o Client ID do GHL Marketplace">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-1.5">OAuth Client Secret</label>
+                    <input type="password" id="connect_crm_cs" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" placeholder="Cole o Client Secret">
+                </div>
+            </div>
+
+            <div class="mt-6 flex gap-3">
+                <button type="button" onclick="closeConnectCRMModal()"
+                    class="flex-1 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">Cancelar</button>
+                <button type="button" onclick="submitConnectCRM()"
+                    class="flex-1 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-yellow-600 hover:bg-yellow-500 transition-colors">Conectar ao GHL</button>
             </div>
         </div>
     </div>
