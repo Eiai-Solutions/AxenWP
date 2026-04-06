@@ -1226,12 +1226,21 @@
                             <option value="openai/gpt-4o" {% if system_settings and
                                 system_settings.admin_openrouter_model=='openai/gpt-4o' %}selected{% endif %}>
                                 openai/gpt-4o</option>
-                            <option value="anthropic/claude-3.5-sonnet" {% if system_settings and
-                                system_settings.admin_openrouter_model=='anthropic/claude-3.5-sonnet' %}selected{% endif
-                                %}>anthropic/claude-3.5-sonnet</option>
+                            <option value="openai/gpt-4o-mini" {% if system_settings and
+                                system_settings.admin_openrouter_model=='openai/gpt-4o-mini' %}selected{% endif %}>
+                                openai/gpt-4o-mini</option>
+                            <option value="anthropic/claude-sonnet-4" {% if system_settings and
+                                system_settings.admin_openrouter_model=='anthropic/claude-sonnet-4' %}selected{% endif %}>
+                                anthropic/claude-sonnet-4</option>
+                            <option value="anthropic/claude-haiku-4-5" {% if system_settings and
+                                system_settings.admin_openrouter_model=='anthropic/claude-haiku-4-5' %}selected{% endif %}>
+                                anthropic/claude-haiku-4.5</option>
+                            <option value="google/gemini-2.0-flash-001" {% if system_settings and
+                                system_settings.admin_openrouter_model=='google/gemini-2.0-flash-001' %}selected{% endif %}>
+                                google/gemini-2.0-flash</option>
                             <option value="meta-llama/llama-3.1-70b-instruct" {% if system_settings and
                                 system_settings.admin_openrouter_model=='meta-llama/llama-3.1-70b-instruct' %}selected{%
-                                endif %}>meta-llama/llama-3.1-70b-instruct</option>
+                                endif %}>meta-llama/llama-3.1-70b</option>
                         </select>
                     </div>
 
@@ -1743,16 +1752,16 @@
 
                             <div class="group">
                                 <label
-                                    class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">LLM
-                                    Routing Model</label>
+                                    class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Modelo
+                                    LLM</label>
                                 <select id="ai_model" name="model"
                                     class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
-                                    <option value="openai/gpt-4o">OpenRouter - GPT-4o (OpenAI)</option>
-                                    <option value="openai/gpt-4o-mini">OpenRouter - GPT-4o Mini (OpenAI)</option>
-                                    <option value="anthropic/claude-3.5-sonnet">OpenRouter - Claude 3.5 Sonnet</option>
-                                    <option value="anthropic/claude-3-haiku">OpenRouter - Claude 3 Haiku</option>
-                                    <option value="google/gemini-pro-1.5">OpenRouter - Gemini 1.5 Pro</option>
-                                    <option value="meta-llama/llama-3-70b-instruct">OpenRouter - LLaMA 3 70B</option>
+                                    <option value="openai/gpt-4o">GPT-4o (OpenAI)</option>
+                                    <option value="openai/gpt-4o-mini">GPT-4o Mini (OpenAI)</option>
+                                    <option value="anthropic/claude-sonnet-4">Claude Sonnet 4 (Anthropic)</option>
+                                    <option value="anthropic/claude-haiku-4-5">Claude Haiku 4.5 (Anthropic)</option>
+                                    <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash (Google)</option>
+                                    <option value="meta-llama/llama-3.1-70b-instruct">LLaMA 3.1 70B (Meta)</option>
                                 </select>
                             </div>
                         </div>
