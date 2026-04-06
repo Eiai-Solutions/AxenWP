@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Axen WP</title>
+    <title>Painel - Axen WP</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.ico">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -186,8 +186,8 @@
             document.getElementById('ai_elevenlabs_voice_id').dataset.preselected = elevenlabsVoiceId || '';
 
             // Qualification tab
-            const qualEnabled = String(btn.dataset.aiqualenabled).toLowerCase() === 'true';
-            document.getElementById('ai_qual_enabled').checked = qualEnabled;
+            const qualAtivard = String(btn.dataset.aiqualenabled).toLowerCase() === 'true';
+            document.getElementById('ai_qual_enabled').checked = qualAtivard;
             document.getElementById('ai_qual_summary_prompt').value = btn.dataset.aiqualsummaryprompt || '';
 
             // Store saved pipeline/stage IDs for restoration after fetch
@@ -244,7 +244,7 @@
                     });
                     if (select.value) onQualPipelineChange();
                 } else {
-                    const errMsg = data.error || 'Failed to load';
+                    const errMsg = data.error || 'Falha ao carregar';
                     select.innerHTML = `<option value="">${errMsg}</option>`;
                     alert('Pipelines: ' + errMsg);
                 }
@@ -286,11 +286,11 @@
                         });
                     });
                 } else {
-                    alert('Custom Fields: ' + (data.error || 'Failed to load'));
+                    alert('Campos: ' + (data.error || 'Falha ao carregar'));
                 }
             } catch(e) {
                 console.error('Error loading custom fields:', e);
-                alert('Error loading custom fields: ' + e.message);
+                alert('Erro ao carregar campos: ' + e.message);
             }
         }
 
@@ -307,9 +307,9 @@
             const row = document.createElement('div');
             row.className = 'flex items-center gap-2 bg-black/30 border border-gray-800 rounded-lg p-2.5';
             row.innerHTML = `
-                <input type="text" placeholder="Label (e.g. Full Name)" value="${label}"
+                <input type="text" placeholder="Nome do campo (ex: Nome Completo)" value="${label}"
                     class="qual-field-label input-dark flex-1 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
-                <input type="text" placeholder="Key (e.g. nome)" value="${key}"
+                <input type="text" placeholder="Chave (ex: nome)" value="${key}"
                     class="qual-field-key input-dark w-32 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
                 <select class="qual-ghl-field-select input-dark flex-1 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
                     <option value="">-- No mapping --</option>
@@ -860,7 +860,7 @@
                 selectInfo.classList.replace('text-gray-400', 'text-red-400');
             } finally {
                 btn.disabled = false;
-                btn.innerHTML = 'Fetch Voices';
+                btn.innerHTML = 'Buscar Vozes';
             }
         }
     </script>
@@ -952,7 +952,7 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                         </svg>
-                        <span>Admin Settings</span>
+                        <span>Config. Admin</span>
                     </button>
                     <a href="/admin/logout"
                         class="text-gray-400 hover:text-white text-[10px] uppercase tracking-widest font-mono transition-colors flex items-center gap-1.5">
@@ -996,16 +996,16 @@
         <!-- Header -->
         <div class="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
             <div>
-                <h2 class="font-display text-4xl font-extrabold text-white tracking-tight uppercase glow-text">Locations
+                <h2 class="font-display text-4xl font-extrabold text-white tracking-tight uppercase glow-text">Instancias
                 </h2>
-                <p class="text-sm text-gray-500 mt-1 font-mono uppercase tracking-widest">Active System Integrations</p>
+                <p class="text-sm text-gray-500 mt-1 font-mono uppercase tracking-widest">Integracoes Ativas</p>
             </div>
             <button onclick="openNewCompanyModal()"
                 class="btn-brand text-white font-bold py-2.5 px-6 rounded-lg shadow uppercase tracking-widest text-xs flex items-center gap-2">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
                 </svg>
-                Deploy New Instance
+                Nova Instancia
             </button>
         </div>
 
@@ -1016,11 +1016,11 @@
                     <thead>
                         <tr
                             class="bg-gray-900/50 text-gray-400 text-[10px] uppercase tracking-widest font-mono border-b border-gray-800">
-                            <th class="px-6 py-4 font-semibold">Workspace</th>
+                            <th class="px-6 py-4 font-semibold">Empresa</th>
                             <th class="px-6 py-4 font-semibold">Location ID</th>
-                            <th class="px-6 py-4 font-semibold text-center">GHL Status</th>
-                            <th class="px-6 py-4 font-semibold text-center">Z-API Engine</th>
-                            <th class="px-6 py-4 font-semibold text-right">Operations</th>
+                            <th class="px-6 py-4 font-semibold text-center">Status GHL</th>
+                            <th class="px-6 py-4 font-semibold text-center">Motor Z-API</th>
+                            <th class="px-6 py-4 font-semibold text-right">Acoes</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-800/60 text-sm">
@@ -1043,7 +1043,7 @@
                                 <span
                                     class="status-badge text-purple-400 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono">
                                     <span class="w-1.5 h-1.5 rounded-full bg-purple-500 shadow-[0_0_5px_#a855f7]"></span>
-                                    WP Only
+                                    Somente WP
                                 </span>
                                 {% elif tenant.is_token_expired %}
                                 <span
@@ -1054,7 +1054,7 @@
                                 <span
                                     class="status-badge text-green-400 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono">
                                     <span class="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_#22c55e]"></span>
-                                    Synced
+                                    Sincronizado
                                 </span>
                                 {% endif %}
                             </td>
@@ -1067,18 +1067,18 @@
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                             d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                                     </svg>
-                                    Connected
+                                    Conectado
                                 </span>
                                 {% elif tenant.zapi_connection_status == 'DISCONNECTED' %}
                                 <span
                                     class="text-yellow-500/80 font-medium text-xs flex items-center justify-center gap-2"
-                                    title="WhatsApp Desktop offline or disconnected">
+                                    title="WhatsApp Desktop offline ou desconectado">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                             d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 2.829a4.978 4.978 0 01-1.414-2.83m-1.414 5.658a9 9 0 01-2.167-9.238L5.3 5.3m0 0L4.586 4.586m0 0L2.1 2.1">
                                         </path>
                                     </svg>
-                                    Disconnected
+                                    Desconectared
                                 </span>
                                 {% else %}
                                 <span class="text-gray-600 font-medium text-xs flex items-center justify-center gap-2">
@@ -1087,7 +1087,7 @@
                                             d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
                                         </path>
                                     </svg>
-                                    Missing
+                                    Ausente
                                 </span>
                                 {% endif %}
                             </td>
@@ -1099,8 +1099,8 @@
                                     <button type="submit"
                                         class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-brand-red focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors {{ 'bg-green-500/80 shadow-[0_0_10px_rgba(34,197,94,0.3)]' if tenant.is_active else 'bg-gray-700' }}"
                                         role="switch" aria-checked="{{ 'true' if tenant.is_active else 'false' }}"
-                                        title="{{ 'Disable' if tenant.is_active else 'Enable' }} Automation">
-                                        <span class="sr-only">Toggle automation</span>
+                                        title="{{ 'Desativar' if tenant.is_active else 'Ativar' }} Automation">
+                                        <span class="sr-only">Alternar automacao</span>
                                         <span aria-hidden="true"
                                             class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {{ 'translate-x-4' if tenant.is_active else '-translate-x-0' }}">
                                         </span>
@@ -1115,7 +1115,7 @@
                                             d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm14 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z">
                                         </path>
                                     </svg>
-                                    Scan QR
+                                    Escanear QR
                                 </button>
                                 {% endif %}
                                 <button
@@ -1145,7 +1145,7 @@
                                             d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                                     </svg>
-                                    Settings
+                                    Configuracoes
                                 </button>
                             </td>
                         </tr>
@@ -1159,7 +1159,7 @@
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                                             d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path>
                                     </svg>
-                                    No instances found. Initializing deployment sequence required.
+                                    Nenhuma instancia encontrada. Adicione uma nova instancia para comecar.
                                 </div>
                             </td>
                         </tr>
@@ -1263,7 +1263,7 @@
                     <div>
                         <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight">Node
                             Configuration</h3>
-                        <p class="text-xs text-gray-500 font-mono mt-1 uppercase tracking-widest">Instance: <span
+                        <p class="text-xs text-gray-500 font-mono mt-1 uppercase tracking-widest">Instancia: <span
                                 id="zapi_company_name"
                                 class="text-brand-red border-b border-brand-red/30 pb-0.5"></span></p>
                     </div>
@@ -1288,15 +1288,15 @@
                             </svg>
                         </div>
                         <div class="min-w-0 flex-1 overflow-hidden">
-                            <p class="text-xs text-brand-red font-bold uppercase tracking-widest mb-1">Inbound Webhook
+                            <p class="text-xs text-brand-red font-bold uppercase tracking-widest mb-1">Webhook de Entrada
                             </p>
-                            <p class="text-xs text-gray-400 mb-2">Copy to Z-API "Ao Receber Mensagem":</p>
+                            <p class="text-xs text-gray-400 mb-2">Copie para Z-API "Ao Receber Mensagem":</p>
                             <code id="zapi_webhook_instruction"
                                 class="block w-full bg-black border border-gray-800 p-3 rounded-lg text-xs text-gray-300 font-mono select-all overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent selection:bg-brand-red/30">https://{{ request.headers.host }}/webhook/zapi/inbound/ID</code>
 
                             <p class="text-xs text-brand-red font-bold uppercase tracking-widest mt-5 mb-1">Status
                                 Webhook</p>
-                            <p class="text-xs text-gray-400 mb-2">Copy to Z-API "Ao Alterar Status da Mensagem":</p>
+                            <p class="text-xs text-gray-400 mb-2">Copie para Z-API "Ao Alterar Status da Mensagem":</p>
                             <code id="zapi_webhook_status"
                                 class="block w-full bg-black border border-gray-800 p-3 rounded-lg text-xs text-gray-300 font-mono select-all overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent selection:bg-brand-red/30">https://{{ request.headers.host }}/webhook/zapi/status/ID</code>
 
@@ -1333,13 +1333,13 @@
                                 Client Token (Optional)</label>
                             <input type="text" id="zapi_client_token" name="client_token"
                                 class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
-                                placeholder="Optional webhook security key">
+                                placeholder="Chave de seguranca opcional do webhook">
                         </div>
                     </div>
 
                     <div class="mt-8 flex items-center justify-end gap-3 pt-4 border-t border-gray-800">
                         <button type="button" onclick="closeZAPIModal()"
-                            class="px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">Cancel</button>
+                            class="px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">Cancelar</button>
                         <button type="submit"
                             class="btn-brand px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white">Save
                             Configuration</button>
@@ -1360,9 +1360,9 @@
             <div class="p-8">
                 <div class="flex justify-between items-start mb-6 border-b border-gray-800 pb-4">
                     <div>
-                        <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight">New Instance
+                        <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight">Nova Instancia
                         </h3>
-                        <p class="text-xs text-gray-500 font-mono mt-1 uppercase tracking-widest">Choose Deployment Mode</p>
+                        <p class="text-xs text-gray-500 font-mono mt-1 uppercase tracking-widest">Escolha o Modo de Implantacao</p>
                     </div>
                     <button onclick="closeNewCompanyModal()" class="text-gray-500 hover:text-white transition-colors">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1385,14 +1385,14 @@
                             </div>
                             <div>
                                 <p class="text-white font-bold text-sm uppercase tracking-wide">GHL + CRM</p>
-                                <p class="text-gray-500 text-[10px] font-mono uppercase tracking-widest">Connect via GoHighLevel OAuth</p>
+                                <p class="text-gray-500 text-[10px] font-mono uppercase tracking-widest">Conectar via GoHighLevel OAuth</p>
                             </div>
                         </div>
                     </button>
                     <form id="ghlForm" action="/admin/onboard" method="POST" class="space-y-4 mt-4 px-2 hidden">
                         <div class="group">
-                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Workspace Identity Label</label>
-                            <input type="text" name="company_name" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm" placeholder="e.g. MapInvest Auth" required>
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Nome da Empresa</label>
+                            <input type="text" name="company_name" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm" placeholder="ex: MapInvest Auth" required>
                         </div>
                         <div class="group">
                             <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">OAuth Client ID</label>
@@ -1404,7 +1404,7 @@
                         </div>
                         <button type="submit"
                             class="btn-brand w-full px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-widest text-white flex justify-center items-center gap-2">
-                            Initialize Connection
+                            Iniciar Conexao
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
                             </svg>
@@ -1424,8 +1424,8 @@
                                 </svg>
                             </div>
                             <div>
-                                <p class="text-white font-bold text-sm uppercase tracking-wide">WhatsApp Only</p>
-                                <p class="text-gray-500 text-[10px] font-mono uppercase tracking-widest">Direct Z-API without CRM</p>
+                                <p class="text-white font-bold text-sm uppercase tracking-wide">Somente WhatsApp</p>
+                                <p class="text-gray-500 text-[10px] font-mono uppercase tracking-widest">Z-API direto sem CRM</p>
                             </div>
                         </div>
                     </button>
@@ -1445,8 +1445,8 @@
             <div class="p-8">
                 <div class="flex justify-between items-start mb-6 border-b border-gray-800 pb-4">
                     <div>
-                        <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight">WhatsApp Only</h3>
-                        <p class="text-xs text-gray-500 font-mono mt-1 uppercase tracking-widest">Direct Agent — No CRM</p>
+                        <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight">Somente WhatsApp</h3>
+                        <p class="text-xs text-gray-500 font-mono mt-1 uppercase tracking-widest">Agente Direto — Sem CRM</p>
                     </div>
                     <button onclick="closeWhatsAppOnlyModal()" class="text-gray-500 hover:text-white transition-colors">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1464,9 +1464,9 @@
 
                 <form action="/admin/onboard-whatsapp" method="POST" class="space-y-5">
                     <div class="group">
-                        <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Workspace Identity Label</label>
+                        <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Nome da Empresa</label>
                         <input type="text" name="company_name" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm"
-                            placeholder="e.g. Meu Agente WhatsApp" required>
+                            placeholder="ex: Meu Agente WhatsApp" required>
                     </div>
 
                     <div class="group">
@@ -1482,7 +1482,7 @@
                     </div>
 
                     <div class="group">
-                        <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Z-API Client Token <span class="text-gray-600">(optional)</span></label>
+                        <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Z-API Client Token <span class="text-gray-600">(opcional)</span></label>
                         <input type="text" name="zapi_client_token"
                             class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
                     </div>
@@ -1490,7 +1490,7 @@
                     <div class="mt-8 flex flex-col gap-3 pt-4 border-t border-gray-800">
                         <button type="submit"
                             class="w-full px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-widest text-white flex justify-center items-center gap-2 bg-purple-600 hover:bg-purple-500 transition-colors shadow-lg">
-                            Deploy WhatsApp Agent
+                            Criar Agente WhatsApp
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
@@ -1511,7 +1511,7 @@
             </button>
 
             <div class="mb-6">
-                <h3 class="font-display text-xl font-bold text-white uppercase tracking-tight">Instance Settings</h3>
+                <h3 class="font-display text-xl font-bold text-white uppercase tracking-tight">Configuracoes da Instancia</h3>
                 <p class="text-brand-red text-sm font-mono font-bold mt-1" id="instance_settings_company"></p>
             </div>
 
@@ -1525,8 +1525,8 @@
                         </svg>
                     </div>
                     <div>
-                        <p class="text-sm font-bold text-white group-hover:text-brand-red transition-colors">Agent AI</p>
-                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Configure AI engine, voice, qualification</p>
+                        <p class="text-sm font-bold text-white group-hover:text-brand-red transition-colors">Agente IA</p>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Configurar motor IA, voz, qualificacao</p>
                     </div>
                 </button>
 
@@ -1539,8 +1539,8 @@
                         </svg>
                     </div>
                     <div>
-                        <p class="text-sm font-bold text-white group-hover:text-green-400 transition-colors">Configure Z-API</p>
-                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">WhatsApp connection settings & webhooks</p>
+                        <p class="text-sm font-bold text-white group-hover:text-green-400 transition-colors">Configurar Z-API</p>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Configuracoes de conexao WhatsApp e webhooks</p>
                     </div>
                 </button>
 
@@ -1553,8 +1553,8 @@
                         </svg>
                     </div>
                     <div>
-                        <p class="text-sm font-bold text-white group-hover:text-yellow-400 transition-colors">Reconnect CRM</p>
-                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Re-authorize GHL OAuth (update scopes)</p>
+                        <p class="text-sm font-bold text-white group-hover:text-yellow-400 transition-colors">Reconectar CRM</p>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Re-autorizar OAuth do GHL (atualizar permissoes)</p>
                     </div>
                 </button>
 
@@ -1567,8 +1567,8 @@
                         </svg>
                     </div>
                     <div>
-                        <p class="text-sm font-bold text-white group-hover:text-purple-400 transition-colors">Onboarding Form</p>
-                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Generate public form link</p>
+                        <p class="text-sm font-bold text-white group-hover:text-purple-400 transition-colors">Formulario de Cadastro</p>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Gerar link do formulario publico</p>
                     </div>
                 </button>
 
@@ -1581,8 +1581,8 @@
                         </svg>
                     </div>
                     <div>
-                        <p class="text-sm font-bold text-red-400 group-hover:text-red-300 transition-colors">Delete Instance</p>
-                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Permanently remove this instance</p>
+                        <p class="text-sm font-bold text-red-400 group-hover:text-red-300 transition-colors">Excluir Instancia</p>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Remover permanentemente esta instancia</p>
                     </div>
                 </button>
             </div>
@@ -1604,11 +1604,11 @@
                         </path>
                     </svg>
                 </div>
-                <h3 class="font-display text-xl font-bold text-white uppercase tracking-tight mb-2">Delete Instance</h3>
-                <p class="text-sm text-gray-400 mb-1">This will permanently remove</p>
+                <h3 class="font-display text-xl font-bold text-white uppercase tracking-tight mb-2">Excluir Instancia</h3>
+                <p class="text-sm text-gray-400 mb-1">Isso ira remover permanentemente</p>
                 <p class="text-brand-red font-bold text-lg mb-6" id="delete_company_name"></p>
                 <p class="text-[10px] text-gray-500 font-mono mb-8 leading-relaxed">
-                    All data including AI agent configuration, knowledge documents, contact mappings and message history will be permanently deleted.
+                    Todos os dados incluindo configuracao do agente IA, documentos, mapeamentos de contatos e historico de mensagens serao permanentemente excluidos.
                 </p>
 
                 <form id="form_delete_tenant" method="POST" class="flex gap-3">
@@ -1634,8 +1634,8 @@
             <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-red to-brand-darkred"></div>
 
             <div class="p-8 text-center">
-                <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight mb-2">Connect Device</h3>
-                <p class="text-xs text-gray-500 font-mono mb-8 uppercase tracking-widest">Instance: <span
+                <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight mb-2">Conectar Dispositivo</h3>
+                <p class="text-xs text-gray-500 font-mono mb-8 uppercase tracking-widest">Instancia: <span
                         id="qr_company_name" class="text-brand-red"></span></p>
 
                 <div id="qr_image_container" class="mb-8 min-h-[12rem] flex items-center justify-center">
@@ -1643,13 +1643,13 @@
                 </div>
 
                 <p class="text-[10px] text-gray-500 font-mono leading-relaxed px-4">
-                    Open WhatsApp on the device and scan the code above to restore communications.
+                    Abra o WhatsApp no dispositivo e escaneie o codigo acima para restaurar a comunicacao.
                 </p>
 
                 <div class="mt-8 border-t border-gray-800 pt-6">
                     <button type="button" onclick="closeQRModal()"
                         class="px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-gray-800 hover:bg-gray-700 w-full transition-colors">
-                        Done / Close
+                        Pronto / Fechar
                     </button>
                 </div>
             </div>
@@ -1679,7 +1679,7 @@
                         <div>
                             <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight glow-text">AI
                                 Agent Core</h3>
-                            <p class="text-xs text-gray-500 font-mono mt-1 uppercase tracking-widest">Instance: <span
+                            <p class="text-xs text-gray-500 font-mono mt-1 uppercase tracking-widest">Instancia: <span
                                     id="ai_company_name" class="text-brand-red"></span></p>
                         </div>
                     </div>
@@ -1697,22 +1697,22 @@
                     <nav class="flex border-b border-gray-800 mb-8 overflow-x-auto scrollbar-none">
                         <button type="button" id="btn_ai_tab_settings" onclick="switchAITab('settings', this)"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-brand-red text-brand-red bg-brand-red/10 transition-all">⚙️
-                            Settings</button>
+                            Configuracoes</button>
                         <button type="button" id="btn_ai_tab_voice" onclick="switchAITab('voice', this)"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">🗣️
-                            Voice & Audio</button>
+                            Voz e Audio</button>
                         <button type="button" id="btn_ai_tab_knowledge" onclick="switchAITab('knowledge', this)"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">🧠
-                            Knowledge Base</button>
+                            Base de Conhecimento</button>
                         <button type="button" id="btn_ai_tab_tester" onclick="switchAITab('tester', this)"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">🚀
-                            Tester (Simulator)</button>
+                            Testador (Simulador)</button>
                         <button type="button" id="btn_ai_tab_costs" onclick="switchAITab('costs', this); loadUsageData();"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">💰
-                            Costs</button>
+                            Custos</button>
                         <button type="button" id="btn_ai_tab_qualification" onclick="switchAITab('qualification', this)"
                             class="ai-tab-btn px-6 py-3 text-xs font-bold uppercase tracking-widest border-b-2 border-transparent text-gray-500 hover:text-white transition-all">🎯
-                            Qualification</button>
+                            Qualificacao</button>
                     </nav>
 
                     <!-- TAB: SETTINGS -->
@@ -1720,10 +1720,10 @@
                         <div
                             class="flex items-center justify-between bg-black/40 border border-gray-800 p-4 rounded-xl">
                             <div>
-                                <p class="text-sm font-bold text-white uppercase tracking-wide">Enable Cognitive Engine
+                                <p class="text-sm font-bold text-white uppercase tracking-wide">Ativar Motor Cognitivo
                                 </p>
-                                <p class="text-xs text-gray-500 mt-1">When active, the AI will automatically intercept
-                                    inbound messages marked for AI processing.</p>
+                                <p class="text-xs text-gray-500 mt-1">Quando ativo, a IA ira interceptar automaticamente
+                                    mensagens de entrada marcadas para processamento.</p>
                             </div>
                             <div class="flex items-center">
                                 <input type="checkbox" id="ai_is_active" name="is_active" value="true"
@@ -1738,7 +1738,7 @@
                                     Identity Name</label>
                                 <input type="text" id="ai_name" name="name"
                                     class="input-dark w-full py-2.5 px-3 rounded-lg text-sm"
-                                    placeholder="e.g. MapInvest Consultant">
+                                    placeholder="ex: Consultor MapInvest">
                             </div>
 
                             <div class="group">
@@ -1760,9 +1760,9 @@
                         <div class="group">
                             <label
                                 class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
-                                <span class="group-focus-within:text-white">API Key (OpenRouter)</span>
+                                <span class="group-focus-within:text-white">Chave API (OpenRouter)</span>
                                 <a href="https://openrouter.ai/keys" target="_blank"
-                                    class="text-brand-red hover:underline">Get Key</a>
+                                    class="text-brand-red hover:underline">Obter Chave</a>
                             </label>
                             <input type="password" id="ai_api_key" name="api_key"
                                 class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
@@ -1778,9 +1778,8 @@
                                 placeholder="You are a helpful assistant..."></textarea>
 
                             <div class="flex items-start justify-between mt-2 gap-4">
-                                <p class="text-[10px] text-gray-500 font-mono mt-1">This prompt dictates the exact
-                                    behavior,
-                                    tone, and constraints of the agent.</p>
+                                <p class="text-[10px] text-gray-500 font-mono mt-1">Este prompt dita o comportamento exato,
+                                    tom e restricoes do agente.</p>
                                 <button type="button" id="btn_analyze_prompt" onclick="analyzePrompt()"
                                     class="shrink-0 bg-brand-red/10 text-brand-red hover:bg-brand-red hover:text-white border border-brand-red/30 transition-colors px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest font-mono flex items-center gap-1.5">
                                     ✨ Analisar Prompt
@@ -1851,7 +1850,7 @@
                                 class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
                                 <span class="group-focus-within:text-white">Groq API Key (Transcrição de Áudio)</span>
                                 <a href="https://console.groq.com/keys" target="_blank"
-                                    class="text-brand-red hover:underline">Get Key</a>
+                                    class="text-brand-red hover:underline">Obter Chave</a>
                             </label>
                             <input type="password" id="ai_groq_api_key" name="groq_api_key"
                                 class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
@@ -1864,7 +1863,7 @@
                                 class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
                                 <span class="group-focus-within:text-white">ElevenLabs API Key (Voz da IA)</span>
                                 <a href="https://elevenlabs.io/" target="_blank"
-                                    class="text-brand-red hover:underline">Get Key</a>
+                                    class="text-brand-red hover:underline">Obter Chave</a>
                             </label>
                             <div class="flex gap-3">
                                 <input type="password" id="ai_elevenlabs_api_key" name="elevenlabs_api_key"
@@ -1872,7 +1871,7 @@
                                     placeholder="sk_...">
                                 <button type="button" id="btn_fetch_voices" onclick="fetchElevenLabsVoices()"
                                     class="bg-gray-800 hover:bg-gray-700 text-white font-mono uppercase tracking-widest text-[10px] px-4 rounded-lg font-bold border border-gray-700 transition-colors">
-                                    Fetch Voices
+                                    Buscar Vozes
                                 </button>
                             </div>
                         </div>
@@ -1883,15 +1882,15 @@
                                 Voice</label>
                             <select id="ai_elevenlabs_voice_id" name="elevenlabs_voice_id"
                                 class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" data-preselected="">
-                                <option value="">-- Load Voices First --</option>
+                                <option value="">-- Busque as Vozes Primeiro --</option>
                             </select>
                             <p id="voices_status_info" class="text-[10px] text-gray-400 mt-2 font-mono">Select a
                                 predefined or cloned voice from your ElevenLabs account.</p>
                         </div>
 
-                        <!-- Voice Settings Sliders -->
+                        <!-- Configuracoes de Voz Sliders -->
                         <div class="bg-black/40 border border-gray-800 p-4 rounded-xl space-y-4 mt-2">
-                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Voice Settings</p>
+                            <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Configuracoes de Voz</p>
 
                             <div>
                                 <label class="flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1.5">
@@ -1953,7 +1952,7 @@
                             </svg>
                             <h3 class="mt-2 font-mono text-sm uppercase tracking-widest font-bold text-gray-400">RAG
                                 Documents</h3>
-                            <p class="mt-1 text-xs text-gray-600 font-sans">Uploading interface coming later in Phase 3.
+                            <p class="mt-1 text-xs text-gray-600 font-sans">Interface de upload disponivel em breve na Fase 3.
                             </p>
                         </div>
                     </div>
@@ -1995,7 +1994,7 @@
                                         </svg>
                                     </button>
                                 </div>
-                                <p class="text-[9px] text-gray-600 mt-2 font-mono uppercase">Teste manual usa a chave API do Agente (aba Settings). Simulação usa a chave do Admin (Admin Settings).</p>
+                                <p class="text-[9px] text-gray-600 mt-2 font-mono uppercase">Teste manual usa a chave API do Agente (aba Settings). Simulação usa a chave do Admin (Config. Admin).</p>
                             </div>
                         </div>
 
@@ -2017,18 +2016,18 @@
                     <div id="ai_tab_costs" class="ai-tab-content space-y-4 hidden">
                         <!-- Period selector -->
                         <div class="flex items-center justify-between">
-                            <h3 class="text-xs font-bold text-white uppercase tracking-widest font-mono">Usage & Costs</h3>
+                            <h3 class="text-xs font-bold text-white uppercase tracking-widest font-mono">Uso e Custos</h3>
                             <select id="costs_period" onchange="loadUsageData()"
                                 class="input-dark px-3 py-1.5 rounded-lg text-xs font-mono">
-                                <option value="7d">Last 7 days</option>
-                                <option value="30d" selected>Last 30 days</option>
-                                <option value="90d">Last 90 days</option>
+                                <option value="7d">Ultimos 7 dias</option>
+                                <option value="30d" selected>Ultimos 30 dias</option>
+                                <option value="90d">Ultimos 90 dias</option>
                             </select>
                         </div>
 
                         <!-- Loading state -->
                         <div id="costs_loading" class="hidden text-center py-8">
-                            <span class="text-gray-500 text-xs font-mono animate-pulse">Loading usage data...</span>
+                            <span class="text-gray-500 text-xs font-mono animate-pulse">Carregando dados de uso...</span>
                         </div>
 
                         <!-- Empty state -->
@@ -2036,8 +2035,8 @@
                             <svg class="w-10 h-10 text-gray-700 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
                             </svg>
-                            <p class="text-gray-500 text-xs font-mono uppercase tracking-widest">No usage data yet</p>
-                            <p class="text-gray-600 text-[10px] font-mono mt-1">Data will appear as the AI processes messages.</p>
+                            <p class="text-gray-500 text-xs font-mono uppercase tracking-widest">Sem dados de uso ainda</p>
+                            <p class="text-gray-600 text-[10px] font-mono mt-1">Os dados aparecerao conforme a IA processar mensagens.</p>
                         </div>
 
                         <!-- Data content -->
@@ -2045,19 +2044,19 @@
                             <!-- Summary cards -->
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <div class="bg-black/40 border border-gray-800 rounded-xl p-4 text-center">
-                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total Calls</p>
+                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total de Chamadas</p>
                                     <p id="costs_total_calls" class="text-2xl font-display font-extrabold text-white">0</p>
                                 </div>
                                 <div class="bg-black/40 border border-gray-800 rounded-xl p-4 text-center">
-                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total Cost</p>
+                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Custo Total</p>
                                     <p id="costs_total_cost" class="text-2xl font-display font-extrabold text-brand-red">$0.00</p>
                                 </div>
                                 <div class="bg-black/40 border border-gray-800 rounded-xl p-4 text-center">
-                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total Tokens</p>
+                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total de Tokens</p>
                                     <p id="costs_total_tokens" class="text-2xl font-display font-extrabold text-white">0</p>
                                 </div>
                                 <div class="bg-black/40 border border-gray-800 rounded-xl p-4 text-center">
-                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">TTS Characters</p>
+                                    <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Caracteres TTS</p>
                                     <p id="costs_total_chars" class="text-2xl font-display font-extrabold text-white">0</p>
                                 </div>
                             </div>
@@ -2065,17 +2064,17 @@
                             <!-- Per-service breakdown -->
                             <div class="bg-black/40 border border-gray-800 rounded-xl overflow-hidden">
                                 <div class="px-4 py-3 border-b border-gray-800">
-                                    <p class="text-[10px] text-gray-400 uppercase tracking-widest font-mono font-bold">Breakdown by Service</p>
+                                    <p class="text-[10px] text-gray-400 uppercase tracking-widest font-mono font-bold">Detalhamento por Servico</p>
                                 </div>
                                 <table class="w-full text-left text-xs">
                                     <thead>
                                         <tr class="text-[10px] text-gray-500 uppercase font-mono border-b border-gray-800/50">
-                                            <th class="px-4 py-2.5">Service</th>
-                                            <th class="px-4 py-2.5 text-right">Calls</th>
-                                            <th class="px-4 py-2.5 text-right">Input Tokens</th>
-                                            <th class="px-4 py-2.5 text-right">Output Tokens</th>
-                                            <th class="px-4 py-2.5 text-right">Characters</th>
-                                            <th class="px-4 py-2.5 text-right">Cost (USD)</th>
+                                            <th class="px-4 py-2.5">Servico</th>
+                                            <th class="px-4 py-2.5 text-right">Chamadas</th>
+                                            <th class="px-4 py-2.5 text-right">Tokens de Entrada</th>
+                                            <th class="px-4 py-2.5 text-right">Tokens de Saida</th>
+                                            <th class="px-4 py-2.5 text-right">Caracteres</th>
+                                            <th class="px-4 py-2.5 text-right">Custo (USD)</th>
                                         </tr>
                                     </thead>
                                     <tbody id="costs_service_rows" class="divide-y divide-gray-800/40">
@@ -2086,7 +2085,7 @@
                             <!-- Daily breakdown -->
                             <div class="bg-black/40 border border-gray-800 rounded-xl overflow-hidden">
                                 <div class="px-4 py-3 border-b border-gray-800">
-                                    <p class="text-[10px] text-gray-400 uppercase tracking-widest font-mono font-bold">Daily Activity</p>
+                                    <p class="text-[10px] text-gray-400 uppercase tracking-widest font-mono font-bold">Atividade Diaria</p>
                                 </div>
                                 <div class="p-4">
                                     <div id="costs_daily_bars" class="flex items-end gap-1 h-32"></div>
@@ -2098,11 +2097,11 @@
 
                     <!-- TAB: QUALIFICATION -->
                     <div id="ai_tab_qualification" class="ai-tab-content space-y-6 hidden">
-                        <!-- Enable toggle -->
+                        <!-- Ativar toggle -->
                         <div class="flex items-center justify-between bg-black/40 border border-gray-800 p-4 rounded-xl">
                             <div>
-                                <p class="text-sm font-bold text-white uppercase tracking-wide">Auto-Create Deal</p>
-                                <p class="text-xs text-gray-500 mt-1">When enabled, the AI agent will automatically create a deal in GHL after collecting all required fields from the lead.</p>
+                                <p class="text-sm font-bold text-white uppercase tracking-wide">Criar Negocio Automaticamente</p>
+                                <p class="text-xs text-gray-500 mt-1">Quando ativado, o agente IA criara automaticamente um negocio no GHL apos coletar todos os campos obrigatorios do lead.</p>
                             </div>
                             <label class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" id="ai_qual_enabled" name="qualification_enabled" value="true" class="sr-only peer">
@@ -2127,7 +2126,7 @@
                                     </div>
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-2">Stage</label>
+                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-2">Etapa</label>
                                     <select id="ai_qual_stage" name="qualification_stage_id"
                                         class="input-dark w-full px-4 py-2.5 rounded-lg text-sm font-mono">
                                         <option value="">-- Select a pipeline first --</option>
@@ -2135,22 +2134,22 @@
                                 </div>
                             </div>
 
-                            <!-- Required Fields -->
+                            <!-- Campos Obrigatorios -->
                             <div>
                                 <div class="flex items-center justify-between mb-3">
-                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono">Required Fields</label>
+                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono">Campos Obrigatorios</label>
                                     <div class="flex gap-2">
                                         <button type="button" onclick="loadQualCustomFields()" title="Fetch custom fields from GHL"
                                             class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors text-[10px] font-mono uppercase tracking-widest">
-                                            Fetch GHL Fields
+                                            Buscar Campos GHL
                                         </button>
                                         <button type="button" onclick="addQualField()"
                                             class="px-3 py-1.5 bg-brand-red/20 hover:bg-brand-red/30 border border-brand-red/40 rounded-lg text-brand-red text-[10px] font-mono uppercase tracking-widest transition-colors">
-                                            + Add Field
+                                            + Adicionar Campo
                                         </button>
                                     </div>
                                 </div>
-                                <p class="text-[10px] text-gray-600 font-mono mb-3">Define the fields the AI needs to collect from the lead. Map each to a GHL opportunity custom field.</p>
+                                <p class="text-[10px] text-gray-600 font-mono mb-3">Defina os campos que a IA precisa coletar do lead. Mapeie cada um para um campo personalizado de oportunidade do GHL.</p>
                                 <div id="qual_fields_container" class="space-y-2">
                                     <!-- Dynamic rows inserted by JS -->
                                 </div>
@@ -2159,18 +2158,18 @@
 
                             <!-- Summary Prompt Override -->
                             <div>
-                                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-2">Summary Prompt (Optional)</label>
-                                <p class="text-[10px] text-gray-600 font-mono mb-2">Override the default summary prompt. Leave empty to use the built-in template that generates a brief report for the closer.</p>
+                                <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-2">Prompt de Resumo (Opcional)</label>
+                                <p class="text-[10px] text-gray-600 font-mono mb-2">Substitua o prompt de resumo padrao. Deixe vazio para usar o template integrado que gera um relatorio breve para o closer.</p>
                                 <textarea id="ai_qual_summary_prompt" name="qualification_summary_prompt" rows="4"
                                     class="input-dark w-full px-4 py-3 rounded-lg text-sm font-mono resize-y"
-                                    placeholder="Leave empty for default: generates a summary with lead interest, collected data, key points, and next steps for the closer."></textarea>
+                                    placeholder="Deixe vazio para o padrao: gera um resumo com interesse do lead, dados coletados, pontos importantes e proximos passos para o closer."></textarea>
                             </div>
                         </div>
                     </div>
 
                     <div class="mt-8 flex items-center justify-end gap-3 pt-4 border-t border-gray-800">
                         <button type="button" onclick="closeAIAgentModal()"
-                            class="px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">Cancel</button>
+                            class="px-5 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">Cancelar</button>
                         <button type="submit"
                             class="btn-brand px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white shadow-[0_0_15px_rgba(225,29,72,0.4)]">Salvar</button>
                     </div>
