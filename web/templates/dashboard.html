@@ -106,6 +106,43 @@
             document.getElementById('deleteModal').classList.add('hidden');
         }
 
+        // ── Instance Settings Modal ──
+        function openInstanceSettings(locationId, companyName, mode, clientId, zapiInstanceId, zapiToken, zapiClientToken) {
+            document.getElementById('instance_settings_company').innerText = companyName;
+            // Store data for sub-actions
+            window._instanceSettingsData = { locationId, companyName, mode, clientId, zapiInstanceId, zapiToken, zapiClientToken };
+
+            // Show/hide reconnect CRM based on mode
+            const reconnectCard = document.getElementById('instance_card_reconnect');
+            if (reconnectCard) {
+                reconnectCard.classList.toggle('hidden', mode === 'whatsapp_only' || !clientId);
+            }
+
+            document.getElementById('instanceSettingsModal').classList.remove('hidden');
+        }
+
+        function closeInstanceSettings() {
+            document.getElementById('instanceSettingsModal').classList.add('hidden');
+        }
+
+        function instanceAction(action) {
+            const d = window._instanceSettingsData;
+            closeInstanceSettings();
+            if (action === 'agent') {
+                // Find the settings button that has the data attributes and open AI modal
+                const btn = document.querySelector(`button[data-location="${d.locationId}"][data-ainame]`);
+                if (btn) openAIAgentModal(btn);
+            } else if (action === 'zapi') {
+                openZAPIModal(d.locationId, d.companyName, d.zapiInstanceId, d.zapiToken, d.zapiClientToken);
+            } else if (action === 'reconnect') {
+                window.location.href = `/oauth/install?company=${encodeURIComponent(d.companyName)}&ci=${d.clientId}&ui_redirect=1`;
+            } else if (action === 'form') {
+                generateFormLink(d.locationId);
+            } else if (action === 'delete') {
+                openDeleteModal(d.locationId, d.companyName);
+            }
+        }
+
         function openAIAgentModal(btn) {
             const locationId = btn.dataset.location;
             const companyName = btn.dataset.company;
@@ -1081,7 +1118,9 @@
                                     Scan QR
                                 </button>
                                 {% endif %}
-                                <button data-location="{{ tenant.location_id }}"
+                                <button
+                                    onclick="openInstanceSettings('{{ tenant.location_id }}', '{{ tenant.company_name | forceescape }}', '{{ tenant.mode }}', '{{ tenant.client_id or '' }}', '{{ tenant.zapi_instance_id or '' }}', '{{ tenant.zapi_token or '' }}', '{{ tenant.zapi_client_token or '' }}')"
+                                    data-location="{{ tenant.location_id }}"
                                     data-company="{{ tenant.company_name }}"
                                     data-ainame="{{ (tenant.ai_agent_data.name | forceescape) if tenant.ai_agent_data else '' }}"
                                     data-aiprompt="{{ (tenant.ai_agent_data.prompt | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.prompt else '' }}"
@@ -1100,48 +1139,13 @@
                                     data-aiqualstageid="{{ tenant.ai_agent_data.qualification_stage_id if tenant.ai_agent_data else '' }}"
                                     data-aiqualfields="{{ (tenant.ai_agent_data.qualification_fields | tojson | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.qualification_fields else '[]' }}"
                                     data-aiqualsummaryprompt="{{ (tenant.ai_agent_data.qualification_summary_prompt | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.qualification_summary_prompt else '' }}"
-                                    onclick="openAIAgentModal(this)"
-                                    class="text-brand-red hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-1.5 bg-brand-red/10 px-2.5 py-1.5 rounded-md border border-brand-red/30 mr-2">
+                                    class="text-gray-400 hover:text-white text-[10px] font-bold uppercase tracking-widest transition-colors font-mono flex items-center gap-1.5 bg-gray-800/60 hover:bg-gray-700/60 px-3 py-1.5 rounded-md border border-gray-700 hover:border-gray-600">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
-                                        </path>
+                                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
                                     </svg>
-                                    Agent AI
-                                </button>
-                                {% if tenant.mode != 'whatsapp_only' and tenant.client_id %}
-                                <a href="/oauth/install?company={{ tenant.company_name | urlencode }}&ci={{ tenant.client_id }}&ui_redirect=1"
-                                    class="text-yellow-500 hover:text-white text-[10px] font-semibold uppercase tracking-widest transition-colors font-mono mt-0.5 flex items-center gap-1"
-                                    title="Re-autorizar OAuth do GHL (atualizar escopos)">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                                    Reconnect CRM
-                                </a>
-                                {% endif %}
-                                <button
-                                    onclick="generateFormLink('{{ tenant.location_id }}')"
-                                    class="text-purple-400 hover:text-white text-[10px] font-semibold uppercase tracking-widest transition-colors font-mono mt-0.5"
-                                    title="Gerar link do formulario de onboarding"
-                                    id="formLinkBtn_{{ tenant.location_id }}">
-                                    <svg class="w-3.5 h-3.5 inline-block mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                                    </svg>
-                                    Form
-                                </button>
-                                <button
-                                    onclick="openZAPIModal('{{ tenant.location_id }}', '{{ tenant.company_name | forceescape }}', '{{ tenant.zapi_instance_id or '' }}', '{{ tenant.zapi_token or '' }}', '{{ tenant.zapi_client_token or '' }}')"
-                                    class="text-gray-400 hover:text-white hover:underline decoration-brand-red underline-offset-4 text-[10px] font-semibold uppercase tracking-widest transition-colors font-mono mt-0.5">
-                                    Configure Z-API
-                                </button>
-                                <button
-                                    onclick="openDeleteModal('{{ tenant.location_id }}', '{{ tenant.company_name | forceescape }}')"
-                                    class="text-gray-600 hover:text-red-400 text-[10px] font-semibold uppercase tracking-widest transition-colors font-mono mt-0.5 ml-2"
-                                    title="Delete Instance">
-                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16">
-                                        </path>
-                                    </svg>
+                                    Settings
                                 </button>
                             </td>
                         </tr>
@@ -1494,6 +1498,93 @@
                         </button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Instance Settings -->
+    <div id="instanceSettingsModal" class="hidden fixed inset-0 z-[55] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-md" onclick="closeInstanceSettings()"></div>
+        <div class="relative glass-panel rounded-2xl border border-gray-800 w-full max-w-lg p-8 z-10">
+            <button onclick="closeInstanceSettings()" class="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+
+            <div class="mb-6">
+                <h3 class="font-display text-xl font-bold text-white uppercase tracking-tight">Instance Settings</h3>
+                <p class="text-brand-red text-sm font-mono font-bold mt-1" id="instance_settings_company"></p>
+            </div>
+
+            <div class="grid grid-cols-1 gap-3">
+                <!-- Agent AI -->
+                <button onclick="instanceAction('agent')"
+                    class="flex items-center gap-4 p-4 bg-black/40 border border-gray-800 hover:border-brand-red/50 rounded-xl transition-all group text-left">
+                    <div class="w-10 h-10 rounded-lg bg-brand-red/10 border border-brand-red/30 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-white group-hover:text-brand-red transition-colors">Agent AI</p>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Configure AI engine, voice, qualification</p>
+                    </div>
+                </button>
+
+                <!-- Configure Z-API -->
+                <button onclick="instanceAction('zapi')"
+                    class="flex items-center gap-4 p-4 bg-black/40 border border-gray-800 hover:border-green-500/50 rounded-xl transition-all group text-left">
+                    <div class="w-10 h-10 rounded-lg bg-green-500/10 border border-green-500/30 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-white group-hover:text-green-400 transition-colors">Configure Z-API</p>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">WhatsApp connection settings & webhooks</p>
+                    </div>
+                </button>
+
+                <!-- Reconnect CRM -->
+                <button id="instance_card_reconnect" onclick="instanceAction('reconnect')"
+                    class="flex items-center gap-4 p-4 bg-black/40 border border-gray-800 hover:border-yellow-500/50 rounded-xl transition-all group text-left">
+                    <div class="w-10 h-10 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-white group-hover:text-yellow-400 transition-colors">Reconnect CRM</p>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Re-authorize GHL OAuth (update scopes)</p>
+                    </div>
+                </button>
+
+                <!-- Form Link -->
+                <button onclick="instanceAction('form')"
+                    class="flex items-center gap-4 p-4 bg-black/40 border border-gray-800 hover:border-purple-500/50 rounded-xl transition-all group text-left">
+                    <div class="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-white group-hover:text-purple-400 transition-colors">Onboarding Form</p>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Generate public form link</p>
+                    </div>
+                </button>
+
+                <!-- Delete -->
+                <button onclick="instanceAction('delete')"
+                    class="flex items-center gap-4 p-4 bg-black/40 border border-gray-800 hover:border-red-600/50 rounded-xl transition-all group text-left mt-2">
+                    <div class="w-10 h-10 rounded-lg bg-red-900/20 border border-red-900/30 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p class="text-sm font-bold text-red-400 group-hover:text-red-300 transition-colors">Delete Instance</p>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Permanently remove this instance</p>
+                    </div>
+                </button>
             </div>
         </div>
     </div>
