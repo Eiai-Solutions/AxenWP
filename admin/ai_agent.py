@@ -125,7 +125,7 @@ async def get_ghl_pipelines(location_id: str):
 
 
 @router.get("/{location_id}/ghl/custom-fields")
-async def get_ghl_custom_fields(location_id: str, model: str = "opportunity"):
+async def get_ghl_custom_fields(location_id: str, model: str = "all"):
     """Busca custom fields do GHL por modelo (contact ou opportunity)."""
     try:
         tenant = token_manager.get_tenant(location_id)

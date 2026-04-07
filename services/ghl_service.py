@@ -376,9 +376,10 @@ class GHLService:
             logger.error(f"Exceção ao buscar pipelines: {e}")
             return {"error": True, "message": str(e)}
 
-    async def get_custom_fields(self, location_id: str, model: str = "contact") -> dict:
+    async def get_custom_fields(self, location_id: str, model: str = "all") -> dict:
         """
-        Lista custom fields da location por modelo (contact ou opportunity).
+        Lista custom fields da location.
+        Se model='all', busca opportunity + contact e combina.
         GET /locations/{locationId}/customFields?model={model}
         Retorna dict com "fields" ou "error".
         """
@@ -387,36 +388,35 @@ class GHLService:
             return {"error": True, "message": "Sem token válido"}
 
         ghl_loc = self._resolve_ghl_location_id(location_id)
-        try:
-            # Buscar custom fields do modelo solicitado
-            params = {}
-            if model and model != "contact":
-                params["model"] = model
 
-            response = await self.client.get(
+        async def _fetch_model(m: str) -> list:
+            params = {"model": m} if m and m != "contact" else {}
+            resp = await self.client.get(
                 f"{self.BASE_URL}/locations/{ghl_loc}/customFields",
                 params=params,
                 headers=headers,
             )
-            if response.status_code == 200:
-                data = response.json()
-                fields = data.get("customFields", [])
+            if resp.status_code == 200:
+                return resp.json().get("customFields", [])
+            logger.error(f"Erro ao buscar custom fields ({m}): status={resp.status_code}, body={resp.text[:500]}")
+            return []
 
-                # Se pediu opportunity e veio vazio, buscar campos de contato como alternativa
-                if not fields and model == "opportunity":
-                    logger.info("Nenhum custom field de oportunidade encontrado. Buscando campos de contato...")
-                    resp2 = await self.client.get(
-                        f"{self.BASE_URL}/locations/{ghl_loc}/customFields",
-                        headers=headers,
-                    )
-                    if resp2.status_code == 200:
-                        fields = resp2.json().get("customFields", [])
-
-                return {"fields": fields}
+        try:
+            if model == "all":
+                opp_fields = await _fetch_model("opportunity")
+                contact_fields = await _fetch_model("contact")
+                # Tag each field with its model for UI grouping
+                for f in opp_fields:
+                    f["_model"] = "opportunity"
+                for f in contact_fields:
+                    f["_model"] = "contact"
+                # Deduplicate by id (opportunity takes priority)
+                seen = {f["id"] for f in opp_fields}
+                combined = opp_fields + [f for f in contact_fields if f["id"] not in seen]
+                return {"fields": combined}
             else:
-                body = response.text[:500]
-                logger.error(f"Erro ao buscar custom fields ({model}): status={response.status_code}, body={body}")
-                return {"error": True, "message": f"GHL API retornou {response.status_code}: {body}"}
+                fields = await _fetch_model(model)
+                return {"fields": fields}
         except Exception as e:
             logger.error(f"Exceção ao buscar custom fields ({model}): {e}")
             return {"error": True, "message": str(e)}

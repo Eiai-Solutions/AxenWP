@@ -320,7 +320,7 @@
             if (statusEl) statusEl.textContent = '';
 
             try {
-                const resp = await fetch(`/admin/agents/${locationId}/ghl/custom-fields?model=opportunity`);
+                const resp = await fetch(`/admin/agents/${locationId}/ghl/custom-fields`);
                 const data = await resp.json();
                 if (data.success && data.fields) {
                     window._qualCustomFieldsData = data.fields;
@@ -352,7 +352,7 @@
                 sel.innerHTML = '<option value="">-- Nao mapear --</option>';
                 fields.forEach(f => {
                     const selected = f.id === savedVal ? 'selected' : '';
-                    sel.innerHTML += `<option value="${f.id}" ${selected}>${f.name}</option>`;
+                    sel.innerHTML += `<option value="${f.id}" ${selected}>${_ghlFieldLabel(f)}</option>`;
                 });
                 // Clear data attribute after restoring
                 if (sel.dataset.ghlField) delete sel.dataset.ghlField;
@@ -360,10 +360,15 @@
             serializeQualFields();
         }
 
+        function _ghlFieldLabel(f) {
+            const tag = f._model === 'opportunity' ? 'Opp' : 'Contato';
+            return `[${tag}] ${f.name}`;
+        }
+
         function _ghlFieldOptions(selectedId) {
             const fields = window._qualCustomFieldsData || [];
             return fields.map(f =>
-                `<option value="${f.id}" ${f.id === selectedId ? 'selected' : ''}>${f.name}</option>`
+                `<option value="${f.id}" ${f.id === selectedId ? 'selected' : ''}>${_ghlFieldLabel(f)}</option>`
             ).join('');
         }
 
