@@ -255,6 +255,8 @@
             container.innerHTML = '';
             if (savedFields.length > 0) {
                 savedFields.forEach(f => addQualField(f.label, f.key, f.ghl_field_id));
+            } else {
+                _updateFieldsVisibility();
             }
             serializeQualFields();
 
@@ -312,39 +314,43 @@
             const locationId = document.getElementById('ai_location_id').value;
             if (!locationId) return;
 
-            // Feedback visual no botão
-            const btn = event?.target?.closest('button');
-            const originalText = btn ? btn.textContent : '';
-            if (btn) { btn.textContent = 'Buscando...'; btn.disabled = true; }
+            const statusEl = document.getElementById('qual_ghl_fields_status');
+            if (statusEl) statusEl.textContent = '(carregando...)';
 
             try {
                 const resp = await fetch(`/admin/agents/${locationId}/ghl/custom-fields?model=opportunity`);
                 const data = await resp.json();
                 if (data.success && data.fields) {
                     window._qualCustomFieldsData = data.fields;
-                    // Update all existing field mapping dropdowns
-                    document.querySelectorAll('.qual-ghl-field-select').forEach(sel => {
-                        const currentVal = sel.value;
-                        sel.innerHTML = '<option value="">-- Sem mapeamento --</option>';
-                        data.fields.forEach(f => {
-                            const selected = f.id === currentVal ? 'selected' : '';
-                            sel.innerHTML += `<option value="${f.id}" ${selected}>${f.name} (${f.dataType || 'text'})</option>`;
-                        });
-                    });
-                    const count = data.fields.length;
-                    if (btn) btn.textContent = `${count} campos carregados`;
-                    setTimeout(() => { if (btn) btn.textContent = originalText; }, 2000);
+                    if (statusEl) statusEl.textContent = `(${data.fields.length} campos)`;
+                    _refreshGhlDropdowns();
                 } else {
-                    alert('Campos: ' + (data.error || 'Falha ao carregar'));
-                    if (btn) btn.textContent = originalText;
+                    if (statusEl) statusEl.textContent = '(erro ao carregar)';
+                    console.warn('Campos GHL:', data.error);
                 }
             } catch(e) {
+                if (statusEl) statusEl.textContent = '(sem conexao CRM)';
                 console.error('Erro ao carregar campos:', e);
-                alert('Erro ao carregar campos: ' + e.message);
-                if (btn) btn.textContent = originalText;
-            } finally {
-                if (btn) btn.disabled = false;
             }
+        }
+
+        function _refreshGhlDropdowns() {
+            const fields = window._qualCustomFieldsData || [];
+            document.querySelectorAll('.qual-ghl-field-select').forEach(sel => {
+                const currentVal = sel.value;
+                sel.innerHTML = '<option value="">-- Nao mapear --</option>';
+                fields.forEach(f => {
+                    const selected = f.id === currentVal ? 'selected' : '';
+                    sel.innerHTML += `<option value="${f.id}" ${selected}>${f.name}</option>`;
+                });
+            });
+        }
+
+        function _ghlFieldOptions(selectedId) {
+            const fields = window._qualCustomFieldsData || [];
+            return fields.map(f =>
+                `<option value="${f.id}" ${f.id === selectedId ? 'selected' : ''}>${f.name}</option>`
+            ).join('');
         }
 
         function addQualField(label, key, ghlFieldId) {
@@ -352,34 +358,49 @@
             key = key || '';
             ghlFieldId = ghlFieldId || '';
             const container = document.getElementById('qual_fields_container');
-            const idx = container.children.length;
-            const fieldsOptions = (window._qualCustomFieldsData || []).map(f =>
-                `<option value="${f.id}" ${f.id === ghlFieldId ? 'selected' : ''}>${f.name} (${f.dataType || 'text'})</option>`
-            ).join('');
 
             const row = document.createElement('div');
-            row.className = 'flex items-center gap-2 bg-black/30 border border-gray-800 rounded-lg p-2.5';
+            row.className = 'grid grid-cols-12 gap-2 items-center bg-black/30 border border-gray-800 rounded-lg p-2.5';
             row.innerHTML = `
-                <input type="text" placeholder="Nome do campo (ex: Nome Completo)" value="${label}"
-                    class="qual-field-label input-dark flex-1 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
-                <input type="text" placeholder="Chave (ex: nome)" value="${key}"
-                    class="qual-field-key input-dark w-32 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
-                <select class="qual-ghl-field-select input-dark flex-1 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
-                    <option value="">-- No mapping --</option>
-                    ${fieldsOptions}
+                <input type="text" placeholder="ex: Nome Completo" value="${label}"
+                    class="qual-field-label input-dark col-span-4 px-3 py-2 rounded-lg text-xs font-mono" onchange="autoGenerateKey(this); serializeQualFields()">
+                <input type="text" placeholder="ex: nome" value="${key}"
+                    class="qual-field-key input-dark col-span-3 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
+                <select class="qual-ghl-field-select input-dark col-span-4 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
+                    <option value="">-- Nao mapear --</option>
+                    ${_ghlFieldOptions(ghlFieldId)}
                 </select>
                 <button type="button" onclick="removeQualField(this)"
-                    class="p-2 text-gray-500 hover:text-red-400 transition-colors">
+                    class="col-span-1 p-2 text-gray-600 hover:text-red-400 transition-colors justify-self-center">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             `;
             container.appendChild(row);
+            _updateFieldsVisibility();
             serializeQualFields();
         }
 
+        function autoGenerateKey(input) {
+            const row = input.closest('.grid');
+            const keyInput = row.querySelector('.qual-field-key');
+            if (keyInput && !keyInput.value) {
+                keyInput.value = input.value.toLowerCase()
+                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+            }
+        }
+
         function removeQualField(btn) {
-            btn.closest('div').remove();
+            btn.closest('.grid').remove();
+            _updateFieldsVisibility();
             serializeQualFields();
+        }
+
+        function _updateFieldsVisibility() {
+            const container = document.getElementById('qual_fields_container');
+            const hasFields = container.children.length > 0;
+            document.getElementById('qual_fields_header').classList.toggle('hidden', !hasFields);
+            document.getElementById('qual_fields_empty').classList.toggle('hidden', hasFields);
         }
 
         function serializeQualFields() {
@@ -1809,7 +1830,7 @@
                         <button type="button" id="btn_ai_tab_costs" onclick="switchAITab('costs', this); loadUsageData();"
                             class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">💰
                             Custos</button>
-                        <button type="button" id="btn_ai_tab_qualification" onclick="switchAITab('qualification', this)"
+                        <button type="button" id="btn_ai_tab_qualification" onclick="switchAITab('qualification', this); loadQualCustomFields();"
                             class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">🎯
                             Qualificacao</button>
                     </nav>
@@ -2235,23 +2256,35 @@
 
                             <!-- Campos Obrigatorios -->
                             <div>
-                                <div class="flex items-center justify-between mb-3">
-                                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono">Campos Obrigatorios</label>
-                                    <div class="flex gap-2">
-                                        <button type="button" onclick="loadQualCustomFields()" title="Fetch custom fields from GHL"
-                                            class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-400 hover:text-white transition-colors text-[10px] font-mono uppercase tracking-widest">
-                                            Buscar Campos GHL
-                                        </button>
-                                        <button type="button" onclick="addQualField()"
-                                            class="px-3 py-1.5 bg-brand-red/20 hover:bg-brand-red/30 border border-brand-red/40 rounded-lg text-brand-red text-[10px] font-mono uppercase tracking-widest transition-colors">
-                                            + Adicionar Campo
-                                        </button>
+                                <div class="flex items-center justify-between mb-2">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono">Campos Obrigatorios para Qualificacao</label>
+                                        <p class="text-[10px] text-gray-600 font-mono mt-1">A IA vai coletar esses dados do lead de forma natural na conversa. Ao preencher todos, cria o negocio no CRM.</p>
                                     </div>
+                                    <button type="button" onclick="addQualField()"
+                                        class="px-3 py-1.5 bg-brand-red/20 hover:bg-brand-red/30 border border-brand-red/40 rounded-lg text-brand-red text-[10px] font-mono uppercase tracking-widest transition-colors whitespace-nowrap ml-4">
+                                        + Adicionar
+                                    </button>
                                 </div>
-                                <p class="text-[10px] text-gray-600 font-mono mb-3">Defina os campos que a IA precisa coletar do lead. Mapeie cada um para um campo personalizado de oportunidade do GHL.</p>
+
+                                <!-- Header da tabela -->
+                                <div id="qual_fields_header" class="hidden grid grid-cols-12 gap-2 px-3 py-2 text-[9px] font-bold text-gray-500 uppercase tracking-widest font-mono">
+                                    <div class="col-span-4">O que a IA pergunta</div>
+                                    <div class="col-span-3">Chave interna</div>
+                                    <div class="col-span-4">Campo no GHL <span id="qual_ghl_fields_status" class="text-gray-700 normal-case"></span></div>
+                                    <div class="col-span-1"></div>
+                                </div>
+
                                 <div id="qual_fields_container" class="space-y-2">
                                     <!-- Dynamic rows inserted by JS -->
                                 </div>
+
+                                <!-- Empty state -->
+                                <div id="qual_fields_empty" class="text-center py-6 border border-dashed border-gray-800 rounded-xl">
+                                    <p class="text-gray-600 text-xs font-mono">Nenhum campo adicionado.</p>
+                                    <p class="text-gray-700 text-[10px] font-mono mt-1">Clique em "+ Adicionar" para definir os dados que a IA deve coletar.</p>
+                                </div>
+
                                 <input type="hidden" id="ai_qual_fields_json" name="qualification_fields" value="[]">
                             </div>
 
