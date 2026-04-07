@@ -142,6 +142,7 @@ async def get_ghl_custom_fields(location_id: str, model: str = "opportunity"):
         return {"success": True, "fields": result.get("fields", [])}
     except Exception as e:
         logger.error(f"Erro ao buscar custom fields GHL: {e}")
+        return {"success": False, "error": str(e)}
 
 
 @router.get("/elevenlabs/voices")

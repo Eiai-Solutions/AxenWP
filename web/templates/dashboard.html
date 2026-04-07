@@ -311,6 +311,12 @@
         async function loadQualCustomFields() {
             const locationId = document.getElementById('ai_location_id').value;
             if (!locationId) return;
+
+            // Feedback visual no botão
+            const btn = event?.target?.closest('button');
+            const originalText = btn ? btn.textContent : '';
+            if (btn) { btn.textContent = 'Buscando...'; btn.disabled = true; }
+
             try {
                 const resp = await fetch(`/admin/agents/${locationId}/ghl/custom-fields?model=opportunity`);
                 const data = await resp.json();
@@ -319,18 +325,25 @@
                     // Update all existing field mapping dropdowns
                     document.querySelectorAll('.qual-ghl-field-select').forEach(sel => {
                         const currentVal = sel.value;
-                        sel.innerHTML = '<option value="">-- No mapping --</option>';
+                        sel.innerHTML = '<option value="">-- Sem mapeamento --</option>';
                         data.fields.forEach(f => {
                             const selected = f.id === currentVal ? 'selected' : '';
                             sel.innerHTML += `<option value="${f.id}" ${selected}>${f.name} (${f.dataType || 'text'})</option>`;
                         });
                     });
+                    const count = data.fields.length;
+                    if (btn) btn.textContent = `${count} campos carregados`;
+                    setTimeout(() => { if (btn) btn.textContent = originalText; }, 2000);
                 } else {
                     alert('Campos: ' + (data.error || 'Falha ao carregar'));
+                    if (btn) btn.textContent = originalText;
                 }
             } catch(e) {
-                console.error('Error loading custom fields:', e);
+                console.error('Erro ao carregar campos:', e);
                 alert('Erro ao carregar campos: ' + e.message);
+                if (btn) btn.textContent = originalText;
+            } finally {
+                if (btn) btn.disabled = false;
             }
         }
 
