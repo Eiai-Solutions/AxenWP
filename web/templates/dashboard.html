@@ -436,6 +436,163 @@
             document.getElementById('ai_qual_fields_json').value = JSON.stringify(fields);
         }
 
+        // ===== HISTORICO TAB =====
+        let _histOffset = 0;
+        let _histTotal = 0;
+        let _histLoading = false;
+
+        async function loadConversations(reset = true) {
+            const locationId = document.getElementById('ai_location_id').value;
+            if (!locationId) return;
+
+            const container = document.getElementById('hist_contacts_list');
+            const loadingEl = document.getElementById('hist_loading');
+            const emptyEl = document.getElementById('hist_empty');
+            const counterEl = document.getElementById('hist_counter');
+
+            if (reset) {
+                _histOffset = 0;
+                container.innerHTML = '';
+                _initHistScroll();
+            }
+            if (_histLoading) return;
+            _histLoading = true;
+            loadingEl.classList.remove('hidden');
+            emptyEl.classList.add('hidden');
+
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/conversations?offset=${_histOffset}&limit=20`);
+                const data = await resp.json();
+                if (data.success) {
+                    _histTotal = data.total;
+                    counterEl.textContent = `(${_histTotal})`;
+
+                    if (data.contacts.length === 0 && _histOffset === 0) {
+                        emptyEl.classList.remove('hidden');
+                    }
+
+                    data.contacts.forEach(c => {
+                        container.insertAdjacentHTML('beforeend', _renderContactCard(c));
+                    });
+                    _histOffset += data.contacts.length;
+                }
+            } catch(e) {
+                console.error('Erro ao carregar historico:', e);
+            } finally {
+                _histLoading = false;
+                loadingEl.classList.add('hidden');
+            }
+        }
+
+        function _renderContactCard(c) {
+            const phone = c.phone;
+            const displayPhone = phone.replace(/^(\d{2})(\d{2})(\d{4,5})(\d{4})$/, '+$1 ($2) $3-$4');
+            const lastMsg = c.last_msg ? new Date(c.last_msg).toLocaleString('pt-BR') : '-';
+            const statusBadge = c.qualified
+                ? '<span class="px-2 py-0.5 bg-green-500/20 text-green-400 text-[9px] font-bold uppercase rounded-full">Qualificado</span>'
+                : '<span class="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] font-bold uppercase rounded-full">Em atendimento</span>';
+
+            return `
+                <div class="hist-card border border-gray-800 rounded-lg overflow-hidden hover:border-gray-700 transition-colors">
+                    <button type="button" onclick="toggleHistCard(this, '${c.session_id}', '${phone}')"
+                        class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition-colors">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-xs font-bold text-gray-400 shrink-0">
+                                ${phone.slice(-2)}
+                            </div>
+                            <div class="min-w-0">
+                                <p class="text-sm font-mono text-white truncate">${displayPhone || phone}</p>
+                                <p class="text-[10px] text-gray-500 font-mono">${c.msg_count} msgs · ${lastMsg}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            ${statusBadge}
+                            <svg class="hist-chevron w-4 h-4 text-gray-600 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </div>
+                    </button>
+                    <div class="hist-detail hidden">
+                        <div class="hist-messages px-4 py-3 border-t border-gray-800 max-h-80 overflow-y-auto space-y-2">
+                            <p class="text-center text-gray-600 text-xs font-mono py-4">Carregando mensagens...</p>
+                        </div>
+                        ${c.qualified ? `
+                        <div class="px-4 py-3 border-t border-gray-800 bg-green-500/5">
+                            <p class="text-[10px] font-bold text-green-400 uppercase tracking-widest mb-1">Dados da Qualificacao</p>
+                            <pre class="text-[10px] text-gray-400 font-mono whitespace-pre-wrap">${JSON.stringify(c.qualified.qualified_data || {}, null, 2)}</pre>
+                            ${c.qualified.summary ? `<p class="text-[10px] text-gray-500 font-mono mt-2 italic">${c.qualified.summary.substring(0, 300)}</p>` : ''}
+                        </div>` : ''}
+                    </div>
+                </div>`;
+        }
+
+        async function toggleHistCard(btn, sessionId, phone) {
+            const card = btn.closest('.hist-card');
+            const detail = card.querySelector('.hist-detail');
+            const chevron = card.querySelector('.hist-chevron');
+            const isOpen = !detail.classList.contains('hidden');
+
+            if (isOpen) {
+                detail.classList.add('hidden');
+                chevron.style.transform = '';
+                return;
+            }
+
+            detail.classList.remove('hidden');
+            chevron.style.transform = 'rotate(180deg)';
+
+            // Load messages if not already loaded
+            const msgContainer = card.querySelector('.hist-messages');
+            if (msgContainer.dataset.loaded) return;
+
+            const locationId = document.getElementById('ai_location_id').value;
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/conversations/${encodeURIComponent(phone)}/messages?limit=50`);
+                const data = await resp.json();
+                if (data.success && data.messages.length > 0) {
+                    msgContainer.innerHTML = data.messages.map(m => {
+                        const time = m.created_at ? new Date(m.created_at).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'}) : '';
+                        if (m.type === 'human') {
+                            return `<div class="flex justify-end"><div class="bg-green-900/40 border border-green-800/30 rounded-lg px-3 py-1.5 max-w-[80%]">
+                                <p class="text-xs text-gray-200 font-mono">${_escapeHtml(m.content)}</p>
+                                <p class="text-[9px] text-gray-500 text-right mt-0.5">${time}</p>
+                            </div></div>`;
+                        } else {
+                            return `<div class="flex justify-start"><div class="bg-gray-800/60 border border-gray-700/30 rounded-lg px-3 py-1.5 max-w-[80%]">
+                                <p class="text-xs text-gray-300 font-mono">${_escapeHtml(m.content)}</p>
+                                <p class="text-[9px] text-gray-500 mt-0.5">${time}</p>
+                            </div></div>`;
+                        }
+                    }).join('');
+                    msgContainer.dataset.loaded = '1';
+                    // Scroll to bottom
+                    msgContainer.scrollTop = msgContainer.scrollHeight;
+                } else {
+                    msgContainer.innerHTML = '<p class="text-center text-gray-600 text-xs font-mono py-4">Nenhuma mensagem encontrada.</p>';
+                }
+            } catch(e) {
+                msgContainer.innerHTML = '<p class="text-center text-red-400 text-xs font-mono py-4">Erro ao carregar mensagens.</p>';
+            }
+        }
+
+        function _escapeHtml(text) {
+            const d = document.createElement('div');
+            d.textContent = text;
+            return d.innerHTML;
+        }
+
+        function _initHistScroll() {
+            const scrollContainer = document.getElementById('hist_scroll_area');
+            if (!scrollContainer) return;
+            scrollContainer.addEventListener('scroll', () => {
+                if (scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 100) {
+                    if (!_histLoading && _histOffset < _histTotal) {
+                        loadConversations(false);
+                    }
+                }
+            });
+        }
+
         function closeAIAgentModal() {
             document.getElementById('aiAgentModal').classList.add('hidden');
         }
@@ -1852,6 +2009,9 @@
                         <button type="button" id="btn_ai_tab_qualification" onclick="switchAITab('qualification', this); loadQualCustomFields();"
                             class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">🎯
                             Qualificacao</button>
+                        <button type="button" id="btn_ai_tab_history" onclick="switchAITab('history', this); loadConversations();"
+                            class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">📋
+                            Historico</button>
                     </nav>
 
                     <!-- TAB: SETTINGS -->
@@ -2318,6 +2478,34 @@
                                 <textarea id="ai_qual_summary_prompt" name="qualification_summary_prompt" rows="4"
                                     class="input-dark w-full px-4 py-3 rounded-lg text-sm font-mono resize-y"
                                     placeholder="Deixe vazio para o padrao: gera um resumo com interesse do lead, dados coletados, pontos importantes e proximos passos para o closer."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: HISTORY -->
+                    <div id="ai_tab_history" class="ai-tab-content hidden">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xs font-bold text-white uppercase tracking-widest font-mono">
+                                Historico de Atendimentos <span id="hist_counter" class="text-gray-500 normal-case"></span>
+                            </h3>
+                            <button type="button" onclick="loadConversations(true)"
+                                class="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-gray-300 text-[10px] font-mono uppercase tracking-widest transition-colors">
+                                Atualizar
+                            </button>
+                        </div>
+
+                        <div id="hist_scroll_area" class="space-y-2 max-h-[500px] overflow-y-auto pr-1" style="scrollbar-width: thin; scrollbar-color: #374151 transparent;">
+                            <div id="hist_contacts_list" class="space-y-2">
+                                <!-- Cards inseridos dinamicamente -->
+                            </div>
+
+                            <div id="hist_loading" class="hidden text-center py-6">
+                                <span class="text-gray-500 text-xs font-mono animate-pulse">Carregando conversas...</span>
+                            </div>
+
+                            <div id="hist_empty" class="hidden text-center py-8 border border-dashed border-gray-800 rounded-xl">
+                                <p class="text-gray-600 text-xs font-mono">Nenhuma conversa encontrada.</p>
+                                <p class="text-gray-700 text-[10px] font-mono mt-1">Os atendimentos realizados pelo agente IA aparecerao aqui.</p>
                             </div>
                         </div>
                     </div>

@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 import json
 
 from data.database import get_db, SessionLocal
-from data.models import Tenant, AIAgent, SystemSettings
+from data.models import Tenant, AIAgent, SystemSettings, ChatHistory, QualifiedLead
 from auth.token_manager import token_manager
 from services.ghl_service import ghl_service
 from datetime import datetime, timezone
@@ -143,6 +143,103 @@ async def get_ghl_custom_fields(location_id: str, model: str = "all"):
     except Exception as e:
         logger.error(f"Erro ao buscar custom fields GHL: {e}")
         return {"success": False, "error": str(e)}
+
+
+@router.get("/{location_id}/conversations")
+async def get_conversations(location_id: str, offset: int = 0, limit: int = 20):
+    """Retorna lista de conversas agrupadas por contato, paginadas."""
+    from sqlalchemy import func, desc
+    db = SessionLocal()
+    try:
+        # session_id = "{location_id}_{phone}"
+        prefix = f"{location_id}_"
+        contacts_q = (
+            db.query(
+                ChatHistory.session_id,
+                func.count(ChatHistory.id).label("msg_count"),
+                func.min(ChatHistory.created_at).label("first_msg"),
+                func.max(ChatHistory.created_at).label("last_msg"),
+            )
+            .filter(ChatHistory.session_id.like(f"{prefix}%"))
+            .group_by(ChatHistory.session_id)
+            .order_by(desc("last_msg"))
+            .offset(offset)
+            .limit(limit)
+        )
+
+        results = contacts_q.all()
+        total = (
+            db.query(func.count(func.distinct(ChatHistory.session_id)))
+            .filter(ChatHistory.session_id.like(f"{prefix}%"))
+            .scalar()
+        ) or 0
+
+        # Verificar quais estão qualificados
+        phones = [r.session_id[len(prefix):] for r in results]
+        qualified_map = {}
+        if phones:
+            qualified = db.query(QualifiedLead).filter(
+                QualifiedLead.location_id == location_id,
+                QualifiedLead.phone.in_(phones),
+            ).all()
+            qualified_map = {q.phone: {
+                "qualified_data": q.qualified_data,
+                "summary": q.summary,
+                "opportunity_id": q.ghl_opportunity_id,
+                "qualified_at": q.created_at.isoformat() if q.created_at else None,
+            } for q in qualified}
+
+        contacts = []
+        for r in results:
+            phone = r.session_id[len(prefix):]
+            contacts.append({
+                "phone": phone,
+                "session_id": r.session_id,
+                "msg_count": r.msg_count,
+                "first_msg": r.first_msg.isoformat() if r.first_msg else None,
+                "last_msg": r.last_msg.isoformat() if r.last_msg else None,
+                "qualified": qualified_map.get(phone),
+            })
+
+        return {"success": True, "contacts": contacts, "total": total, "offset": offset, "limit": limit}
+    except Exception as e:
+        logger.error(f"Erro ao buscar conversas: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
+@router.get("/{location_id}/conversations/{phone}/messages")
+async def get_conversation_messages(location_id: str, phone: str, offset: int = 0, limit: int = 50):
+    """Retorna mensagens de uma conversa específica, paginadas."""
+    from sqlalchemy import func
+    db = SessionLocal()
+    try:
+        session_id = f"{location_id}_{phone}"
+        messages = (
+            db.query(ChatHistory)
+            .filter(ChatHistory.session_id == session_id)
+            .order_by(ChatHistory.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+        total = db.query(func.count(ChatHistory.id)).filter(ChatHistory.session_id == session_id).scalar() or 0
+
+        return {
+            "success": True,
+            "messages": [{
+                "type": m.message_type,
+                "content": m.content,
+                "created_at": m.created_at.isoformat() if m.created_at else None,
+            } for m in reversed(messages)],  # chronological order
+            "total": total,
+        }
+    except Exception as e:
+        logger.error(f"Erro ao buscar mensagens: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
 
 
 @router.get("/elevenlabs/voices")
