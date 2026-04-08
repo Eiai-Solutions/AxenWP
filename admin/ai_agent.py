@@ -291,6 +291,34 @@ async def get_qualification_progress(location_id: str, phone: str):
         db.close()
 
 
+@router.delete("/{location_id}/conversations/{phone}/qualification")
+async def reset_qualification(location_id: str, phone: str):
+    """
+    Remove a qualificação de um lead e limpa o cache de progresso.
+    Permite que o AI retome o atendimento para fins de teste/correção.
+    """
+    from services.ai_service import _qual_progress_cache
+    db = SessionLocal()
+    try:
+        deleted = db.query(QualifiedLead).filter(
+            QualifiedLead.location_id == location_id,
+            QualifiedLead.phone == phone,
+        ).delete()
+        db.commit()
+
+        session_id = f"{location_id}_{phone}"
+        _qual_progress_cache.pop(session_id, None)
+
+        logger.info(f"Qualificação resetada para {phone} no tenant {location_id}. Registros: {deleted}")
+        return {"success": True, "deleted": deleted}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Erro ao resetar qualificação: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
 @router.get("/elevenlabs/voices")
 async def get_elevenlabs_voices(api_key: str):
     """

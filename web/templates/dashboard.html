@@ -514,7 +514,7 @@
             }
         }
 
-        function _renderQualTooltip(progressData, isQualified) {
+        function _renderQualTooltip(progressData, isQualified, phone) {
             _loadQualFieldsIfEmpty();
             if (!_qualFields.length) return '<p class="text-[10px] text-gray-500 font-mono italic">Sem campos de qualificacao configurados</p>';
             const data = progressData || {};
@@ -537,9 +537,16 @@
             }).length;
             const headerColor = isQualified ? 'text-green-400' : 'text-gray-400';
             const label = isQualified ? 'Qualificado ✓' : `Campos coletados (${countCollected}/${_qualFields.length})`;
+            const resetBtn = isQualified && phone
+                ? `<button type="button" onclick="event.stopPropagation();resetQualification('${phone}')"
+                    class="mt-2 w-full text-[9px] text-red-400 hover:text-red-300 font-mono border border-red-800/50 hover:border-red-600 rounded px-2 py-1 transition-colors">
+                    Resetar Qualificacao
+                  </button>`
+                : '';
             return `<div class="qual-tooltip-content">
                 <p class="text-[9px] font-bold ${headerColor} uppercase tracking-widest mb-2">${label}</p>
                 <div class="space-y-1">${items.join('')}</div>
+                ${resetBtn}
             </div>`;
         }
 
@@ -594,7 +601,14 @@
                         </div>
                         ${c.qualified ? `
                         <div class="px-4 py-3 border-t border-gray-800 bg-green-500/5">
-                            <p class="text-[10px] font-bold text-green-400 uppercase tracking-widest mb-1">Dados da Qualificacao</p>
+                            <div class="flex items-center justify-between mb-1">
+                                <p class="text-[10px] font-bold text-green-400 uppercase tracking-widest">Dados da Qualificacao</p>
+                                <button type="button" onclick="resetQualification('${phone}')"
+                                    class="text-[9px] text-red-400 hover:text-red-300 font-mono border border-red-800/50 hover:border-red-600 rounded px-2 py-0.5 transition-colors"
+                                    title="Remove a qualificacao e reativa o agente para este contato">
+                                    Resetar Qualificacao
+                                </button>
+                            </div>
                             <pre class="text-[10px] text-gray-400 font-mono whitespace-pre-wrap">${JSON.stringify(c.qualified.qualified_data || {}, null, 2)}</pre>
                             ${c.qualified.summary ? `<p class="text-[10px] text-gray-500 font-mono mt-2 italic">${c.qualified.summary.substring(0, 300)}</p>` : ''}
                         </div>` : ''}
@@ -721,26 +735,47 @@
             return d.innerHTML;
         }
 
+        async function resetQualification(phone) {
+            const locationId = document.getElementById('ai_location_id')?.value;
+            if (!locationId) return;
+            if (!confirm('Remover qualificação deste contato? O agente voltará a responder.')) return;
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/conversations/${encodeURIComponent(phone)}/qualification`, {
+                    method: 'DELETE',
+                });
+                const data = await resp.json();
+                if (data.success) {
+                    // Reload list to reflect new state
+                    _openCardPhone = null;
+                    await loadConversations(true);
+                } else {
+                    alert('Erro ao resetar: ' + (data.error || 'desconhecido'));
+                }
+            } catch(e) {
+                alert('Erro de rede ao resetar qualificação.');
+            }
+        }
+
         async function showQualTooltip(btn) {
             _loadQualFieldsIfEmpty();
             const wrap = btn.closest('.qual-tooltip-wrap');
             const tooltip = wrap.querySelector('.qual-tooltip');
+            const phone = wrap.closest('.hist-card')?.dataset.phone;
             let qualData = {};
             try { qualData = JSON.parse(tooltip.dataset.qual || '{}'); } catch(e) {}
 
             // Show immediately with stored data, then update with progress
             const hasQualData = Object.keys(qualData).length > 0;
-            tooltip.innerHTML = _renderQualTooltip(qualData, hasQualData);
+            tooltip.innerHTML = _renderQualTooltip(qualData, hasQualData, phone);
             tooltip.classList.remove('hidden');
             if (!hasQualData && _qualFields.length > 0) {
                 const locationId = document.getElementById('ai_location_id')?.value;
-                const phone = wrap.closest('.hist-card')?.dataset.phone;
                 if (locationId && phone) {
                     try {
                         const resp = await fetch(`/admin/agents/${locationId}/conversations/${encodeURIComponent(phone)}/progress`);
                         const data = await resp.json();
                         if (data.success && Object.keys(data.progress || {}).length > 0) {
-                            tooltip.innerHTML = _renderQualTooltip(data.progress, data.qualified);
+                            tooltip.innerHTML = _renderQualTooltip(data.progress, data.qualified, phone);
                         }
                     } catch(e) {}
                 }
