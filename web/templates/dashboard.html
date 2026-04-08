@@ -520,18 +520,23 @@
             const data = progressData || {};
             const items = _qualFields.map(f => {
                 const val = data[f.key];
-                const collected = val !== undefined && val !== null && val !== '';
+                // val pode ser boolean true (detecção parcial) ou string (dados confirmados)
+                const collected = val === true || (typeof val === 'string' && val !== '');
+                const confirmedValue = isQualified && typeof val === 'string' && val !== '' ? val : null;
                 return `<div class="flex items-start gap-2 py-0.5">
                     <span class="${collected ? 'text-green-400' : 'text-gray-600'} text-[10px] mt-0.5 shrink-0">${collected ? '&#10003;' : '&#9675;'}</span>
                     <div class="min-w-0">
                         <span class="text-[10px] font-mono ${collected ? 'text-gray-300' : 'text-gray-500'}">${_escapeHtml(f.label)}</span>
-                        ${collected ? `<p class="text-[9px] font-mono text-gray-500 truncate max-w-[160px]">${_escapeHtml(String(val))}</p>` : ''}
+                        ${confirmedValue ? `<p class="text-[9px] font-mono text-gray-500 truncate max-w-[160px]">${_escapeHtml(String(confirmedValue))}</p>` : ''}
                     </div>
                 </div>`;
             });
-            const countCollected = _qualFields.filter(f => { const v = data[f.key]; return v !== undefined && v !== null && v !== ''; }).length;
+            const countCollected = _qualFields.filter(f => {
+                const v = data[f.key];
+                return v === true || (typeof v === 'string' && v !== '');
+            }).length;
             const headerColor = isQualified ? 'text-green-400' : 'text-gray-400';
-            const label = isQualified ? 'Qualificado' : `Campos obrigatorios (${countCollected}/${_qualFields.length})`;
+            const label = isQualified ? 'Qualificado ✓' : `Campos coletados (${countCollected}/${_qualFields.length})`;
             return `<div class="qual-tooltip-content">
                 <p class="text-[9px] font-bold ${headerColor} uppercase tracking-widest mb-2">${label}</p>
                 <div class="space-y-1">${items.join('')}</div>
@@ -724,11 +729,9 @@
             try { qualData = JSON.parse(tooltip.dataset.qual || '{}'); } catch(e) {}
 
             // Show immediately with stored data, then update with progress
-            tooltip.innerHTML = _renderQualTooltip(qualData);
-            tooltip.classList.remove('hidden');
-
-            // If not yet qualified, fetch partial progress
             const hasQualData = Object.keys(qualData).length > 0;
+            tooltip.innerHTML = _renderQualTooltip(qualData, hasQualData);
+            tooltip.classList.remove('hidden');
             if (!hasQualData && _qualFields.length > 0) {
                 const locationId = document.getElementById('ai_location_id')?.value;
                 const phone = wrap.closest('.hist-card')?.dataset.phone;

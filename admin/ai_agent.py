@@ -289,7 +289,7 @@ async def get_qualification_progress(location_id: str, phone: str):
         )
 
         # Detectar progresso: para cada campo, verifica se o AI perguntou sobre ele
-        # e se houve resposta humana logo em seguida
+        # e se a PRÓXIMA mensagem imediata é humana (sem outra mensagem AI no meio)
         progress = {}
         field_labels = {f["key"]: f["label"].lower() for f in qual_fields}
 
@@ -297,24 +297,30 @@ async def get_qualification_progress(location_id: str, phone: str):
             if msg.message_type != "ai":
                 continue
             ai_text = (msg.content or "").lower()
-            # Verificar se a próxima mensagem é humana (resposta)
-            next_human = next(
-                (m for m in messages[i+1:] if m.message_type == "human"),
-                None
-            )
+
+            # Pegar apenas a mensagem IMEDIATAMENTE seguinte que seja humana
+            # (se vier outra mensagem AI antes, ignorar — não é uma resposta direta)
+            next_human = None
+            for m in messages[i + 1:]:
+                if m.message_type == "human":
+                    next_human = m
+                    break
+                elif m.message_type == "ai":
+                    break  # outra mensagem AI apareceu antes — não é resposta direta
+
             if not next_human:
                 continue
             human_text = (next_human.content or "").strip()
-            if len(human_text) < 2:
+            # Ignorar respostas muito curtas ou que parecem perguntas (não respostas)
+            if len(human_text) < 2 or human_text.endswith("?"):
                 continue
-            # Verificar quais campos o AI está perguntando nessa mensagem
+
             for key, label in field_labels.items():
                 if key in progress:
                     continue
-                # Heurística: o AI menciona o label ou palavras-chave do campo
-                keywords = label.split()
-                if any(kw in ai_text for kw in keywords if len(kw) > 3):
-                    progress[key] = human_text
+                keywords = [kw for kw in label.split() if len(kw) > 3]
+                if any(kw in ai_text for kw in keywords):
+                    progress[key] = True  # apenas marca como coletado, sem expor o valor
 
         return {"success": True, "progress": progress, "qualified": False}
     except Exception as e:
