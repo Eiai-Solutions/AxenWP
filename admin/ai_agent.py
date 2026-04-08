@@ -201,7 +201,18 @@ async def get_conversations(location_id: str, offset: int = 0, limit: int = 20):
                 "qualified": qualified_map.get(phone),
             })
 
-        return {"success": True, "contacts": contacts, "total": total, "offset": offset, "limit": limit}
+        # Buscar campos de qualificação do agente
+        agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
+        qual_fields = agent.qualification_fields if agent and agent.qualification_fields else []
+
+        return {
+            "success": True,
+            "contacts": contacts,
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "qualification_fields": qual_fields,
+        }
     except Exception as e:
         logger.error(f"Erro ao buscar conversas: {e}")
         return {"success": False, "error": str(e)}

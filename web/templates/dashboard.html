@@ -440,6 +440,7 @@
         let _histOffset = 0;
         let _histTotal = 0;
         let _histLoading = false;
+        let _qualFields = [];
 
         async function loadConversations(reset = true) {
             const locationId = document.getElementById('ai_location_id').value;
@@ -466,6 +467,7 @@
                 if (data.success) {
                     _histTotal = data.total;
                     counterEl.textContent = `(${_histTotal})`;
+                    if (data.qualification_fields) _qualFields = data.qualification_fields;
 
                     if (data.contacts.length === 0 && _histOffset === 0) {
                         emptyEl.classList.remove('hidden');
@@ -484,6 +486,25 @@
             }
         }
 
+        function _renderQualTooltip(qualifiedData) {
+            if (!_qualFields.length) return '';
+            const data = qualifiedData || {};
+            const items = _qualFields.map(f => {
+                const val = data[f.key];
+                const collected = val !== undefined && val !== null && val !== '';
+                return `<div class="flex items-center gap-2 py-0.5">
+                    <span class="${collected ? 'text-green-400' : 'text-gray-600'} text-[10px]">${collected ? '&#10003;' : '&#9675;'}</span>
+                    <span class="text-[10px] font-mono ${collected ? 'text-gray-300' : 'text-gray-500'}">${_escapeHtml(f.label)}</span>
+                    ${collected ? `<span class="text-[10px] font-mono text-gray-400 ml-auto truncate max-w-[120px]">${_escapeHtml(String(val))}</span>` : ''}
+                </div>`;
+            });
+            const countCollected = _qualFields.filter(f => { const v = data[f.key]; return v !== undefined && v !== null && v !== ''; }).length;
+            return `<div class="qual-tooltip-content">
+                <p class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Campos obrigatorios (${countCollected}/${_qualFields.length})</p>
+                ${items.join('')}
+            </div>`;
+        }
+
         function _renderContactCard(c) {
             const phone = c.phone;
             const displayPhone = phone.replace(/^(\d{2})(\d{2})(\d{4,5})(\d{4})$/, '+$1 ($2) $3-$4');
@@ -492,11 +513,17 @@
                 ? '<span class="px-2 py-0.5 bg-green-500/20 text-green-400 text-[9px] font-bold uppercase rounded-full">Qualificado</span>'
                 : '<span class="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] font-bold uppercase rounded-full">Em atendimento</span>';
 
+            const qualData = c.qualified ? c.qualified.qualified_data : null;
+            const countCollected = _qualFields.length > 0
+                ? _qualFields.filter(f => { const v = (qualData || {})[f.key]; return v !== undefined && v !== null && v !== ''; }).length
+                : 0;
+            const qualBtnColor = c.qualified ? 'text-green-400' : (countCollected > 0 ? 'text-yellow-400' : 'text-gray-500');
+
             return `
                 <div class="hist-card border border-gray-800 rounded-lg overflow-hidden hover:border-gray-700 transition-colors">
-                    <button type="button" onclick="toggleHistCard(this, '${c.session_id}', '${phone}')"
-                        class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition-colors">
-                        <div class="flex items-center gap-3 min-w-0">
+                    <div class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition-colors">
+                        <button type="button" onclick="toggleHistCard(this, '${c.session_id}', '${phone}')"
+                            class="flex items-center gap-3 min-w-0 flex-1">
                             <div class="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-xs font-bold text-gray-400 shrink-0">
                                 ${phone.slice(-2)}
                             </div>
@@ -504,14 +531,28 @@
                                 <p class="text-sm font-mono text-white truncate">${displayPhone || phone}</p>
                                 <p class="text-[10px] text-gray-500 font-mono">${c.msg_count} msgs · ${lastMsg}</p>
                             </div>
-                        </div>
+                        </button>
                         <div class="flex items-center gap-2 shrink-0">
+                            ${_qualFields.length > 0 ? `
+                            <div class="relative qual-tooltip-wrap">
+                                <button type="button" onclick="toggleQualTooltip(event, this)" onmouseenter="showQualTooltip(this)" onmouseleave="hideQualTooltip(this)"
+                                    class="${qualBtnColor} hover:text-white transition-colors p-1" title="Campos coletados">
+                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+                                    </svg>
+                                </button>
+                                <div class="qual-tooltip hidden absolute right-0 top-full mt-1 z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-3 min-w-[220px]"
+                                    data-qual='${JSON.stringify(qualData || {}).replace(/'/g, "&#39;")}'>
+                                </div>
+                            </div>` : ''}
                             ${statusBadge}
-                            <svg class="hist-chevron w-4 h-4 text-gray-600 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                            </svg>
+                            <button type="button" onclick="toggleHistCard(this, '${c.session_id}', '${phone}')" class="p-0.5">
+                                <svg class="hist-chevron w-4 h-4 text-gray-600 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                                </svg>
+                            </button>
                         </div>
-                    </button>
+                    </div>
                     <div class="hist-detail hidden">
                         <div class="hist-messages px-4 py-3 border-t border-gray-800 max-h-80 overflow-y-auto space-y-2">
                             <p class="text-center text-gray-600 text-xs font-mono py-4">Carregando mensagens...</p>
@@ -580,6 +621,35 @@
             d.textContent = text;
             return d.innerHTML;
         }
+
+        function showQualTooltip(btn) {
+            const wrap = btn.closest('.qual-tooltip-wrap');
+            const tooltip = wrap.querySelector('.qual-tooltip');
+            const qualData = JSON.parse(tooltip.dataset.qual || '{}');
+            tooltip.innerHTML = _renderQualTooltip(qualData);
+            tooltip.classList.remove('hidden');
+        }
+        function hideQualTooltip(btn) {
+            const wrap = btn.closest('.qual-tooltip-wrap');
+            const tooltip = wrap.querySelector('.qual-tooltip');
+            tooltip.classList.add('hidden');
+        }
+        function toggleQualTooltip(e, btn) {
+            e.stopPropagation();
+            // Close all other tooltips first
+            document.querySelectorAll('.qual-tooltip').forEach(t => t.classList.add('hidden'));
+            const wrap = btn.closest('.qual-tooltip-wrap');
+            const tooltip = wrap.querySelector('.qual-tooltip');
+            if (tooltip.classList.contains('hidden')) {
+                showQualTooltip(btn);
+            } else {
+                tooltip.classList.add('hidden');
+            }
+        }
+        // Close tooltips on outside click
+        document.addEventListener('click', () => {
+            document.querySelectorAll('.qual-tooltip').forEach(t => t.classList.add('hidden'));
+        });
 
         function _initHistScroll() {
             const scrollContainer = document.getElementById('hist_scroll_area');
