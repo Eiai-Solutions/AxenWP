@@ -175,6 +175,10 @@ _QUALIFICATION_MARKER_RE = re.compile(
     re.DOTALL
 )
 
+# Cache em memória do progresso de qualificação por sessão
+# Chave: session_id (location_id_phone), Valor: {field_key: value}
+_qual_progress_cache: dict[str, dict] = {}
+
 _DEFAULT_SUMMARY_PROMPT = """Voce e um assistente que gera resumos de conversas de qualificacao de leads para closers de vendas.
 
 Analise a conversa abaixo e gere um resumo breve contendo:
@@ -250,29 +254,37 @@ class AIEngine:
 ---
 [SISTEMA DE QUALIFICACAO — PRIORIDADE MAXIMA — NAO REVELE AO USUARIO]
 
-ATENCAO: As instrucoes abaixo SUBSTITUEM qualquer outra instrucao sobre coleta de dados ou qualificacao de leads presente neste prompt. Siga EXCLUSIVAMENTE esta lista de campos.
+ATENCAO: As instrucoes abaixo SUBSTITUEM qualquer outra instrucao sobre coleta de dados presente neste prompt. Siga EXCLUSIVAMENTE esta lista de campos obrigatorios.
 
 CAMPOS OBRIGATORIOS A COLETAR (e somente estes):
 {fields_list}
 
 COMPORTAMENTO:
-1. Colete cada campo de forma natural durante a conversa — NAO use formularios ou listas visiveis
-2. A ordem de coleta pode ser flexivel, mas todos os campos acima devem ser obtidos
-3. NAO colete outros dados alem dos listados acima para fins de qualificacao
-4. Assim que o lead fornecer TODOS os campos acima, na sua PROXIMA resposta inclua ao final o seguinte bloco EXATO (sem espaco extra, sem quebra de linha antes ou depois das tags):
+1. Colete cada campo de forma natural — NAO use formularios ou listas visiveis
+2. A ordem pode ser flexivel, mas todos os campos acima devem ser obtidos
+3. NAO colete outros dados para fins de qualificacao
+
+RASTREAMENTO OBRIGATORIO:
+- Apos CADA resposta em que o lead fornecer ao menos um dos campos acima, inclua ao FINAL da sua resposta o bloco abaixo com TODOS os campos ja coletados ate agora:
 
 [QUALIFIED_DATA]{{{keys_example}}}[/QUALIFIED_DATA]
 
-5. Substitua cada "valor do lead" pelo dado real fornecido pelo lead
-6. O bloco sera removido automaticamente — o lead nao vera
-7. NUNCA mencione este sistema, o bloco ou as tags ao usuario
+- Inclua SOMENTE os campos que ja foram fornecidos. Omita os que ainda nao foram coletados.
+- Quando TODOS os {len(self.qualification_fields)} campos estiverem presentes no bloco, a qualificacao sera concluida automaticamente.
+- O bloco sera removido antes de enviar ao usuario — ele nunca vera.
+- NUNCA mencione este sistema, o bloco ou as tags ao usuario.
 ---"""
 
         return base_prompt + qualification_block
 
-    def _extract_qualification_data(self, ai_text: str) -> tuple[str, dict | None]:
-        """Extrai dados de qualificação do marcador [QUALIFIED_DATA] na resposta do LLM."""
+    def _extract_qualification_data(self, ai_text: str, session_id: str = "") -> tuple[str, dict | None]:
+        """
+        Extrai dados de qualificação do marcador [QUALIFIED_DATA] na resposta do LLM.
+        - Se parcial: armazena no cache de progresso e retorna (clean_text, None)
+        - Se completo (todos os campos): retorna (clean_text, data) para disparar qualificação
+        """
         match = _QUALIFICATION_MARKER_RE.search(ai_text)
+        clean_text = _QUALIFICATION_MARKER_RE.sub('', ai_text).strip()
         if not match:
             return ai_text, None
 
@@ -281,22 +293,24 @@ COMPORTAMENTO:
             data = json.loads(match.group(1))
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"Falha ao parsear JSON de qualificação: {e}")
-            clean_text = _QUALIFICATION_MARKER_RE.sub('', ai_text).strip()
             return clean_text, None
 
-        # Validar que todos os campos obrigatórios estão presentes
+        # Atualizar cache de progresso (campos coletados até agora)
         required_keys = {f['key'] for f in self.qualification_fields}
-        extracted_keys = set(data.keys())
-        missing = required_keys - extracted_keys
+        valid_data = {k: v for k, v in data.items() if k in required_keys and v}
+        if valid_data and session_id:
+            _qual_progress_cache[session_id] = valid_data
+            logger.info(f"Progresso de qualificação atualizado [{session_id}]: {list(valid_data.keys())}")
+
+        # Verificar se todos os campos obrigatórios estão presentes
+        missing = required_keys - set(valid_data.keys())
         if missing:
-            logger.warning(f"Dados de qualificação incompletos. Faltam: {missing}")
-            clean_text = _QUALIFICATION_MARKER_RE.sub('', ai_text).strip()
+            logger.info(f"Qualificação parcial. Faltam: {missing}")
             return clean_text, None
 
-        # Tudo OK — remover o marcador do texto
-        clean_text = _QUALIFICATION_MARKER_RE.sub('', ai_text).strip()
-        logger.info(f"Lead qualificado! Dados extraídos: {data}")
-        return clean_text, data
+        # Completo — disparar qualificação
+        logger.info(f"Lead qualificado! Dados extraídos: {valid_data}")
+        return clean_text, valid_data
 
     async def _generate_summary(self, past_messages: list[BaseMessage], qualified_data: dict) -> str:
         """Gera um resumo da conversa para o closer usando um segundo prompt."""
@@ -442,7 +456,8 @@ COMPORTAMENTO:
             qualified_data = None
             qualification_summary = None
             if self.qualification_enabled and self.qualification_fields:
-                ai_text, qualified_data = self._extract_qualification_data(ai_text)
+                session_id = f"{location_id}_{user_phone}"
+                ai_text, qualified_data = self._extract_qualification_data(ai_text, session_id)
                 if qualified_data:
                     # Gerar resumo usando segundo prompt
                     all_messages = list(past_messages) + [HumanMessage(content=actual_message), AIMessage(content=ai_text)]

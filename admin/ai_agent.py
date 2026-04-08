@@ -256,18 +256,19 @@ async def get_conversation_messages(location_id: str, phone: str, offset: int = 
 @router.get("/{location_id}/conversations/{phone}/progress")
 async def get_qualification_progress(location_id: str, phone: str):
     """
-    Analisa as mensagens da conversa e detecta quais campos de qualificação
-    provavelmente já foram coletados, com base no padrão AI-pergunta → lead-responde.
+    Retorna o progresso de qualificação de um lead.
+    - Se qualificado: retorna os dados confirmados do QualifiedLead
+    - Se em andamento: retorna o cache de progresso extraído pelo AI
     """
+    from services.ai_service import _qual_progress_cache
     db = SessionLocal()
     try:
-        # Buscar campos configurados
         agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
         qual_fields = agent.qualification_fields if agent and agent.qualification_fields else []
         if not qual_fields:
             return {"success": True, "progress": {}, "qualified": False}
 
-        # Se já qualificado, retornar os dados salvos
+        # Se já qualificado, retornar os dados confirmados
         qualified = db.query(QualifiedLead).filter(
             QualifiedLead.location_id == location_id,
             QualifiedLead.phone == phone,
@@ -275,56 +276,16 @@ async def get_qualification_progress(location_id: str, phone: str):
         if qualified:
             return {
                 "success": True,
-                "progress": {f["key"]: qualified.qualified_data.get(f["key"]) for f in qual_fields},
+                "progress": qualified.qualified_data or {},
                 "qualified": True,
             }
 
-        # Buscar mensagens em ordem cronológica
+        # Retornar progresso parcial do cache (extraído pelo AI em tempo real)
         session_id = f"{location_id}_{phone}"
-        messages = (
-            db.query(ChatHistory)
-            .filter(ChatHistory.session_id == session_id)
-            .order_by(ChatHistory.created_at.asc())
-            .all()
-        )
-
-        # Detectar progresso: para cada campo, verifica se o AI perguntou sobre ele
-        # e se a PRÓXIMA mensagem imediata é humana (sem outra mensagem AI no meio)
-        progress = {}
-        field_labels = {f["key"]: f["label"].lower() for f in qual_fields}
-
-        for i, msg in enumerate(messages):
-            if msg.message_type != "ai":
-                continue
-            ai_text = (msg.content or "").lower()
-
-            # Pegar apenas a mensagem IMEDIATAMENTE seguinte que seja humana
-            # (se vier outra mensagem AI antes, ignorar — não é uma resposta direta)
-            next_human = None
-            for m in messages[i + 1:]:
-                if m.message_type == "human":
-                    next_human = m
-                    break
-                elif m.message_type == "ai":
-                    break  # outra mensagem AI apareceu antes — não é resposta direta
-
-            if not next_human:
-                continue
-            human_text = (next_human.content or "").strip()
-            # Ignorar respostas muito curtas ou que parecem perguntas (não respostas)
-            if len(human_text) < 2 or human_text.endswith("?"):
-                continue
-
-            for key, label in field_labels.items():
-                if key in progress:
-                    continue
-                keywords = [kw for kw in label.split() if len(kw) > 3]
-                if any(kw in ai_text for kw in keywords):
-                    progress[key] = True  # apenas marca como coletado, sem expor o valor
-
+        progress = _qual_progress_cache.get(session_id, {})
         return {"success": True, "progress": progress, "qualified": False}
     except Exception as e:
-        logger.error(f"Erro ao calcular progresso de qualificação: {e}")
+        logger.error(f"Erro ao buscar progresso de qualificação: {e}")
         return {"success": False, "error": str(e)}
     finally:
         db.close()
