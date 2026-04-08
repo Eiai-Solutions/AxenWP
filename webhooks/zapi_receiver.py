@@ -102,8 +102,14 @@ async def _handle_qualification(location_id: str, phone: str, contact_id: str, t
             if existing_contact and "id" in existing_contact:
                 ghl_contact_id = existing_contact["id"]
             else:
-                lead_name = qualified_data.get("nome") or qualified_data.get("name") or qualified_data.get("nome_completo") or phone
-                new_contact = await ghl_service.create_contact(location_id, phone, name=lead_name)
+                # Tentar extrair nome dos campos mapeados antes de criar o contato
+                _pre_first = None
+                for fd in qualification_fields:
+                    if fd.get("ghl_field_id") == "contact.firstName" and fd.get("key") in qualified_data:
+                        _pre_first = qualified_data[fd["key"]]
+                        break
+                lead_name_pre = _pre_first or qualified_data.get("nome") or qualified_data.get("name") or qualified_data.get("nome_completo") or phone
+                new_contact = await ghl_service.create_contact(location_id, phone, name=lead_name_pre)
                 if new_contact and "id" in new_contact:
                     ghl_contact_id = new_contact["id"]
                     token_manager.save_contact_mapping(location_id, phone, ghl_contact_id)
@@ -133,11 +139,16 @@ async def _handle_qualification(location_id: str, phone: str, contact_id: str, t
                 await ghl_service.update_contact(location_id, ghl_contact_id, contact_std_updates)
                 logger.info(f"Contato {ghl_contact_id} atualizado com campos nativos: {list(contact_std_updates.keys())}")
 
-            # Nome e valor da oportunidade
+            # Nome do lead: prioridade = firstName mapeado > qualified_data genérico > phone
+            first = contact_std_updates.get("firstName", "")
+            last = contact_std_updates.get("lastName", "")
             lead_name = (
-                contact_std_updates.get("firstName") or
-                qualified_data.get("nome") or qualified_data.get("name") or qualified_data.get("nome_completo") or phone
+                f"{first} {last}".strip() if first else None
+            ) or (
+                qualified_data.get("nome") or qualified_data.get("name") or
+                qualified_data.get("nome_completo") or qualified_data.get("full_name") or phone
             )
+            # Título da oportunidade: usa o nome do contato automaticamente
             opp_name = opp_std_updates.get("name") or f"{lead_name} - WhatsApp Lead"
             monetary_value = 0.0
             if "monetaryValue" in opp_std_updates:

@@ -2612,7 +2612,32 @@
                                         </button>
                                     </div>
                                 </div>
-                                <p class="text-[10px] text-gray-600 font-mono mb-3">Defina os campos que a IA precisa coletar do lead. Mapeie cada um para um campo personalizado de oportunidade do GHL.</p>
+                                <p class="text-[10px] text-gray-600 font-mono mb-3">Defina os campos que a IA precisa coletar do lead. Mapeie cada um para um campo do GHL.</p>
+
+                                <!-- Campo fixo do sistema: Telefone -->
+                                <div class="grid grid-cols-12 gap-2 mb-2 px-3 py-2 bg-gray-900/60 border border-gray-800 rounded-lg opacity-60">
+                                    <div class="col-span-4">
+                                        <div class="flex items-center gap-1.5">
+                                            <svg class="w-3 h-3 text-gray-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                                            <span class="text-[10px] text-gray-500 font-mono">Telefone</span>
+                                        </div>
+                                    </div>
+                                    <div class="col-span-3">
+                                        <span class="text-[10px] text-gray-600 font-mono">_phone</span>
+                                    </div>
+                                    <div class="col-span-4">
+                                        <span class="text-[10px] text-gray-500 font-mono">[Contato] Telefone</span>
+                                    </div>
+                                    <div class="col-span-1 text-right">
+                                        <span class="text-[9px] text-gray-700 font-mono uppercase">Sistema</span>
+                                    </div>
+                                </div>
+
+                                <!-- Nota: nome → título da oportunidade -->
+                                <div class="flex items-start gap-2 px-3 py-2 bg-blue-500/5 border border-blue-500/20 rounded-lg mb-2">
+                                    <svg class="w-3 h-3 text-blue-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    <p class="text-[10px] text-blue-300/70 font-mono">O campo mapeado para <strong class="text-blue-300">[Contato] Nome</strong> é usado automaticamente como título da oportunidade no GHL.</p>
+                                </div>
 
                                 <!-- Header da tabela -->
                                 <div id="qual_fields_header" class="hidden grid grid-cols-12 gap-2 px-3 py-2 text-[9px] font-bold text-gray-500 uppercase tracking-widest font-mono">
