@@ -514,23 +514,27 @@
             }
         }
 
-        function _renderQualTooltip(qualifiedData) {
+        function _renderQualTooltip(progressData, isQualified) {
             _loadQualFieldsIfEmpty();
             if (!_qualFields.length) return '<p class="text-[10px] text-gray-500 font-mono italic">Sem campos de qualificacao configurados</p>';
-            const data = qualifiedData || {};
+            const data = progressData || {};
             const items = _qualFields.map(f => {
                 const val = data[f.key];
                 const collected = val !== undefined && val !== null && val !== '';
-                return `<div class="flex items-center gap-2 py-0.5">
-                    <span class="${collected ? 'text-green-400' : 'text-gray-600'} text-[10px]">${collected ? '&#10003;' : '&#9675;'}</span>
-                    <span class="text-[10px] font-mono ${collected ? 'text-gray-300' : 'text-gray-500'}">${_escapeHtml(f.label)}</span>
-                    ${collected ? `<span class="text-[10px] font-mono text-gray-400 ml-auto truncate max-w-[120px]">${_escapeHtml(String(val))}</span>` : ''}
+                return `<div class="flex items-start gap-2 py-0.5">
+                    <span class="${collected ? 'text-green-400' : 'text-gray-600'} text-[10px] mt-0.5 shrink-0">${collected ? '&#10003;' : '&#9675;'}</span>
+                    <div class="min-w-0">
+                        <span class="text-[10px] font-mono ${collected ? 'text-gray-300' : 'text-gray-500'}">${_escapeHtml(f.label)}</span>
+                        ${collected ? `<p class="text-[9px] font-mono text-gray-500 truncate max-w-[160px]">${_escapeHtml(String(val))}</p>` : ''}
+                    </div>
                 </div>`;
             });
             const countCollected = _qualFields.filter(f => { const v = data[f.key]; return v !== undefined && v !== null && v !== ''; }).length;
+            const headerColor = isQualified ? 'text-green-400' : 'text-gray-400';
+            const label = isQualified ? 'Qualificado' : `Campos obrigatorios (${countCollected}/${_qualFields.length})`;
             return `<div class="qual-tooltip-content">
-                <p class="text-[9px] font-bold text-gray-400 uppercase tracking-widest mb-1">Campos obrigatorios (${countCollected}/${_qualFields.length})</p>
-                ${items.join('')}
+                <p class="text-[9px] font-bold ${headerColor} uppercase tracking-widest mb-2">${label}</p>
+                <div class="space-y-1">${items.join('')}</div>
             </div>`;
         }
 
@@ -547,7 +551,7 @@
             const qualDataJson = JSON.stringify(qualData || {}).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
             return `
-                <div class="hist-card border border-gray-800 rounded-lg overflow-hidden hover:border-gray-700 transition-colors">
+                <div class="hist-card border border-gray-800 rounded-lg overflow-hidden hover:border-gray-700 transition-colors" data-phone="${phone}">
                     <div class="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-white/5 transition-colors">
                         <button type="button" onclick="toggleHistCard(this, '${c.session_id}', '${phone}')"
                             class="flex items-center gap-3 min-w-0 flex-1">
@@ -712,14 +716,32 @@
             return d.innerHTML;
         }
 
-        function showQualTooltip(btn) {
+        async function showQualTooltip(btn) {
             _loadQualFieldsIfEmpty();
             const wrap = btn.closest('.qual-tooltip-wrap');
             const tooltip = wrap.querySelector('.qual-tooltip');
             let qualData = {};
             try { qualData = JSON.parse(tooltip.dataset.qual || '{}'); } catch(e) {}
+
+            // Show immediately with stored data, then update with progress
             tooltip.innerHTML = _renderQualTooltip(qualData);
             tooltip.classList.remove('hidden');
+
+            // If not yet qualified, fetch partial progress
+            const hasQualData = Object.keys(qualData).length > 0;
+            if (!hasQualData && _qualFields.length > 0) {
+                const locationId = document.getElementById('ai_location_id')?.value;
+                const phone = wrap.closest('.hist-card')?.dataset.phone;
+                if (locationId && phone) {
+                    try {
+                        const resp = await fetch(`/admin/agents/${locationId}/conversations/${encodeURIComponent(phone)}/progress`);
+                        const data = await resp.json();
+                        if (data.success && Object.keys(data.progress || {}).length > 0) {
+                            tooltip.innerHTML = _renderQualTooltip(data.progress, data.qualified);
+                        }
+                    } catch(e) {}
+                }
+            }
         }
         function hideQualTooltip(btn) {
             const wrap = btn.closest('.qual-tooltip-wrap');

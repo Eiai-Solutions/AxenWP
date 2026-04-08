@@ -253,6 +253,77 @@ async def get_conversation_messages(location_id: str, phone: str, offset: int = 
         db.close()
 
 
+@router.get("/{location_id}/conversations/{phone}/progress")
+async def get_qualification_progress(location_id: str, phone: str):
+    """
+    Analisa as mensagens da conversa e detecta quais campos de qualificação
+    provavelmente já foram coletados, com base no padrão AI-pergunta → lead-responde.
+    """
+    db = SessionLocal()
+    try:
+        # Buscar campos configurados
+        agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
+        qual_fields = agent.qualification_fields if agent and agent.qualification_fields else []
+        if not qual_fields:
+            return {"success": True, "progress": {}, "qualified": False}
+
+        # Se já qualificado, retornar os dados salvos
+        qualified = db.query(QualifiedLead).filter(
+            QualifiedLead.location_id == location_id,
+            QualifiedLead.phone == phone,
+        ).first()
+        if qualified:
+            return {
+                "success": True,
+                "progress": {f["key"]: qualified.qualified_data.get(f["key"]) for f in qual_fields},
+                "qualified": True,
+            }
+
+        # Buscar mensagens em ordem cronológica
+        session_id = f"{location_id}_{phone}"
+        messages = (
+            db.query(ChatHistory)
+            .filter(ChatHistory.session_id == session_id)
+            .order_by(ChatHistory.created_at.asc())
+            .all()
+        )
+
+        # Detectar progresso: para cada campo, verifica se o AI perguntou sobre ele
+        # e se houve resposta humana logo em seguida
+        progress = {}
+        field_labels = {f["key"]: f["label"].lower() for f in qual_fields}
+
+        for i, msg in enumerate(messages):
+            if msg.message_type != "ai":
+                continue
+            ai_text = (msg.content or "").lower()
+            # Verificar se a próxima mensagem é humana (resposta)
+            next_human = next(
+                (m for m in messages[i+1:] if m.message_type == "human"),
+                None
+            )
+            if not next_human:
+                continue
+            human_text = (next_human.content or "").strip()
+            if len(human_text) < 2:
+                continue
+            # Verificar quais campos o AI está perguntando nessa mensagem
+            for key, label in field_labels.items():
+                if key in progress:
+                    continue
+                # Heurística: o AI menciona o label ou palavras-chave do campo
+                keywords = label.split()
+                if any(kw in ai_text for kw in keywords if len(kw) > 3):
+                    progress[key] = human_text
+
+        return {"success": True, "progress": progress, "qualified": False}
+    except Exception as e:
+        logger.error(f"Erro ao calcular progresso de qualificação: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
 @router.get("/elevenlabs/voices")
 async def get_elevenlabs_voices(api_key: str):
     """
