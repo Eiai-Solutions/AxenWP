@@ -496,8 +496,19 @@
             }
         }
 
+        function _loadQualFieldsIfEmpty() {
+            if (_qualFields.length > 0) return;
+            const locationId = document.getElementById('ai_location_id')?.value;
+            if (!locationId) return;
+            const row = document.querySelector('tr[data-location="' + locationId + '"]');
+            if (row) {
+                try { _qualFields = JSON.parse(row.dataset.aiqualfields || '[]'); } catch(e) {}
+            }
+        }
+
         function _renderQualTooltip(qualifiedData) {
-            if (!_qualFields.length) return '';
+            _loadQualFieldsIfEmpty();
+            if (!_qualFields.length) return '<p class="text-[10px] text-gray-500 font-mono italic">Sem campos de qualificacao configurados</p>';
             const data = qualifiedData || {};
             const items = _qualFields.map(f => {
                 const val = data[f.key];
@@ -524,10 +535,8 @@
                 : '<span class="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] font-bold uppercase rounded-full">Em atendimento</span>';
 
             const qualData = c.qualified ? c.qualified.qualified_data : null;
-            const countCollected = _qualFields.length > 0
-                ? _qualFields.filter(f => { const v = (qualData || {})[f.key]; return v !== undefined && v !== null && v !== ''; }).length
-                : 0;
-            const qualBtnColor = c.qualified ? 'text-green-400' : (countCollected > 0 ? 'text-yellow-400' : 'text-gray-500');
+            const qualBtnColor = c.qualified ? 'text-green-400' : 'text-gray-500';
+            const qualDataJson = JSON.stringify(qualData || {}).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
             return `
                 <div class="hist-card border border-gray-800 rounded-lg overflow-hidden hover:border-gray-700 transition-colors">
@@ -543,7 +552,6 @@
                             </div>
                         </button>
                         <div class="flex items-center gap-2 shrink-0">
-                            ${_qualFields.length > 0 ? `
                             <div class="relative qual-tooltip-wrap">
                                 <button type="button" onclick="toggleQualTooltip(event, this)" onmouseenter="showQualTooltip(this)" onmouseleave="hideQualTooltip(this)"
                                     class="${qualBtnColor} hover:text-white transition-colors p-1" title="Campos coletados">
@@ -552,9 +560,9 @@
                                     </svg>
                                 </button>
                                 <div class="qual-tooltip hidden absolute right-0 top-full mt-1 z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-xl p-3 min-w-[220px]"
-                                    data-qual='${JSON.stringify(qualData || {}).replace(/'/g, "&#39;")}'>
+                                    data-qual='${qualDataJson}'>
                                 </div>
-                            </div>` : ''}
+                            </div>
                             ${statusBadge}
                             <button type="button" onclick="toggleHistCard(this, '${c.session_id}', '${phone}')" class="p-0.5">
                                 <svg class="hist-chevron w-4 h-4 text-gray-600 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -633,9 +641,11 @@
         }
 
         function showQualTooltip(btn) {
+            _loadQualFieldsIfEmpty();
             const wrap = btn.closest('.qual-tooltip-wrap');
             const tooltip = wrap.querySelector('.qual-tooltip');
-            const qualData = JSON.parse(tooltip.dataset.qual || '{}');
+            let qualData = {};
+            try { qualData = JSON.parse(tooltip.dataset.qual || '{}'); } catch(e) {}
             tooltip.innerHTML = _renderQualTooltip(qualData);
             tooltip.classList.remove('hidden');
         }
