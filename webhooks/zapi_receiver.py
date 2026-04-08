@@ -109,20 +109,42 @@ async def _handle_qualification(location_id: str, phone: str, contact_id: str, t
                     token_manager.save_contact_mapping(location_id, phone, ghl_contact_id)
 
         if ghl_contact_id:
-            # Mapear campos coletados → custom fields da oportunidade
+            # Separar campos por tipo: contato nativo, oportunidade nativa, custom field
+            contact_std_updates = {}
+            opp_std_updates = {}
             custom_fields = []
-            for field_def in qualification_fields:
-                ghl_field_id = field_def.get("ghl_field_id")
-                key = field_def.get("key")
-                if ghl_field_id and key and key in qualified_data:
-                    custom_fields.append({
-                        "id": ghl_field_id,
-                        "field_value": qualified_data[key],
-                    })
 
-            # Nome da oportunidade
-            lead_name = qualified_data.get("nome") or qualified_data.get("name") or qualified_data.get("nome_completo") or phone
-            opp_name = f"{lead_name} - WhatsApp Lead"
+            for field_def in qualification_fields:
+                ghl_field_id = field_def.get("ghl_field_id") or ""
+                key = field_def.get("key")
+                if not key or key not in qualified_data or not ghl_field_id:
+                    continue
+                value = qualified_data[key]
+
+                if ghl_field_id.startswith("contact."):
+                    contact_std_updates[ghl_field_id[len("contact."):]] = value
+                elif ghl_field_id.startswith("opportunity."):
+                    opp_std_updates[ghl_field_id[len("opportunity."):]] = value
+                else:
+                    custom_fields.append({"id": ghl_field_id, "field_value": value})
+
+            # Atualizar campos nativos do contato
+            if contact_std_updates:
+                await ghl_service.update_contact(location_id, ghl_contact_id, contact_std_updates)
+                logger.info(f"Contato {ghl_contact_id} atualizado com campos nativos: {list(contact_std_updates.keys())}")
+
+            # Nome e valor da oportunidade
+            lead_name = (
+                contact_std_updates.get("firstName") or
+                qualified_data.get("nome") or qualified_data.get("name") or qualified_data.get("nome_completo") or phone
+            )
+            opp_name = opp_std_updates.get("name") or f"{lead_name} - WhatsApp Lead"
+            monetary_value = 0.0
+            if "monetaryValue" in opp_std_updates:
+                try:
+                    monetary_value = float(opp_std_updates["monetaryValue"])
+                except (ValueError, TypeError):
+                    pass
 
             result = await ghl_service.create_opportunity(
                 location_id=location_id,
@@ -132,6 +154,7 @@ async def _handle_qualification(location_id: str, phone: str, contact_id: str, t
                 name=opp_name,
                 custom_fields=custom_fields if custom_fields else None,
                 notes=summary,
+                monetary_value=monetary_value,
             )
 
             if result and not result.get("error"):

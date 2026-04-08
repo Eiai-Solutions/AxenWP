@@ -363,8 +363,14 @@
         }
 
         function _ghlFieldLabel(f) {
-            const tag = f._model === 'opportunity' ? 'Opp' : 'Contato';
-            return `[${tag}] ${f.name}`;
+            const tags = {
+                'contact_std':      '[Contato]',
+                'opportunity_std':  '[Opp]',
+                'contact':          '[Contato Custom]',
+                'opportunity':      '[Opp Custom]',
+            };
+            const tag = tags[f._model] || '';
+            return tag ? `${tag} ${f.name}` : f.name;
         }
 
         function _ghlFieldOptions(selectedId) {

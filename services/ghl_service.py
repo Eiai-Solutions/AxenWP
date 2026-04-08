@@ -376,11 +376,31 @@ class GHLService:
             logger.error(f"Exceção ao buscar pipelines: {e}")
             return {"error": True, "message": str(e)}
 
+    # Campos nativos do contato GHL (sempre disponíveis)
+    _GHL_CONTACT_STD_FIELDS = [
+        {"id": "contact.firstName",   "name": "Nome",           "_model": "contact_std"},
+        {"id": "contact.lastName",    "name": "Sobrenome",      "_model": "contact_std"},
+        {"id": "contact.email",       "name": "Email",          "_model": "contact_std"},
+        {"id": "contact.phone",       "name": "Telefone",       "_model": "contact_std"},
+        {"id": "contact.companyName", "name": "Empresa",        "_model": "contact_std"},
+        {"id": "contact.address1",    "name": "Endereço",       "_model": "contact_std"},
+        {"id": "contact.city",        "name": "Cidade",         "_model": "contact_std"},
+        {"id": "contact.state",       "name": "Estado",         "_model": "contact_std"},
+        {"id": "contact.postalCode",  "name": "CEP",            "_model": "contact_std"},
+        {"id": "contact.country",     "name": "País",           "_model": "contact_std"},
+        {"id": "contact.website",     "name": "Website",        "_model": "contact_std"},
+    ]
+
+    # Campos nativos da oportunidade GHL
+    _GHL_OPPORTUNITY_STD_FIELDS = [
+        {"id": "opportunity.name",           "name": "Título do Negócio", "_model": "opportunity_std"},
+        {"id": "opportunity.monetaryValue",  "name": "Valor (R$)",        "_model": "opportunity_std"},
+        {"id": "opportunity.source",         "name": "Fonte",             "_model": "opportunity_std"},
+    ]
+
     async def get_custom_fields(self, location_id: str, model: str = "all") -> dict:
         """
-        Lista custom fields da location.
-        Se model='all', busca opportunity + contact e combina.
-        GET /locations/{locationId}/customFields?model={model}
+        Lista campos da location: campos nativos + custom fields de opportunity e contact.
         Retorna dict com "fields" ou "error".
         """
         headers = await self._get_headers(location_id)
@@ -402,21 +422,23 @@ class GHLService:
             return []
 
         try:
-            if model == "all":
-                opp_fields = await _fetch_model("opportunity")
-                contact_fields = await _fetch_model("contact")
-                # Tag each field with its model for UI grouping
-                for f in opp_fields:
-                    f["_model"] = "opportunity"
-                for f in contact_fields:
-                    f["_model"] = "contact"
-                # Deduplicate by id (opportunity takes priority)
-                seen = {f["id"] for f in opp_fields}
-                combined = opp_fields + [f for f in contact_fields if f["id"] not in seen]
-                return {"fields": combined}
-            else:
-                fields = await _fetch_model(model)
-                return {"fields": fields}
+            opp_fields = await _fetch_model("opportunity")
+            contact_fields = await _fetch_model("contact")
+            for f in opp_fields:
+                f["_model"] = "opportunity"
+            for f in contact_fields:
+                f["_model"] = "contact"
+            # Deduplicate custom fields by id
+            seen = {f["id"] for f in opp_fields}
+            custom_combined = opp_fields + [f for f in contact_fields if f["id"] not in seen]
+
+            # Campos nativos sempre na frente, depois custom fields
+            all_fields = (
+                list(self._GHL_CONTACT_STD_FIELDS)
+                + list(self._GHL_OPPORTUNITY_STD_FIELDS)
+                + custom_combined
+            )
+            return {"fields": all_fields}
         except Exception as e:
             logger.error(f"Exceção ao buscar custom fields ({model}): {e}")
             return {"error": True, "message": str(e)}
