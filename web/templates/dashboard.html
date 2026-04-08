@@ -555,8 +555,8 @@
             const displayPhone = phone.replace(/^(\d{2})(\d{2})(\d{4,5})(\d{4})$/, '+$1 ($2) $3-$4');
             const lastMsg = c.last_msg ? new Date(c.last_msg).toLocaleString('pt-BR') : '-';
             const statusBadge = c.qualified
-                ? '<span class="px-2 py-0.5 bg-green-500/20 text-green-400 text-[9px] font-bold uppercase rounded-full">Qualificado</span>'
-                : '<span class="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] font-bold uppercase rounded-full">Em atendimento</span>';
+                ? '<span class="hist-badge px-2 py-0.5 bg-green-500/20 text-green-400 text-[9px] font-bold uppercase rounded-full">Qualificado</span>'
+                : '<span class="hist-badge px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] font-bold uppercase rounded-full">Em atendimento</span>';
 
             const qualData = c.qualified ? c.qualified.qualified_data : null;
             const qualBtnColor = c.qualified ? 'text-green-400' : 'text-gray-500';
@@ -596,6 +596,10 @@
                         </div>
                     </div>
                     <div class="hist-detail hidden">
+                        ${c.qualified ? `<div class="ai-stopped-notice flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border-b border-yellow-700/30">
+                            <span class="text-yellow-400 text-[10px]">&#9888;</span>
+                            <p class="text-[10px] text-yellow-400 font-mono">Agente IA desativado — lead qualificado. Use "Resetar Qualificacao" abaixo para reativar.</p>
+                        </div>` : ''}
                         <div class="hist-messages px-4 py-3 border-t border-gray-800 max-h-80 overflow-y-auto space-y-2">
                             <p class="text-center text-gray-600 text-xs font-mono py-4">Carregando mensagens...</p>
                         </div>
@@ -703,19 +707,48 @@
                     if (data.success) {
                         _histTotal = data.total;
                         document.getElementById('hist_counter').textContent = `(${_histTotal})`;
-                        // Update card headers without re-rendering (update count & date text)
+                        // Update card headers without re-rendering (update count, date, and qualification badge)
                         data.contacts.forEach(c => {
-                            const cards = document.querySelectorAll('.hist-card');
-                            cards.forEach(card => {
-                                const btn = card.querySelector('button[onclick*="' + c.phone + '"]');
-                                if (btn) {
-                                    const sub = btn.querySelector('p:last-child');
-                                    if (sub) {
-                                        const lastMsg = c.last_msg ? new Date(c.last_msg).toLocaleString('pt-BR') : '-';
-                                        sub.textContent = `${c.msg_count} msgs · ${lastMsg}`;
+                            const card = document.querySelector(`.hist-card[data-phone="${c.phone}"]`);
+                            if (!card) return;
+                            // Update message count + last date
+                            const headerBtn = card.querySelector('button[onclick*="toggleHistCard"]');
+                            if (headerBtn) {
+                                const sub = headerBtn.querySelector('p:last-child');
+                                if (sub) {
+                                    const lastMsg = c.last_msg ? new Date(c.last_msg).toLocaleString('pt-BR') : '-';
+                                    sub.textContent = `${c.msg_count} msgs · ${lastMsg}`;
+                                }
+                            }
+                            // Update badge if qualification status changed
+                            const badge = card.querySelector('.hist-badge');
+                            if (badge) {
+                                const isQualNow = !!c.qualified;
+                                const wasQual = badge.classList.contains('text-green-400');
+                                if (isQualNow !== wasQual) {
+                                    badge.className = isQualNow
+                                        ? 'hist-badge px-2 py-0.5 bg-green-500/20 text-green-400 text-[9px] font-bold uppercase rounded-full'
+                                        : 'hist-badge px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[9px] font-bold uppercase rounded-full';
+                                    badge.textContent = isQualNow ? 'Qualificado' : 'Em atendimento';
+                                    // Update qual button color
+                                    const qualBtn = card.querySelector('.qual-tooltip-wrap button');
+                                    if (qualBtn) qualBtn.className = (isQualNow ? 'text-green-400' : 'text-gray-500') + ' hover:text-white transition-colors p-1';
+                                    // Add/remove AI-stopped notice in open detail
+                                    const detail = card.querySelector('.hist-detail');
+                                    if (detail && !detail.classList.contains('hidden')) {
+                                        const existing = detail.querySelector('.ai-stopped-notice');
+                                        if (isQualNow && !existing) {
+                                            detail.insertAdjacentHTML('afterbegin', `
+                                                <div class="ai-stopped-notice flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border-b border-yellow-700/30">
+                                                    <span class="text-yellow-400 text-[10px]">&#9888;</span>
+                                                    <p class="text-[10px] text-yellow-400 font-mono">Agente IA desativado — lead qualificado. Use "Resetar Qualificacao" para reativar.</p>
+                                                </div>`);
+                                        } else if (!isQualNow && existing) {
+                                            existing.remove();
+                                        }
                                     }
                                 }
-                            });
+                            }
                         });
                     }
                 } catch(e) {}
