@@ -292,25 +292,36 @@ async def get_qualification_progress(location_id: str, phone: str):
 
 
 @router.delete("/{location_id}/conversations/{phone}/qualification")
-async def reset_qualification(location_id: str, phone: str):
+async def reset_qualification(location_id: str, phone: str, clear_history: bool = False):
     """
     Remove a qualificação de um lead e limpa o cache de progresso.
-    Permite que o AI retome o atendimento para fins de teste/correção.
+    Se clear_history=true, apaga também o histórico de conversa (necessário para
+    evitar que a IA re-qualifique imediatamente ao ler as mensagens anteriores).
     """
     from services.ai_service import _qual_progress_cache
     db = SessionLocal()
     try:
-        deleted = db.query(QualifiedLead).filter(
+        deleted_qual = db.query(QualifiedLead).filter(
             QualifiedLead.location_id == location_id,
             QualifiedLead.phone == phone,
         ).delete()
+
+        deleted_history = 0
+        if clear_history:
+            session_id = f"{location_id}_{phone}"
+            deleted_history = db.query(ChatHistory).filter(
+                ChatHistory.session_id == session_id,
+            ).delete()
+
         db.commit()
 
         session_id = f"{location_id}_{phone}"
         _qual_progress_cache.pop(session_id, None)
 
-        logger.info(f"Qualificação resetada para {phone} no tenant {location_id}. Registros: {deleted}")
-        return {"success": True, "deleted": deleted}
+        logger.info(
+            f"Reset para {phone} @ {location_id}: qual={deleted_qual}, history={deleted_history}"
+        )
+        return {"success": True, "deleted_qual": deleted_qual, "deleted_history": deleted_history}
     except Exception as e:
         db.rollback()
         logger.error(f"Erro ao resetar qualificação: {e}")

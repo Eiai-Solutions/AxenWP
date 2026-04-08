@@ -738,14 +738,18 @@
         async function resetQualification(phone) {
             const locationId = document.getElementById('ai_location_id')?.value;
             if (!locationId) return;
-            if (!confirm('Remover qualificação deste contato? O agente voltará a responder.')) return;
+            if (!confirm(
+                'Resetar qualificação deste contato?\n\n' +
+                'Isso vai remover a qualificação E o histórico de conversa, ' +
+                'para que o agente possa responder novamente do zero.'
+            )) return;
             try {
-                const resp = await fetch(`/admin/agents/${locationId}/conversations/${encodeURIComponent(phone)}/qualification`, {
-                    method: 'DELETE',
-                });
+                const resp = await fetch(
+                    `/admin/agents/${locationId}/conversations/${encodeURIComponent(phone)}/qualification?clear_history=true`,
+                    { method: 'DELETE' }
+                );
                 const data = await resp.json();
                 if (data.success) {
-                    // Reload list to reflect new state
                     _openCardPhone = null;
                     await loadConversations(true);
                 } else {
