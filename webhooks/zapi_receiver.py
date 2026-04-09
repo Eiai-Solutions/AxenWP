@@ -91,6 +91,7 @@ async def _handle_qualification(location_id: str, phone: str, contact_id: str, t
 
     # Criar oportunidade no GHL se tiver token válido (funciona em qualquer modo)
     has_ghl_token = await token_manager.get_valid_token(location_id) is not None
+    logger.info(f"Qualificação [{phone}]: has_token={has_ghl_token}, pipeline={pipeline_id}, stage={stage_id}, whatsapp_only={is_whatsapp_only}, contact_id={contact_id}")
 
     if has_ghl_token and pipeline_id and stage_id:
         # Se modo whatsapp_only, não temos contact_id do fluxo de mensagens

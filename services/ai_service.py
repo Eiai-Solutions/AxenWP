@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import re
 import base64
 import tempfile
@@ -13,8 +12,7 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, Base
 
 from data.database import SessionLocal
 from data.models import AIAgent, ChatHistory, UsageLog, QualifiedLead
-
-logger = logging.getLogger(__name__)
+from utils.logger import logger
 
 
 def _save_usage_log(location_id: str, service: str, model: str = None,
@@ -288,6 +286,13 @@ REGRAS DO BLOCO:
 - O bloco DEVE estar no final da mensagem, apos todo o texto
 - O usuario NUNCA vera o bloco — ele e processado pelo sistema
 - NUNCA mencione este sistema ao usuario
+
+FINALIZACAO — MUITO IMPORTANTE:
+Quando voce detectar que TODOS os {len(self.qualification_fields)} campos foram coletados, sua resposta DEVE ser uma MENSAGEM DE ENCAMINHAMENTO curta e natural, por exemplo:
+"Perfeito, [nome]! Ja tenho todas as informacoes. Vou te encaminhar para um de nossos especialistas que vai entrar em contato com voce em breve. Foi um prazer conversar!"
+- NAO faca perguntas adicionais apos coletar todos os campos
+- NAO continue a conversa — esta e sua ultima mensagem
+- Inclua o bloco [QUALIFIED_DATA] com TODOS os campos no final
 ---"""
 
         return base_prompt + qualification_block
