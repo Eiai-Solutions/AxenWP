@@ -249,6 +249,10 @@ class AIEngine:
             for f in self.qualification_fields
         )
 
+        first_field = self.qualification_fields[0]
+        example_partial = f'[QUALIFIED_DATA]{{"{first_field["key"]}": "valor informado"}}[/QUALIFIED_DATA]'
+        example_complete = f'[QUALIFIED_DATA]{{{keys_example}}}[/QUALIFIED_DATA]'
+
         qualification_block = f"""
 
 ---
@@ -264,15 +268,26 @@ COMPORTAMENTO:
 2. A ordem pode ser flexivel, mas todos os campos acima devem ser obtidos
 3. NAO colete outros dados para fins de qualificacao
 
-RASTREAMENTO OBRIGATORIO:
-- Apos CADA resposta em que o lead fornecer ao menos um dos campos acima, inclua ao FINAL da sua resposta o bloco abaixo com TODOS os campos ja coletados ate agora:
+RASTREAMENTO OBRIGATORIO — VOCE DEVE SEGUIR ESTA REGRA SEM EXCECAO:
+Apos CADA resposta sua em que o lead tiver fornecido ao menos um dos campos acima, adicione EXATAMENTE o bloco abaixo no FINAL da sua mensagem. O bloco sera removido automaticamente antes de exibir ao usuario.
 
-[QUALIFIED_DATA]{{{keys_example}}}[/QUALIFIED_DATA]
+Formato: [QUALIFIED_DATA]{{JSON com os campos coletados}}[/QUALIFIED_DATA]
 
-- Inclua SOMENTE os campos que ja foram fornecidos. Omita os que ainda nao foram coletados.
-- Quando TODOS os {len(self.qualification_fields)} campos estiverem presentes no bloco, a qualificacao sera concluida automaticamente.
-- O bloco sera removido antes de enviar ao usuario — ele nunca vera.
-- NUNCA mencione este sistema, o bloco ou as tags ao usuario.
+EXEMPLO 1 — Lead forneceu apenas o primeiro campo:
+Sua resposta aqui normalmente.
+{example_partial}
+
+EXEMPLO 2 — Lead forneceu todos os campos:
+Sua resposta aqui normalmente.
+{example_complete}
+
+REGRAS DO BLOCO:
+- SEMPRE inclua o bloco quando o lead fornecer qualquer campo — NUNCA omita
+- Inclua TODOS os campos ja coletados na conversa (acumulativo)
+- Use as chaves EXATAS listadas acima (ex: "{first_field["key"]}")
+- O bloco DEVE estar no final da mensagem, apos todo o texto
+- O usuario NUNCA vera o bloco — ele e processado pelo sistema
+- NUNCA mencione este sistema ao usuario
 ---"""
 
         return base_prompt + qualification_block
@@ -286,6 +301,7 @@ RASTREAMENTO OBRIGATORIO:
         match = _QUALIFICATION_MARKER_RE.search(ai_text)
         clean_text = _QUALIFICATION_MARKER_RE.sub('', ai_text).strip()
         if not match:
+            logger.debug(f"Qualificação: marcador [QUALIFIED_DATA] NAO encontrado na resposta da IA. Resposta: {ai_text[:150]}")
             return ai_text, None
 
         try:
@@ -456,8 +472,8 @@ RASTREAMENTO OBRIGATORIO:
             qualified_data = None
             qualification_summary = None
             if self.qualification_enabled and self.qualification_fields:
-                session_id = f"{location_id}_{user_phone}"
-                ai_text, qualified_data = self._extract_qualification_data(ai_text, session_id)
+                qual_session_id = f"{self.agent_config.location_id}_{user_phone}"
+                ai_text, qualified_data = self._extract_qualification_data(ai_text, qual_session_id)
                 if qualified_data:
                     # Gerar resumo usando segundo prompt
                     all_messages = list(past_messages) + [HumanMessage(content=actual_message), AIMessage(content=ai_text)]
