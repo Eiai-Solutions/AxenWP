@@ -254,7 +254,7 @@
             const container = document.getElementById('qual_fields_container');
             container.innerHTML = '';
             if (savedFields.length > 0) {
-                savedFields.forEach(f => addQualField(f.label, f.key, f.ghl_field_id));
+                savedFields.forEach(f => addQualField(f.label, f.key, f.ghl_field_id, f.auto || false));
                 // Set _qualFields for history tab tooltip
                 _qualFields = savedFields;
             } else {
@@ -380,23 +380,28 @@
             ).join('');
         }
 
-        function addQualField(label, key, ghlFieldId) {
+        function addQualField(label, key, ghlFieldId, auto) {
             label = label || '';
             key = key || '';
             ghlFieldId = ghlFieldId || '';
+            auto = auto || false;
             const container = document.getElementById('qual_fields_container');
 
             const row = document.createElement('div');
             row.className = 'grid grid-cols-12 gap-2 items-center bg-black/30 border border-gray-800 rounded-lg p-2.5';
             row.innerHTML = `
-                <input type="text" placeholder="ex: Nome Completo" value="${label}"
-                    class="qual-field-label input-dark col-span-4 px-3 py-2 rounded-lg text-xs font-mono" onchange="autoGenerateKey(this); serializeQualFields()">
+                <input type="text" placeholder="${auto ? 'ex: Classificacao do Lead' : 'ex: Nome Completo'}" value="${label}"
+                    class="qual-field-label input-dark col-span-3 px-3 py-2 rounded-lg text-xs font-mono ${auto ? 'border-brand-red/30' : ''}" onchange="autoGenerateKey(this); serializeQualFields()">
                 <input type="text" placeholder="ex: nome" value="${key}"
-                    class="qual-field-key input-dark col-span-3 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
-                <select class="qual-ghl-field-select input-dark col-span-4 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()" ${ghlFieldId ? `data-ghl-field="${ghlFieldId}"` : ''}>
+                    class="qual-field-key input-dark col-span-2 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
+                <select class="qual-ghl-field-select input-dark col-span-3 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()" ${ghlFieldId ? `data-ghl-field="${ghlFieldId}"` : ''}>
                     <option value="">-- Nao mapear --</option>
                     ${_ghlFieldOptions(ghlFieldId)}
                 </select>
+                <label class="col-span-3 flex items-center justify-center gap-1.5 cursor-pointer group" title="IA analisa a conversa e preenche sozinha">
+                    <input type="checkbox" class="qual-field-auto w-3.5 h-3.5 text-brand-red bg-gray-900 border-gray-700 rounded focus:ring-brand-red" ${auto ? 'checked' : ''} onchange="toggleAutoField(this); serializeQualFields()">
+                    <span class="text-[10px] font-mono ${auto ? 'text-brand-red' : 'text-gray-600'} group-hover:text-gray-400 transition-colors">IA analisa</span>
+                </label>
                 <button type="button" onclick="removeQualField(this)"
                     class="col-span-1 p-2 text-gray-600 hover:text-red-400 transition-colors justify-self-center">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
@@ -405,6 +410,21 @@
             container.appendChild(row);
             _updateFieldsVisibility();
             serializeQualFields();
+        }
+
+        function toggleAutoField(checkbox) {
+            const row = checkbox.closest('.grid');
+            const labelInput = row.querySelector('.qual-field-label');
+            const autoLabel = checkbox.parentElement.querySelector('span');
+            if (checkbox.checked) {
+                labelInput.classList.add('border-brand-red/30');
+                labelInput.placeholder = 'ex: Classificacao do Lead';
+                autoLabel.classList.replace('text-gray-600', 'text-brand-red');
+            } else {
+                labelInput.classList.remove('border-brand-red/30');
+                labelInput.placeholder = 'ex: Nome Completo';
+                autoLabel.classList.replace('text-brand-red', 'text-gray-600');
+            }
         }
 
         function autoGenerateKey(input) {
@@ -437,8 +457,9 @@
                 const label = row.querySelector('.qual-field-label')?.value?.trim() || '';
                 const key = row.querySelector('.qual-field-key')?.value?.trim() || '';
                 const ghlFieldId = row.querySelector('.qual-ghl-field-select')?.value || '';
+                const auto = row.querySelector('.qual-field-auto')?.checked || false;
                 if (label && key) {
-                    fields.push({ label, key, ghl_field_id: ghlFieldId });
+                    fields.push({ label, key, ghl_field_id: ghlFieldId, auto });
                 }
             });
             document.getElementById('ai_qual_fields_json').value = JSON.stringify(fields);
@@ -518,25 +539,31 @@
             _loadQualFieldsIfEmpty();
             if (!_qualFields.length) return '<p class="text-[10px] text-gray-500 font-mono italic">Sem campos de qualificacao configurados</p>';
             const data = progressData || {};
-            const items = _qualFields.map(f => {
+            const collectFields = _qualFields.filter(f => !f.auto);
+            const autoFields = _qualFields.filter(f => f.auto);
+            const renderField = (f, isAuto) => {
                 const val = data[f.key];
-                // val pode ser boolean true (detecção parcial) ou string (dados confirmados)
                 const collected = val === true || (typeof val === 'string' && val !== '');
                 const confirmedValue = isQualified && typeof val === 'string' && val !== '' ? val : null;
+                const icon = isAuto ? (collected ? '&#129302;' : '&#9675;') : (collected ? '&#10003;' : '&#9675;');
                 return `<div class="flex items-start gap-2 py-0.5">
-                    <span class="${collected ? 'text-green-400' : 'text-gray-600'} text-[10px] mt-0.5 shrink-0">${collected ? '&#10003;' : '&#9675;'}</span>
+                    <span class="${collected ? (isAuto ? 'text-brand-red' : 'text-green-400') : 'text-gray-600'} text-[10px] mt-0.5 shrink-0">${icon}</span>
                     <div class="min-w-0">
-                        <span class="text-[10px] font-mono ${collected ? 'text-gray-300' : 'text-gray-500'}">${_escapeHtml(f.label)}</span>
+                        <span class="text-[10px] font-mono ${collected ? 'text-gray-300' : 'text-gray-500'}">${_escapeHtml(f.label)}${isAuto ? ' <span class="text-[8px] text-brand-red/70">AUTO</span>' : ''}</span>
                         ${confirmedValue ? `<p class="text-[9px] font-mono text-gray-500 truncate max-w-[160px]">${_escapeHtml(String(confirmedValue))}</p>` : ''}
                     </div>
                 </div>`;
-            });
-            const countCollected = _qualFields.filter(f => {
+            };
+            const items = [
+                ...collectFields.map(f => renderField(f, false)),
+                ...autoFields.map(f => renderField(f, true)),
+            ];
+            const countCollected = collectFields.filter(f => {
                 const v = data[f.key];
                 return v === true || (typeof v === 'string' && v !== '');
             }).length;
             const headerColor = isQualified ? 'text-green-400' : 'text-gray-400';
-            const label = isQualified ? 'Qualificado ✓' : `Campos coletados (${countCollected}/${_qualFields.length})`;
+            const label = isQualified ? 'Qualificado ✓' : `Campos coletados (${countCollected}/${collectFields.length})`;
             const resetBtn = isQualified && phone
                 ? `<button type="button" onclick="event.stopPropagation();resetQualification('${phone}')"
                     class="mt-2 w-full text-[9px] text-red-400 hover:text-red-300 font-mono border border-red-800/50 hover:border-red-600 rounded px-2 py-1 transition-colors">
@@ -2748,9 +2775,10 @@
 
                                 <!-- Header da tabela -->
                                 <div id="qual_fields_header" class="hidden grid grid-cols-12 gap-2 px-3 py-2 text-[9px] font-bold text-gray-500 uppercase tracking-widest font-mono">
-                                    <div class="col-span-4">O que a IA pergunta</div>
-                                    <div class="col-span-3">Chave interna</div>
-                                    <div class="col-span-4">Campo no GHL <span id="qual_ghl_fields_status" class="text-gray-700 normal-case"></span></div>
+                                    <div class="col-span-3">O que a IA pergunta</div>
+                                    <div class="col-span-2">Chave interna</div>
+                                    <div class="col-span-3">Campo no GHL <span id="qual_ghl_fields_status" class="text-gray-700 normal-case"></span></div>
+                                    <div class="col-span-3 text-center" title="Campos automaticos sao preenchidos pela IA analisando a conversa, sem perguntar ao lead">Auto (IA analisa)</div>
                                     <div class="col-span-1"></div>
                                 </div>
 

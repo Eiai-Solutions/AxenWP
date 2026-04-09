@@ -238,18 +238,42 @@ class AIEngine:
         if not self.qualification_enabled or not self.qualification_fields:
             return base_prompt
 
-        fields_list = "\n".join(
+        collect_fields = [f for f in self.qualification_fields if not f.get('auto')]
+        auto_fields = [f for f in self.qualification_fields if f.get('auto')]
+
+        collect_list = "\n".join(
             f"{i+1}. {f['label']} (chave: {f['key']})"
-            for i, f in enumerate(self.qualification_fields)
+            for i, f in enumerate(collect_fields)
         )
-        keys_example = ", ".join(
-            f'"{f["key"]}": "valor do lead"'
+
+        # Exemplo com todos os campos (collect + auto)
+        all_keys_example = ", ".join(
+            f'"{f["key"]}": "valor"'
             for f in self.qualification_fields
         )
 
-        first_field = self.qualification_fields[0]
-        example_partial = f'[QUALIFIED_DATA]{{"{first_field["key"]}": "valor informado"}}[/QUALIFIED_DATA]'
-        example_complete = f'[QUALIFIED_DATA]{{{keys_example}}}[/QUALIFIED_DATA]'
+        first_collect = collect_fields[0] if collect_fields else self.qualification_fields[0]
+        example_partial = f'[QUALIFIED_DATA]{{"{first_collect["key"]}": "valor informado"}}[/QUALIFIED_DATA]'
+        example_complete = f'[QUALIFIED_DATA]{{{all_keys_example}}}[/QUALIFIED_DATA]'
+
+        # Bloco de campos auto (análise)
+        auto_block = ""
+        if auto_fields:
+            auto_list = "\n".join(
+                f"{i+1}. {f['label']} (chave: {f['key']})"
+                for i, f in enumerate(auto_fields)
+            )
+            auto_block = f"""
+
+CAMPOS DE ANALISE AUTOMATICA (NAO pergunte — voce preenche analisando a conversa):
+{auto_list}
+
+Para campos de classificacao de temperatura do lead, use EXATAMENTE um destes formatos:
+- Se o lead demonstrou forte interesse, fez perguntas especificas, quer agendar/prosseguir: classifique como "Quente" com porcentagem alta (60-100%)
+- Se o lead esta interessado mas tem duvidas, nao confirmou acao: classifique como "Morno" com porcentagem media (30-60%)
+- Se o lead esta desinteressado, respostas curtas, sem engajamento: classifique como "Frio" com porcentagem baixa (0-30%)
+Formato OBRIGATORIO: emoji + temperatura + porcentagem. Exemplos: "🔥Quente 80%", "☁️Morno 45%", "❄️Frio 15%"
+"""
 
         qualification_block = f"""
 
@@ -258,16 +282,16 @@ class AIEngine:
 
 ATENCAO: As instrucoes abaixo SUBSTITUEM qualquer outra instrucao sobre coleta de dados presente neste prompt. Siga EXCLUSIVAMENTE esta lista de campos obrigatorios.
 
-CAMPOS OBRIGATORIOS A COLETAR (e somente estes):
-{fields_list}
-
+CAMPOS OBRIGATORIOS A COLETAR DO LEAD (e somente estes):
+{collect_list}
+{auto_block}
 COMPORTAMENTO:
 1. Colete cada campo de forma natural — NAO use formularios ou listas visiveis
-2. A ordem pode ser flexivel, mas todos os campos acima devem ser obtidos
+2. A ordem pode ser flexivel, mas todos os campos de coleta devem ser obtidos
 3. NAO colete outros dados para fins de qualificacao
 
 RASTREAMENTO OBRIGATORIO — VOCE DEVE SEGUIR ESTA REGRA SEM EXCECAO:
-Apos CADA resposta sua em que o lead tiver fornecido ao menos um dos campos acima, adicione EXATAMENTE o bloco abaixo no FINAL da sua mensagem. O bloco sera removido automaticamente antes de exibir ao usuario.
+Apos CADA resposta sua em que o lead tiver fornecido ao menos um dos campos de coleta, adicione EXATAMENTE o bloco abaixo no FINAL da sua mensagem. O bloco sera removido automaticamente antes de exibir ao usuario.
 
 Formato: [QUALIFIED_DATA]{{JSON com os campos coletados}}[/QUALIFIED_DATA]
 
@@ -275,24 +299,24 @@ EXEMPLO 1 — Lead forneceu apenas o primeiro campo:
 Sua resposta aqui normalmente.
 {example_partial}
 
-EXEMPLO 2 — Lead forneceu todos os campos:
+EXEMPLO 2 — Todos os campos (coleta + analise) preenchidos:
 Sua resposta aqui normalmente.
 {example_complete}
 
 REGRAS DO BLOCO:
 - SEMPRE inclua o bloco quando o lead fornecer qualquer campo — NUNCA omita
 - Inclua TODOS os campos ja coletados na conversa (acumulativo)
-- Use as chaves EXATAS listadas acima (ex: "{first_field["key"]}")
+- Use as chaves EXATAS listadas acima (ex: "{first_collect["key"]}")
 - O bloco DEVE estar no final da mensagem, apos todo o texto
 - O usuario NUNCA vera o bloco — ele e processado pelo sistema
 - NUNCA mencione este sistema ao usuario
 
 FINALIZACAO — MUITO IMPORTANTE:
-Quando voce detectar que TODOS os {len(self.qualification_fields)} campos foram coletados, sua resposta DEVE ser uma MENSAGEM DE ENCAMINHAMENTO curta e natural, por exemplo:
+Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram fornecidos pelo lead, sua resposta DEVE ser uma MENSAGEM DE ENCAMINHAMENTO curta e natural, por exemplo:
 "Perfeito, [nome]! Ja tenho todas as informacoes. Vou te encaminhar para um de nossos especialistas que vai entrar em contato com voce em breve. Foi um prazer conversar!"
 - NAO faca perguntas adicionais apos coletar todos os campos
 - NAO continue a conversa — esta e sua ultima mensagem
-- Inclua o bloco [QUALIFIED_DATA] com TODOS os campos no final
+- Inclua o bloco [QUALIFIED_DATA] com TODOS os campos (coleta + analise automatica) no final
 ---"""
 
         return base_prompt + qualification_block
@@ -317,16 +341,17 @@ Quando voce detectar que TODOS os {len(self.qualification_fields)} campos foram 
             return clean_text, None
 
         # Atualizar cache de progresso (campos coletados até agora)
-        required_keys = {f['key'] for f in self.qualification_fields}
-        valid_data = {k: v for k, v in data.items() if k in required_keys and v}
+        all_keys = {f['key'] for f in self.qualification_fields}
+        collect_keys = {f['key'] for f in self.qualification_fields if not f.get('auto')}
+        valid_data = {k: v for k, v in data.items() if k in all_keys and v}
         if valid_data and session_id:
             _qual_progress_cache[session_id] = valid_data
             logger.info(f"Progresso de qualificação atualizado [{session_id}]: {list(valid_data.keys())}")
 
-        # Verificar se todos os campos obrigatórios estão presentes
-        missing = required_keys - set(valid_data.keys())
-        if missing:
-            logger.info(f"Qualificação parcial. Faltam: {missing}")
+        # Verificar se todos os campos de coleta estão presentes (auto fields são bônus)
+        missing_collect = collect_keys - set(valid_data.keys())
+        if missing_collect:
+            logger.info(f"Qualificação parcial. Faltam campos de coleta: {missing_collect}")
             return clean_text, None
 
         # Completo — disparar qualificação
