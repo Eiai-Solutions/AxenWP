@@ -2340,6 +2340,18 @@
                         </div>
 
                         <div class="group">
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors flex justify-between items-center">
+                                <span>Aguardar antes de responder (segundos)</span>
+                                <span id="debounce_display" class="text-brand-red font-mono text-xs normal-case">1.5s</span>
+                            </label>
+                            <input type="range" id="ai_debounce_seconds" name="debounce_seconds"
+                                min="0.5" max="15" step="0.5" value="1.5"
+                                class="w-full accent-brand-red cursor-pointer"
+                                oninput="document.getElementById('debounce_display').textContent = parseFloat(this.value).toFixed(1) + 's'">
+                            <p class="text-[10px] text-gray-600 mt-1">Tempo que o bot espera apos a ultima mensagem do cliente antes de responder. Aumentar evita responder mensagens cortadas.</p>
+                        </div>
+
+                        <div class="group">
                             <label
                                 class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">System
                                 Prompt (Cognitive Instructions)</label>
@@ -2401,18 +2413,6 @@
                                     Excecao: se a resposta contiver valores (R$), enderecos, links ou dados especiais, o agente responde com texto para evitar erros de pronuncia.
                                 </p>
                             </div>
-                        </div>
-
-                        <div class="group">
-                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors flex justify-between items-center">
-                                <span>Aguardar antes de responder (segundos)</span>
-                                <span id="debounce_display" class="text-brand-red font-mono text-xs normal-case">1.5s</span>
-                            </label>
-                            <input type="range" id="ai_debounce_seconds" name="debounce_seconds"
-                                min="0.5" max="15" step="0.5" value="1.5"
-                                class="w-full accent-brand-red cursor-pointer"
-                                oninput="document.getElementById('debounce_display').textContent = parseFloat(this.value).toFixed(1) + 's'">
-                            <p class="text-[10px] text-gray-600 mt-1">Tempo que o bot espera após a última mensagem do cliente antes de responder. Aumentar evita responder mensagens cortadas.</p>
                         </div>
 
                         <div class="group">
