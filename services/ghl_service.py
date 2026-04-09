@@ -309,6 +309,15 @@ class GHLService:
                 logger.info(f"Novo contato criado no GHL: {phone}")
                 return data.get("contact", {})
             else:
+                # GHL retorna 400 com contactId quando o contato já existe (duplicado)
+                try:
+                    err_data = response.json()
+                    existing_id = err_data.get("meta", {}).get("contactId")
+                    if existing_id and "duplicated" in err_data.get("message", "").lower():
+                        logger.info(f"Contato duplicado detectado no GHL para {phone}. Usando existente: {existing_id}")
+                        return {"id": existing_id}
+                except Exception:
+                    pass
                 logger.error(f"Erro ao criar contato {phone}: {response.text}")
                 return None
         except Exception as e:
