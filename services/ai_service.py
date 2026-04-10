@@ -587,40 +587,45 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
 
 # Serviço singleton para instanciar/invocações fáceis
 class AIService:
-    # Cache: location_id -> (updated_at, AIEngine)
+    # Cache: (location_id, channel) -> (updated_at, AIEngine)
     _engine_cache: dict = {}
 
-    def _get_agent_for_tenant_sync(self, location_id: str) -> Optional[AIEngine]:
+    def _get_agent_for_tenant_sync(self, location_id: str, channel: str = "whatsapp") -> Optional[AIEngine]:
         """Sync DB lookup — meant to be called via asyncio.to_thread()."""
         db = SessionLocal()
         try:
-            agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
+            agent = db.query(AIAgent).filter(
+                AIAgent.location_id == location_id,
+                AIAgent.channel == channel,
+            ).first()
+            cache_key = (location_id, channel)
             if not agent or not agent.is_active or not agent.api_key:
-                self._engine_cache.pop(location_id, None)
+                self._engine_cache.pop(cache_key, None)
                 return None
 
             # Retorna do cache se o agente não foi alterado desde a última vez
-            cached = self._engine_cache.get(location_id)
+            cached = self._engine_cache.get(cache_key)
             if cached and cached[0] == agent.updated_at:
                 return cached[1]
 
             engine = AIEngine(agent)
-            self._engine_cache[location_id] = (agent.updated_at, engine)
+            self._engine_cache[cache_key] = (agent.updated_at, engine)
             return engine
         finally:
             db.close()
 
-    async def get_agent_for_tenant(self, location_id: str) -> Optional[AIEngine]:
-        return await asyncio.to_thread(self._get_agent_for_tenant_sync, location_id)
+    async def get_agent_for_tenant(self, location_id: str, channel: str = "whatsapp") -> Optional[AIEngine]:
+        return await asyncio.to_thread(self._get_agent_for_tenant_sync, location_id, channel)
 
     async def process_incoming_message(
         self, location_id: str, remote_jid: str, text_content: str,
         is_audio: bool = False, audio_url: Optional[str] = None,
+        channel: str = "whatsapp",
     ) -> Optional[dict]:
         """
         Gatilho unificado. Executa o Agente caso o inquilino tenha ativado e retorna um dict p/ zapi_receiver.
         """
-        engine = await self.get_agent_for_tenant(location_id)
+        engine = await self.get_agent_for_tenant(location_id, channel)
         if not engine:
             return None
 

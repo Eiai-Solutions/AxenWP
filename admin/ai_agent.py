@@ -41,9 +41,10 @@ async def save_agent_settings(
     qualification_stage_id: Optional[str] = Form(None),
     qualification_fields: Optional[str] = Form(None),
     qualification_summary_prompt: Optional[str] = Form(None),
+    channel: str = Form("whatsapp"),
 ):
     """
-    Cria ou atualiza as configurações do Agente de IA para um Tenant específico.
+    Cria ou atualiza as configurações do Agente de IA para um Tenant + canal específico.
     """
     db = SessionLocal()
     try:
@@ -52,11 +53,14 @@ async def save_agent_settings(
             logger.error(f"Tenant {location_id} não encontrado ao tentar salvar Agente IA.")
             return RedirectResponse(url="/admin/dashboard?err=Tenant+não+encontrado", status_code=303)
 
-        # Busca agente existente ou cria novo
-        agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
+        # Busca agente existente ou cria novo (escopo: location_id + channel)
+        agent = db.query(AIAgent).filter(
+            AIAgent.location_id == location_id,
+            AIAgent.channel == channel,
+        ).first()
 
         if not agent:
-            agent = AIAgent(location_id=location_id)
+            agent = AIAgent(location_id=location_id, channel=channel)
             db.add(agent)
 
         agent.name = name
@@ -101,6 +105,97 @@ async def save_agent_settings(
         return RedirectResponse(url="/admin/dashboard?err=Erro+ao+salvar+Agente+IA", status_code=303)
     finally:
         db.close()
+
+@router.get("/{location_id}/list")
+async def list_agents(location_id: str):
+    """Lista todos os agentes (canais) configurados para um tenant."""
+    db = SessionLocal()
+    try:
+        agents = db.query(AIAgent).filter(AIAgent.location_id == location_id).all()
+        return {
+            "success": True,
+            "agents": [
+                {
+                    "id": a.id,
+                    "channel": a.channel,
+                    "name": a.name,
+                    "is_active": a.is_active,
+                    "model": a.model,
+                    "qualification_enabled": bool(a.qualification_enabled),
+                }
+                for a in agents
+            ],
+        }
+    except Exception as e:
+        logger.error(f"Erro ao listar agentes: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
+@router.get("/{location_id}/agent")
+async def get_agent_by_channel(location_id: str, channel: str = "whatsapp"):
+    """Retorna a configuracao completa de um agente especifico por canal."""
+    db = SessionLocal()
+    try:
+        agent = db.query(AIAgent).filter(
+            AIAgent.location_id == location_id,
+            AIAgent.channel == channel,
+        ).first()
+        if not agent:
+            return {"success": True, "agent": None}
+        return {
+            "success": True,
+            "agent": {
+                "id": agent.id,
+                "channel": agent.channel,
+                "name": agent.name,
+                "prompt": agent.prompt,
+                "model": agent.model,
+                "api_key": agent.api_key,
+                "elevenlabs_api_key": agent.elevenlabs_api_key,
+                "elevenlabs_voice_id": agent.elevenlabs_voice_id,
+                "elevenlabs_speed": float(agent.elevenlabs_speed) if agent.elevenlabs_speed is not None else 1.0,
+                "elevenlabs_stability": float(agent.elevenlabs_stability) if agent.elevenlabs_stability is not None else 0.5,
+                "elevenlabs_similarity": float(agent.elevenlabs_similarity) if agent.elevenlabs_similarity is not None else 0.75,
+                "groq_api_key": agent.groq_api_key,
+                "is_active": agent.is_active,
+                "debounce_seconds": float(agent.debounce_seconds) if agent.debounce_seconds is not None else 1.5,
+                "qualification_enabled": bool(agent.qualification_enabled),
+                "qualification_pipeline_id": agent.qualification_pipeline_id or "",
+                "qualification_stage_id": agent.qualification_stage_id or "",
+                "qualification_fields": agent.qualification_fields or [],
+                "qualification_summary_prompt": agent.qualification_summary_prompt or "",
+            },
+        }
+    except Exception as e:
+        logger.error(f"Erro ao buscar agente: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
+@router.delete("/{location_id}/agent")
+async def delete_agent_by_channel(location_id: str, channel: str):
+    """Remove um agente especifico por canal."""
+    if channel == "whatsapp":
+        return {"success": False, "error": "Nao e permitido deletar o agente do canal principal (whatsapp)."}
+    db = SessionLocal()
+    try:
+        deleted = db.query(AIAgent).filter(
+            AIAgent.location_id == location_id,
+            AIAgent.channel == channel,
+        ).delete()
+        db.commit()
+        logger.info(f"Agente {channel} removido para tenant {location_id}. Registros: {deleted}")
+        return {"success": True, "deleted": deleted}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Erro ao remover agente: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
 
 @router.get("/{location_id}/ghl/pipelines")
 async def get_ghl_pipelines(location_id: str):

@@ -57,7 +57,7 @@ def cleanup_stale_debounce_entries():
         logger.debug(f"Cleanup: {len(stale_keys)} debounce, {len(stale_ids)} sent_ids removidos.")
 
 
-async def _handle_qualification(location_id: str, phone: str, contact_id: str, tenant, qualified_data: dict, summary: str):
+async def _handle_qualification(location_id: str, phone: str, contact_id: str, tenant, qualified_data: dict, summary: str, channel: str = "whatsapp"):
     """Cria oportunidade no GHL e desativa a IA para o contato após qualificação."""
     from data.database import SessionLocal as _SLQ
     from data.models import AIAgent as _AIAgentQ, QualifiedLead
@@ -67,7 +67,10 @@ async def _handle_qualification(location_id: str, phone: str, contact_id: str, t
     # Carregar config do agente
     _dbq = _SLQ()
     try:
-        agent = _dbq.query(_AIAgentQ).filter(_AIAgentQ.location_id == location_id).first()
+        agent = _dbq.query(_AIAgentQ).filter(
+            _AIAgentQ.location_id == location_id,
+            _AIAgentQ.channel == channel,
+        ).first()
         if not agent:
             logger.error(f"Qualificação: agente não encontrado para {location_id}")
             return
@@ -243,7 +246,7 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
         from services.ai_service import ai_service
 
         ai_response = await ai_service.process_incoming_message(
-            location_id, phone, combined_text, is_audio=is_audio, audio_url=audio_url
+            location_id, phone, combined_text, is_audio=is_audio, audio_url=audio_url, channel="whatsapp"
         )
         if not ai_response:
             return
@@ -252,7 +255,7 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
         qualified_data = ai_response.get("qualified_data")
         if qualified_data:
             summary = ai_response.get("qualification_summary", "")
-            await _handle_qualification(location_id, phone, contact_id, tenant, qualified_data, summary)
+            await _handle_qualification(location_id, phone, contact_id, tenant, qualified_data, summary, channel="whatsapp")
 
         ai_type = ai_response.get("type", "text")
         ai_content = ai_response.get("content", "")

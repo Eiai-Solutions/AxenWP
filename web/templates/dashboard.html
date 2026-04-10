@@ -263,10 +263,163 @@
             serializeQualFields();
 
             document.getElementById('form_ai_agent').action = '/admin/agents/' + locationId + '/save';
+            document.getElementById('ai_channel').value = 'whatsapp';
             document.getElementById('aiAgentModal').classList.remove('hidden');
 
             // Default to Settings Tab
             switchAITab('settings');
+
+            // Carregar canais disponiveis para esse tenant
+            loadChannelsForTenant(locationId);
+        }
+
+        // ── Multi-canal: gerenciamento de agentes por canal ──
+        const CHANNEL_LABELS = {
+            whatsapp: { label: 'WhatsApp', icon: '💬' },
+            instagram: { label: 'Instagram', icon: '📸' },
+            facebook: { label: 'Facebook', icon: '👍' },
+            telegram: { label: 'Telegram', icon: '✈️' },
+        };
+
+        async function loadChannelsForTenant(locationId) {
+            const container = document.getElementById('channel_tabs_container');
+            container.innerHTML = '<span class="text-[10px] text-gray-600 font-mono">carregando...</span>';
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/list`);
+                const data = await resp.json();
+                if (!data.success) {
+                    container.innerHTML = '<span class="text-[10px] text-red-400 font-mono">erro</span>';
+                    return;
+                }
+                const channels = data.agents.map(a => a.channel);
+                if (!channels.includes('whatsapp')) channels.unshift('whatsapp');
+                _renderChannelTabs(channels, 'whatsapp');
+            } catch(e) {
+                container.innerHTML = '<span class="text-[10px] text-red-400 font-mono">erro de rede</span>';
+            }
+        }
+
+        function _renderChannelTabs(channels, activeChannel) {
+            const container = document.getElementById('channel_tabs_container');
+            container.innerHTML = channels.map(ch => {
+                const meta = CHANNEL_LABELS[ch] || { label: ch, icon: '🔌' };
+                const isActive = ch === activeChannel;
+                const closeBtn = ch !== 'whatsapp'
+                    ? `<span onclick="event.stopPropagation();deleteChannel('${ch}')" class="ml-1 text-gray-600 hover:text-red-400 cursor-pointer" title="Remover canal">×</span>`
+                    : '';
+                return `<button type="button" onclick="switchChannel('${ch}')"
+                    class="channel-tab flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider font-mono transition-colors ${isActive ? 'bg-brand-red/20 text-brand-red border border-brand-red/40' : 'text-gray-500 hover:text-white border border-transparent hover:border-gray-700'}">
+                    <span>${meta.icon}</span>
+                    <span>${meta.label}</span>
+                    ${closeBtn}
+                </button>`;
+            }).join('');
+        }
+
+        async function switchChannel(channel) {
+            const locationId = document.getElementById('ai_location_id').value;
+            if (!locationId) return;
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/agent?channel=${encodeURIComponent(channel)}`);
+                const data = await resp.json();
+                if (!data.success) {
+                    alert('Erro ao carregar agente: ' + (data.error || 'desconhecido'));
+                    return;
+                }
+                document.getElementById('ai_channel').value = channel;
+                _populateAgentForm(data.agent || {});
+                // Re-render tabs com o novo canal ativo
+                const tabs = document.querySelectorAll('#channel_tabs_container button');
+                const channels = Array.from(tabs).map(b => {
+                    const m = b.getAttribute('onclick').match(/switchChannel\('([^']+)'\)/);
+                    return m ? m[1] : null;
+                }).filter(Boolean);
+                _renderChannelTabs(channels, channel);
+            } catch(e) {
+                alert('Erro de rede ao trocar canal.');
+            }
+        }
+
+        function _populateAgentForm(agent) {
+            // Preenche o form com os dados do agente do canal selecionado
+            document.getElementById('ai_name').value = agent.name || 'Agente IA';
+            document.getElementById('ai_prompt').value = agent.prompt || 'Voce e um assistente virtual prestativo.';
+            document.getElementById('ai_model').value = agent.model || 'openai/gpt-4o';
+            document.getElementById('ai_api_key').value = agent.api_key || '';
+            document.getElementById('ai_is_active').checked = !!agent.is_active;
+            document.getElementById('ai_elevenlabs_api_key').value = agent.elevenlabs_api_key || '';
+            document.getElementById('ai_groq_api_key').value = agent.groq_api_key || '';
+            document.getElementById('ai_elevenlabs_voice_id').dataset.preselected = agent.elevenlabs_voice_id || '';
+
+            const speedVal = agent.elevenlabs_speed || 1.0;
+            const stabilityVal = agent.elevenlabs_stability || 0.5;
+            const similarityVal = agent.elevenlabs_similarity || 0.75;
+            document.getElementById('ai_elevenlabs_speed').value = speedVal;
+            document.getElementById('el_speed_display').textContent = speedVal.toFixed(2) + 'x';
+            document.getElementById('ai_elevenlabs_stability').value = stabilityVal;
+            document.getElementById('el_stability_display').textContent = (stabilityVal * 100).toFixed(0) + '%';
+            document.getElementById('ai_elevenlabs_similarity').value = similarityVal;
+            document.getElementById('el_similarity_display').textContent = (similarityVal * 100).toFixed(0) + '%';
+
+            const debounceVal = agent.debounce_seconds || 1.5;
+            document.getElementById('ai_debounce_seconds').value = debounceVal;
+            document.getElementById('debounce_display').textContent = debounceVal.toFixed(1) + 's';
+
+            document.getElementById('ai_qual_enabled').checked = !!agent.qualification_enabled;
+            document.getElementById('ai_qual_summary_prompt').value = agent.qualification_summary_prompt || '';
+            window._qualSavedPipelineId = agent.qualification_pipeline_id || '';
+            window._qualSavedStageId = agent.qualification_stage_id || '';
+
+            const container = document.getElementById('qual_fields_container');
+            container.innerHTML = '';
+            const savedFields = agent.qualification_fields || [];
+            if (savedFields.length > 0) {
+                savedFields.forEach(f => addQualField(f.label, f.key, f.ghl_field_id, f.auto || false));
+                _qualFields = savedFields;
+            } else {
+                _updateFieldsVisibility();
+            }
+            serializeQualFields();
+        }
+
+        function openAddChannelModal() {
+            const channels = Object.keys(CHANNEL_LABELS).filter(c => c !== 'whatsapp');
+            const choice = prompt('Qual canal voce quer adicionar?\n\nOpcoes: ' + channels.join(', '));
+            if (!choice) return;
+            const normalized = choice.trim().toLowerCase();
+            if (!CHANNEL_LABELS[normalized]) {
+                alert('Canal invalido. Use: ' + channels.join(', '));
+                return;
+            }
+            // Carrega o form vazio para o novo canal
+            document.getElementById('ai_channel').value = normalized;
+            _populateAgentForm({});
+            // Adiciona o novo canal as tabs
+            const tabs = document.querySelectorAll('#channel_tabs_container button');
+            const existingChannels = Array.from(tabs).map(b => {
+                const m = b.getAttribute('onclick').match(/switchChannel\('([^']+)'\)/);
+                return m ? m[1] : null;
+            }).filter(Boolean);
+            if (!existingChannels.includes(normalized)) existingChannels.push(normalized);
+            _renderChannelTabs(existingChannels, normalized);
+        }
+
+        async function deleteChannel(channel) {
+            if (channel === 'whatsapp') return;
+            if (!confirm(`Remover o agente do canal ${channel}? Essa acao nao pode ser desfeita.`)) return;
+            const locationId = document.getElementById('ai_location_id').value;
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/agent?channel=${encodeURIComponent(channel)}`, { method: 'DELETE' });
+                const data = await resp.json();
+                if (data.success) {
+                    await loadChannelsForTenant(locationId);
+                    await switchChannel('whatsapp');
+                } else {
+                    alert('Erro ao remover: ' + (data.error || 'desconhecido'));
+                }
+            } catch(e) {
+                alert('Erro de rede ao remover canal.');
+            }
         }
 
         // ── Qualification Tab Functions ──
@@ -2287,6 +2440,19 @@
 
                 <form id="form_ai_agent" method="POST" class="space-y-6" onsubmit="serializeQualFields()">
                     <input type="hidden" id="ai_location_id" name="location_id">
+                    <input type="hidden" id="ai_channel" name="channel" value="whatsapp">
+
+                    <!-- Seletor de canal (multi-agente por canal) -->
+                    <div class="mb-4 flex items-center justify-between bg-black/40 border border-gray-800 rounded-xl p-3">
+                        <div class="flex items-center gap-2 overflow-x-auto scrollbar-none">
+                            <span class="text-[9px] font-bold text-gray-500 uppercase tracking-widest font-mono mr-2">Canal:</span>
+                            <div id="channel_tabs_container" class="flex items-center gap-1.5"></div>
+                        </div>
+                        <button type="button" onclick="openAddChannelModal()"
+                            class="shrink-0 text-[10px] font-bold uppercase tracking-widest font-mono text-brand-red hover:text-white border border-brand-red/30 hover:border-brand-red rounded-lg px-3 py-1.5 transition-colors">
+                            + Novo Canal
+                        </button>
+                    </div>
 
                     <nav class="flex border-b border-gray-800 mb-8 overflow-x-auto scrollbar-none">
                         <button type="button" id="btn_ai_tab_settings" onclick="switchAITab('settings', this)"

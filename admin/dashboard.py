@@ -98,7 +98,9 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
     agent_map = {}
     system_settings = None
     try:
-        agents = db.query(AIAgent).all()
+        # Filtra agentes do canal WhatsApp para a linha principal da tabela.
+        # Outros canais (Instagram, etc) sao gerenciados via modal multi-canal.
+        agents = db.query(AIAgent).filter(AIAgent.channel == "whatsapp").all()
         for a in agents:
             agent_map[a.location_id] = a
             

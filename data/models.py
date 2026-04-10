@@ -51,15 +51,19 @@ class Tenant(Base):
             return True
 
     # Relações
-    ai_agent = relationship("AIAgent", back_populates="tenant", uselist=False, cascade="all, delete-orphan")
+    ai_agents = relationship("AIAgent", back_populates="tenant", cascade="all, delete-orphan")
     knowledge_documents = relationship("KnowledgeDocument", back_populates="tenant", cascade="all, delete-orphan")
 
 
 class AIAgent(Base):
     __tablename__ = "ai_agents"
-    
+    __table_args__ = (
+        UniqueConstraint("location_id", "channel", name="uq_ai_agent_location_channel"),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
-    location_id = Column(String, ForeignKey("tenants.location_id", ondelete="CASCADE"), unique=True, index=True, nullable=False)
+    location_id = Column(String, ForeignKey("tenants.location_id", ondelete="CASCADE"), index=True, nullable=False)
+    channel = Column(String, nullable=False, default="whatsapp", server_default="whatsapp", index=True)
     name = Column(String, nullable=False, default="Agente Inteligente")
     prompt = Column(Text, nullable=False, default="Você é um assistente virtual prestativo.")
     model = Column(String, nullable=False, default="openai/gpt-4o") # Formato OpenRouter
@@ -92,7 +96,7 @@ class AIAgent(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relações
-    tenant = relationship("Tenant", back_populates="ai_agent")
+    tenant = relationship("Tenant", back_populates="ai_agents")
 
 class KnowledgeDocument(Base):
     __tablename__ = "knowledge_documents"
