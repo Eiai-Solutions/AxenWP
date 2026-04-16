@@ -870,3 +870,137 @@ async def test_ai_agent(location_id: str, request: Request):
     except Exception as e:
         logger.error(f"Erro no chat tester: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
+
+
+@router.post("/{location_id}/form-data")
+async def save_form_data(location_id: str, request: Request):
+    """Salva form_data editado e opcionalmente regenera o prompt via IA Mestre."""
+    from admin.dashboard import verify_admin
+    from fastapi import Cookie
+    admin_session = request.cookies.get("admin_session")
+    if not verify_admin(admin_session):
+        return {"success": False, "error": "Não autenticado."}
+
+    body = await request.json()
+    form_data = body.get("form_data", {})
+    regenerate = body.get("regenerate", False)
+    channel = body.get("channel", "whatsapp")
+
+    db = SessionLocal()
+    try:
+        agent = db.query(AIAgent).filter(
+            AIAgent.location_id == location_id,
+            AIAgent.channel == channel,
+        ).first()
+        if not agent:
+            return {"success": False, "error": "Agente não encontrado."}
+
+        agent.form_data = form_data
+        if agent.name and form_data.get("agent_name"):
+            agent.name = form_data["agent_name"]
+
+        if regenerate:
+            settings = db.query(SystemSettings).first()
+            if not settings or not settings.admin_openrouter_key:
+                db.commit()
+                return {"success": False, "error": "IA Mestre não configurada (System Settings)."}
+
+            fd = form_data
+            company_context = f"""
+INFORMAÇÕES DA EMPRESA:
+- Nome: {fd.get('company_name', '')}
+- Segmento: {fd.get('industry', '')}
+- Descrição: {fd.get('company_description', '')}
+- Público-alvo: {fd.get('target_audience', '') or 'Não especificado'}
+- Website: {fd.get('website', '') or 'Não informado'}
+- Instagram: {fd.get('instagram', '') or 'Não informado'}
+
+PRODUTOS/SERVIÇOS:
+{fd.get('products_services', '')}
+
+DIFERENCIAIS:
+{fd.get('differentials', '') or 'Não informado'}
+
+PERGUNTAS FREQUENTES (FAQ):
+{fd.get('faq', '') or 'Nenhuma informada'}
+
+CONFIGURAÇÃO DO AGENTE:
+- Nome do agente: {fd.get('agent_name', '')}
+- Tom de voz: {fd.get('tone', '') or 'Não especificado'}
+- Horário de funcionamento: {fd.get('business_hours', '') or 'Não informado'}
+- Contatos para transferência: {fd.get('contact_info', '') or 'Não informado'}
+
+OBJETIVO PRINCIPAL:
+{fd.get('agent_goal', '')}
+
+RESTRIÇÕES (o que NÃO fazer):
+{fd.get('restrictions', '') or 'Nenhuma especificada'}
+
+PERGUNTAS QUALIFICATÓRIAS (para qualificar o lead antes de transferir):
+{fd.get('qualification_questions', '') or 'Nenhuma definida'}
+
+INFORMAÇÕES ADICIONAIS:
+{fd.get('extra_info', '') or 'Nenhuma'}
+""".strip()
+
+            api_key = settings.admin_openrouter_key
+            model = settings.admin_openrouter_model or "openai/gpt-4o"
+
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                resp = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "HTTP-Referer": "https://axenwp.com",
+                        "X-Title": "AxenWP Prompt Generator",
+                    },
+                    json={
+                        "model": model,
+                        "max_tokens": 6000,
+                        "messages": [
+                            {"role": "system", "content": (
+                                "Você é um especialista sênior em Prompt Engineering para agentes de IA de WhatsApp.\n\n"
+                                "Sua tarefa: receber informações sobre uma empresa e criar um PROMPT DE SISTEMA completo, "
+                                "detalhado e profissional para o agente de IA que vai atender os clientes dessa empresa via WhatsApp.\n\n"
+                                "O prompt deve:\n"
+                                "1. Definir claramente a identidade do agente (nome, personalidade, tom)\n"
+                                "2. Descrever o que a empresa faz e seus serviços/produtos com detalhes\n"
+                                "3. Incluir regras de comportamento e restrições\n"
+                                "4. Ter seções organizadas para FAQ, quando possível\n"
+                                "5. Definir quando e como transferir para um humano\n"
+                                "6. Ser otimizado para conversas de WhatsApp (respostas concisas mas completas)\n"
+                                "7. Incluir instruções para lidar com objeções e perguntas fora do escopo\n"
+                                "8. Usar formatação clara com seções e marcadores\n\n"
+                                "IMPORTANTE:\n"
+                                "- Retorne APENAS o prompt, sem explicações ou comentários\n"
+                                "- O prompt deve estar em português brasileiro\n"
+                                "- Use as informações fornecidas, NÃO invente dados (preços, horários, etc.) que não foram informados\n"
+                                "- Se alguma informação não foi fornecida, instrua o agente a direcionar o cliente para falar com um humano sobre esse assunto"
+                            )},
+                            {"role": "user", "content": (
+                                f"Com base nas informações abaixo, crie o prompt de sistema para o agente de IA:\n\n"
+                                f"{company_context}"
+                            )}
+                        ]
+                    }
+                )
+
+                if resp.status_code != 200:
+                    logger.error(f"Erro OpenRouter ao regenerar prompt: {resp.status_code} — {resp.text}")
+                    db.commit()
+                    return {"success": False, "error": "Erro ao gerar prompt com IA Mestre."}
+
+                generated_prompt = resp.json()["choices"][0]["message"]["content"]
+                agent.prompt = generated_prompt
+
+        db.commit()
+        return {
+            "success": True,
+            "prompt": agent.prompt if regenerate else None,
+        }
+    except Exception as e:
+        logger.error(f"Erro ao salvar form_data: {e}", exc_info=True)
+        db.rollback()
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()

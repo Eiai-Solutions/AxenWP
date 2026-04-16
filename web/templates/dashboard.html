@@ -213,6 +213,46 @@
             }
         }
 
+        async function saveFormData(regenerate) {
+            const locationId = document.getElementById('ai_location_id').value;
+            const channel = document.getElementById('ai_channel').value || 'whatsapp';
+            const fields = document.querySelectorAll('#form_data_content [data-formkey]');
+            const formData = {};
+            fields.forEach(el => { formData[el.dataset.formkey] = el.value; });
+
+            const btn = document.getElementById('btn_regenerate_prompt');
+            const originalBtn = btn.innerHTML;
+            if (regenerate) {
+                btn.innerHTML = '<span class="animate-pulse">Gerando prompt...</span>';
+                btn.disabled = true;
+            }
+
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/form-data`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ form_data: formData, regenerate, channel })
+                });
+                const data = await resp.json();
+
+                if (data.success) {
+                    if (regenerate && data.prompt) {
+                        document.getElementById('ai_prompt').value = data.prompt;
+                        alert('Prompt regenerado com sucesso! Veja na aba Settings.');
+                    } else {
+                        alert('Dados salvos com sucesso!');
+                    }
+                } else {
+                    alert('Erro: ' + (data.error || 'desconhecido'));
+                }
+            } catch (e) {
+                alert('Erro de rede ao salvar.');
+            } finally {
+                btn.innerHTML = originalBtn;
+                btn.disabled = false;
+            }
+        }
+
         function openPitModal(companyName, locationId, currentPit) {
             document.getElementById('pit_modal_company').innerText = companyName;
             document.getElementById('pitModalForm').action = `/admin/tenant/${locationId}/pit`;
@@ -354,11 +394,13 @@
             const formDataRaw = btn.dataset.aiformdata || '';
             const formEmpty = document.getElementById('form_data_empty');
             const formContent = document.getElementById('form_data_content');
+            const formActions = document.getElementById('form_data_actions');
             if (formDataRaw) {
                 try {
                     const fd = JSON.parse(formDataRaw);
                     formEmpty.classList.add('hidden');
                     formContent.classList.remove('hidden');
+                    formActions.classList.remove('hidden');
                     const fieldLabels = {
                         company_name: 'Empresa', industry: 'Segmento', company_description: 'Descrição',
                         target_audience: 'Público-alvo', website: 'Website', instagram: 'Instagram',
@@ -368,23 +410,33 @@
                         qualification_questions: 'Perguntas Qualificatórias',
                         extra_info: 'Info Adicional'
                     };
+                    const shortFields = ['company_name', 'industry', 'target_audience', 'website', 'instagram', 'agent_name', 'tone', 'business_hours'];
                     let html = '';
                     for (const [key, label] of Object.entries(fieldLabels)) {
-                        const val = fd[key];
-                        if (!val) continue;
-                        html += `<div class="bg-black/30 border border-gray-800 rounded-lg p-3">
-                            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-1">${label}</p>
-                            <p class="text-sm text-gray-200 whitespace-pre-wrap">${val.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
-                        </div>`;
+                        const val = fd[key] || '';
+                        const escaped = val.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                        if (shortFields.includes(key)) {
+                            html += `<div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-1">${label}</label>
+                                <input type="text" data-formkey="${key}" value="${escaped}" class="input-dark w-full py-2 px-3 rounded-lg text-sm">
+                            </div>`;
+                        } else {
+                            html += `<div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-1">${label}</label>
+                                <textarea data-formkey="${key}" class="input-dark w-full py-2 px-3 rounded-lg text-sm" rows="3">${escaped}</textarea>
+                            </div>`;
+                        }
                     }
-                    formContent.innerHTML = html || '<p class="text-gray-600 text-xs">Dados vazios.</p>';
+                    formContent.innerHTML = html;
                 } catch(e) {
                     formEmpty.classList.remove('hidden');
                     formContent.classList.add('hidden');
+                    formActions.classList.add('hidden');
                 }
             } else {
                 formEmpty.classList.remove('hidden');
                 formContent.classList.add('hidden');
+                formActions.classList.add('hidden');
             }
 
             document.getElementById('form_ai_agent').action = '/admin/agents/' + locationId + '/save';
@@ -3252,7 +3304,18 @@
                             <p class="text-gray-600 text-xs font-mono">Nenhum formulario preenchido.</p>
                             <p class="text-gray-700 text-[10px] font-mono mt-1">Envie o link de cadastro para o cliente preencher.</p>
                         </div>
-                        <div id="form_data_content" class="hidden space-y-4">
+                        <div id="form_data_content" class="hidden space-y-3">
+                        </div>
+                        <div id="form_data_actions" class="hidden mt-4 flex gap-3 pt-4 border-t border-gray-800">
+                            <button type="button" onclick="saveFormData(false)"
+                                class="flex-1 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 transition-colors">
+                                Salvar Alterações
+                            </button>
+                            <button type="button" onclick="saveFormData(true)" id="btn_regenerate_prompt"
+                                class="flex-1 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-brand-red hover:bg-brand-darkred transition-colors flex items-center justify-center gap-2">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                Regenerar Prompt
+                            </button>
                         </div>
                     </div>
 
