@@ -469,6 +469,61 @@ async def update_tenant_pit(
     return RedirectResponse(url="/admin/dashboard?err=Tenant não encontrado.", status_code=303)
 
 
+@router.post("/test-pit")
+async def test_pit_connection(
+    request: Request,
+    authenticated: bool = Depends(verify_admin)
+):
+    """Testa se um PIT token é válido fazendo uma chamada à API do GHL."""
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+
+    import httpx
+    body = await request.json()
+    pit_token = body.get("pit_token", "").strip()
+    location_id = body.get("location_id", "").strip()
+
+    if not pit_token:
+        return JSONResponse({"success": False, "error": "Token PIT não informado."})
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            headers = {
+                "Authorization": f"Bearer {pit_token}",
+                "Content-Type": "application/json",
+                "Version": "2021-07-28",
+            }
+
+            if location_id:
+                resp = await client.get(
+                    f"{app_settings.ghl_api_base}/locations/{location_id}",
+                    headers=headers,
+                )
+            else:
+                resp = await client.get(
+                    f"{app_settings.ghl_api_base}/users/",
+                    headers=headers,
+                )
+
+            if resp.status_code == 200:
+                data = resp.json()
+                loc = data.get("location", data)
+                name = loc.get("name") or loc.get("companyName") or ""
+                loc_id = loc.get("id") or location_id or ""
+                return JSONResponse({
+                    "success": True,
+                    "location_name": name,
+                    "location_id": loc_id,
+                })
+            elif resp.status_code == 401:
+                return JSONResponse({"success": False, "error": "Token inválido ou sem permissão."})
+            else:
+                return JSONResponse({"success": False, "error": f"GHL retornou {resp.status_code}"})
+    except Exception as e:
+        logger.error(f"Erro ao testar PIT: {e}")
+        return JSONResponse({"success": False, "error": f"Erro de conexão: {str(e)}"})
+
+
 @router.post("/onboard-whatsapp")
 async def onboard_whatsapp_only(
     company_name: str = Form(...),
