@@ -257,12 +257,20 @@
             document.getElementById('pit_modal_company').innerText = companyName;
             document.getElementById('pitModalForm').action = `/admin/tenant/${locationId}/pit`;
             document.getElementById('pit_modal_token').value = '';
+            document.getElementById('pit_modal_ghl_loc').value = '';
             window._pitModalLocationId = locationId;
             const statusEl = document.getElementById('pit_current_status');
             if (currentPit) {
                 statusEl.classList.remove('hidden');
             } else {
                 statusEl.classList.add('hidden');
+            }
+            // Show GHL Location ID field for whatsapp_only tenants (wp_ prefix)
+            const ghlLocGroup = document.getElementById('pit_ghl_loc_group');
+            if (locationId.startsWith('wp_')) {
+                ghlLocGroup.classList.remove('hidden');
+            } else {
+                ghlLocGroup.classList.add('hidden');
             }
             document.getElementById('pit_test_result').classList.add('hidden');
             document.getElementById('pit_test_btn_text').textContent = 'Testar Conexão';
@@ -286,7 +294,7 @@
                 const resp = await fetch('/admin/test-pit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pit_token: token, location_id: window._pitModalLocationId || '' })
+                    body: JSON.stringify({ pit_token: token, location_id: document.getElementById('pit_modal_ghl_loc').value.trim() || window._pitModalLocationId || '' })
                 });
                 const data = await resp.json();
                 resultEl.classList.remove('hidden');
@@ -2602,6 +2610,11 @@
             </div>
 
             <form action="" id="pitModalForm" method="POST" class="space-y-4">
+                <div id="pit_ghl_loc_group" class="hidden">
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-1.5">GHL Location ID</label>
+                    <input type="text" name="ghl_location_id" id="pit_modal_ghl_loc" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" placeholder="ID da sub-account no GHL">
+                    <p class="text-[10px] text-gray-600 font-mono mt-1">Necessário para tenants WhatsApp-only que vão usar CRM via PIT</p>
+                </div>
                 <div>
                     <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-1.5">Token PIT</label>
                     <input type="password" name="pit_token" id="pit_modal_token" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" placeholder="pit-XXXX..." required>

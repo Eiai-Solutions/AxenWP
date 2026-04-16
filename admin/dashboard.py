@@ -458,6 +458,7 @@ async def onboard_pit(
 async def update_tenant_pit(
     location_id: str,
     pit_token: str = Form(...),
+    ghl_location_id: str = Form(""),
     authenticated: bool = Depends(verify_admin)
 ):
     """Atualiza/adiciona PIT a um tenant existente."""
@@ -465,9 +466,21 @@ async def update_tenant_pit(
         return RedirectResponse(url="/admin/login", status_code=303)
 
     success = token_manager.update_pit_token(location_id, pit_token.strip())
-    if success:
-        return RedirectResponse(url="/admin/dashboard?msg=PIT atualizado com sucesso!", status_code=303)
-    return RedirectResponse(url="/admin/dashboard?err=Tenant não encontrado.", status_code=303)
+    if not success:
+        return RedirectResponse(url="/admin/dashboard?err=Tenant não encontrado.", status_code=303)
+
+    if ghl_location_id.strip():
+        from data.database import SessionLocal
+        db = SessionLocal()
+        try:
+            tenant = token_manager.get_tenant(location_id, db=db)
+            if tenant:
+                tenant.ghl_location_id = ghl_location_id.strip()
+                db.commit()
+        finally:
+            db.close()
+
+    return RedirectResponse(url="/admin/dashboard?msg=PIT atualizado com sucesso!", status_code=303)
 
 
 @router.post("/test-pit")
