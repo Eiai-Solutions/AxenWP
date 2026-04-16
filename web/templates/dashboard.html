@@ -350,6 +350,43 @@
             }
             serializeQualFields();
 
+            // Form Data tab (Cadastro)
+            const formDataRaw = btn.dataset.aiformdata || '';
+            const formEmpty = document.getElementById('form_data_empty');
+            const formContent = document.getElementById('form_data_content');
+            if (formDataRaw) {
+                try {
+                    const fd = JSON.parse(formDataRaw);
+                    formEmpty.classList.add('hidden');
+                    formContent.classList.remove('hidden');
+                    const fieldLabels = {
+                        company_name: 'Empresa', industry: 'Segmento', company_description: 'Descrição',
+                        target_audience: 'Público-alvo', website: 'Website', instagram: 'Instagram',
+                        products_services: 'Produtos/Serviços', differentials: 'Diferenciais', faq: 'FAQ',
+                        agent_name: 'Nome do Agente', tone: 'Tom de Voz', business_hours: 'Horário',
+                        contact_info: 'Contatos', agent_goal: 'Objetivo', restrictions: 'Restrições',
+                        qualification_questions: 'Perguntas Qualificatórias',
+                        extra_info: 'Info Adicional'
+                    };
+                    let html = '';
+                    for (const [key, label] of Object.entries(fieldLabels)) {
+                        const val = fd[key];
+                        if (!val) continue;
+                        html += `<div class="bg-black/30 border border-gray-800 rounded-lg p-3">
+                            <p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-1">${label}</p>
+                            <p class="text-sm text-gray-200 whitespace-pre-wrap">${val.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>
+                        </div>`;
+                    }
+                    formContent.innerHTML = html || '<p class="text-gray-600 text-xs">Dados vazios.</p>';
+                } catch(e) {
+                    formEmpty.classList.remove('hidden');
+                    formContent.classList.add('hidden');
+                }
+            } else {
+                formEmpty.classList.remove('hidden');
+                formContent.classList.add('hidden');
+            }
+
             document.getElementById('form_ai_agent').action = '/admin/agents/' + locationId + '/save';
             document.getElementById('ai_channel').value = 'whatsapp';
             document.getElementById('aiAgentModal').classList.remove('hidden');
@@ -1841,7 +1878,8 @@
                             data-aiqualpipelineid="{{ tenant.ai_agent_data.qualification_pipeline_id if tenant.ai_agent_data else '' }}"
                             data-aiqualstageid="{{ tenant.ai_agent_data.qualification_stage_id if tenant.ai_agent_data else '' }}"
                             data-aiqualfields="{{ (tenant.ai_agent_data.qualification_fields | tojson | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.qualification_fields else '[]' }}"
-                            data-aiqualsummaryprompt="{{ (tenant.ai_agent_data.qualification_summary_prompt | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.qualification_summary_prompt else '' }}">
+                            data-aiqualsummaryprompt="{{ (tenant.ai_agent_data.qualification_summary_prompt | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.qualification_summary_prompt else '' }}"
+                            data-aiformdata="{{ (tenant.ai_agent_data.form_data | tojson | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.form_data else '' }}">
                             <td class="px-6 py-5">
                                 <div class="flex items-center">
                                     <div
@@ -2681,6 +2719,9 @@
                         <button type="button" id="btn_ai_tab_history" onclick="switchAITab('history', this); loadConversations();"
                             class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">📋
                             Historico</button>
+                        <button type="button" id="btn_ai_tab_form" onclick="switchAITab('form', this);"
+                            class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">📝
+                            Cadastro</button>
                     </nav>
 
                     <!-- TAB: SETTINGS -->
@@ -3202,6 +3243,16 @@
                                 <p class="text-gray-600 text-xs font-mono">Nenhuma conversa encontrada.</p>
                                 <p class="text-gray-700 text-[10px] font-mono mt-1">Os atendimentos realizados pelo agente IA aparecerao aqui.</p>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- TAB: FORM DATA (Cadastro do Cliente) -->
+                    <div id="ai_tab_form" class="ai-tab-content hidden">
+                        <div id="form_data_empty" class="text-center py-8 border border-dashed border-gray-800 rounded-xl">
+                            <p class="text-gray-600 text-xs font-mono">Nenhum formulario preenchido.</p>
+                            <p class="text-gray-700 text-[10px] font-mono mt-1">Envie o link de cadastro para o cliente preencher.</p>
+                        </div>
+                        <div id="form_data_content" class="hidden space-y-4">
                         </div>
                     </div>
 

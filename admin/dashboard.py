@@ -159,6 +159,7 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
                 "qualification_stage_id": getattr(agent, 'qualification_stage_id', '') or '',
                 "qualification_fields": getattr(agent, 'qualification_fields', None) or [],
                 "qualification_summary_prompt": getattr(agent, 'qualification_summary_prompt', '') or '',
+                "form_data": getattr(agent, 'form_data', None),
             }
         else:
             t_dict["ai_agent_data"] = None

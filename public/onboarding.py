@@ -69,6 +69,7 @@ async def submit_onboarding_form(
     agent_goal: str = Form(""),
     restrictions: str = Form(""),
     extra_info: str = Form(""),
+    qualification_questions: str = Form(""),
 ):
     """Recebe os dados do formulário e gera o prompt via IA Mestre."""
     db = SessionLocal()
@@ -119,6 +120,9 @@ OBJETIVO PRINCIPAL:
 RESTRIÇÕES (o que NÃO fazer):
 {restrictions or 'Nenhuma especificada'}
 
+PERGUNTAS QUALIFICATÓRIAS (para qualificar o lead antes de transferir):
+{qualification_questions or 'Nenhuma definida'}
+
 INFORMAÇÕES ADICIONAIS:
 {extra_info or 'Nenhuma'}
 """.strip()
@@ -168,17 +172,38 @@ INFORMAÇÕES ADICIONAIS:
 
             generated_prompt = resp.json()["choices"][0]["message"]["content"]
 
-        # Salvar o prompt no AIAgent do tenant
+        form_answers = {
+            "company_name": company_name,
+            "industry": industry,
+            "company_description": company_description,
+            "target_audience": target_audience,
+            "website": website,
+            "instagram": instagram,
+            "products_services": products_services,
+            "differentials": differentials,
+            "faq": faq,
+            "agent_name": agent_name,
+            "tone": tone,
+            "business_hours": business_hours,
+            "contact_info": contact_info,
+            "agent_goal": agent_goal,
+            "restrictions": restrictions,
+            "extra_info": extra_info,
+            "qualification_questions": qualification_questions,
+        }
+
         agent = db.query(AIAgent).filter(AIAgent.location_id == tenant.location_id).first()
         if not agent:
             agent = AIAgent(
                 location_id=tenant.location_id,
                 name=agent_name or "Agente Inteligente",
                 prompt=generated_prompt,
+                form_data=form_answers,
             )
             db.add(agent)
         else:
             agent.prompt = generated_prompt
+            agent.form_data = form_answers
             if agent_name:
                 agent.name = agent_name
 

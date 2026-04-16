@@ -95,6 +95,9 @@ class AIAgent(Base):
     qualification_fields = Column(JSON, nullable=True)  # [{label, key, ghl_field_id}]
     qualification_summary_prompt = Column(Text, nullable=True)
 
+    # Dados preenchidos pelo cliente no formulário de onboarding
+    form_data = Column(JSON, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
