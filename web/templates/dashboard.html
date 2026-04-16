@@ -107,10 +107,10 @@
         }
 
         // ── Instance Settings Modal ──
-        function openInstanceSettings(locationId, companyName, mode, clientId, zapiInstanceId, zapiToken, zapiClientToken) {
+        function openInstanceSettings(locationId, companyName, mode, clientId, zapiInstanceId, zapiToken, zapiClientToken, pitToken) {
             document.getElementById('instance_settings_company').innerText = companyName;
             // Store data for sub-actions
-            window._instanceSettingsData = { locationId, companyName, mode, clientId, zapiInstanceId, zapiToken, zapiClientToken };
+            window._instanceSettingsData = { locationId, companyName, mode, clientId, zapiInstanceId, zapiToken, zapiClientToken, pitToken };
 
             // Show reconnect/connect CRM for all tenants
             const reconnectCard = document.getElementById('instance_card_reconnect');
@@ -125,6 +125,18 @@
                 } else {
                     if (reconnectTitle) reconnectTitle.textContent = 'Reconectar CRM';
                     if (reconnectDesc) reconnectDesc.textContent = 'Re-autorizar OAuth do GHL (atualizar permissoes)';
+                }
+            }
+
+            const pitTitle = document.getElementById('instance_card_pit_title');
+            const pitDesc = document.getElementById('instance_card_pit_desc');
+            if (pitTitle && pitDesc) {
+                if (pitToken) {
+                    pitTitle.textContent = 'Token PIT ✓';
+                    pitDesc.textContent = 'Configurado — clique para atualizar';
+                } else {
+                    pitTitle.textContent = 'Token PIT';
+                    pitDesc.textContent = 'Configurar Private Integration Token';
                 }
             }
 
@@ -152,6 +164,8 @@
                 } else {
                     openConnectCRMModal(d.companyName, d.locationId);
                 }
+            } else if (action === 'pit') {
+                openPitModal(d.companyName, d.locationId, d.pitToken);
             } else if (action === 'form') {
                 generateFormLink(d.locationId);
             } else if (action === 'delete') {
@@ -181,6 +195,23 @@
             let url = `/oauth/install?company=${encodeURIComponent(company)}&ci=${encodeURIComponent(ci)}&cs=${encodeURIComponent(cs)}&ui_redirect=1`;
             if (existingId) url += `&existing=${encodeURIComponent(existingId)}`;
             window.location.href = url;
+        }
+
+        function openPitModal(companyName, locationId, currentPit) {
+            document.getElementById('pit_modal_company').innerText = companyName;
+            document.getElementById('pitModalForm').action = `/admin/tenant/${locationId}/pit`;
+            document.getElementById('pit_modal_token').value = '';
+            const statusEl = document.getElementById('pit_current_status');
+            if (currentPit) {
+                statusEl.classList.remove('hidden');
+            } else {
+                statusEl.classList.add('hidden');
+            }
+            document.getElementById('pitModal').classList.remove('hidden');
+        }
+
+        function closePitModal() {
+            document.getElementById('pitModal').classList.add('hidden');
         }
 
         function openAIAgentModal(btn) {
@@ -1734,7 +1765,7 @@
                     <tbody class="divide-y divide-gray-800/60 text-sm">
                         {% for tenant in tenants %}
                         <tr class="table-row-hover transition-colors cursor-pointer"
-                            onclick="openInstanceSettings('{{ tenant.location_id }}', '{{ tenant.company_name | forceescape }}', '{{ tenant.mode }}', '{{ tenant.client_id or '' }}', '{{ tenant.zapi_instance_id or '' }}', '{{ tenant.zapi_token or '' }}', '{{ tenant.zapi_client_token or '' }}')"
+                            onclick="openInstanceSettings('{{ tenant.location_id }}', '{{ tenant.company_name | forceescape }}', '{{ tenant.mode }}', '{{ tenant.client_id or '' }}', '{{ tenant.zapi_instance_id or '' }}', '{{ tenant.zapi_token or '' }}', '{{ tenant.zapi_client_token or '' }}', '{{ tenant.pit_token or '' }}')"
                             data-location="{{ tenant.location_id }}"
                             data-company="{{ tenant.company_name }}"
                             data-ainame="{{ (tenant.ai_agent_data.name | forceescape) if tenant.ai_agent_data else '' }}"
@@ -1772,6 +1803,12 @@
                                     class="status-badge text-purple-400 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono">
                                     <span class="w-1.5 h-1.5 rounded-full bg-purple-500 shadow-[0_0_5px_#a855f7]"></span>
                                     Somente WP
+                                </span>
+                                {% elif tenant.pit_token %}
+                                <span
+                                    class="status-badge text-amber-400 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_5px_#f59e0b]"></span>
+                                    PIT
                                 </span>
                                 {% elif tenant.is_token_expired %}
                                 <span
@@ -2122,7 +2159,60 @@
                     </form>
                 </div>
 
-                <!-- Opção 2: WhatsApp Only -->
+                <!-- Opção 2: GHL via PIT (Private Integration Token) -->
+                <div class="mb-4">
+                    <button onclick="document.getElementById('pitForm').classList.toggle('hidden')"
+                        class="w-full text-left p-4 rounded-xl border border-gray-700 hover:border-amber-500/50 transition-all group">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
+                                <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                                </svg>
+                            </div>
+                            <div>
+                                <p class="text-white font-bold text-sm uppercase tracking-wide">GHL + PIT</p>
+                                <p class="text-gray-500 text-[10px] font-mono uppercase tracking-widest">Private Integration Token — sem OAuth</p>
+                            </div>
+                        </div>
+                    </button>
+                    <form id="pitForm" action="/admin/onboard-pit" method="POST" class="space-y-4 mt-4 px-2 hidden">
+                        <div class="bg-amber-500/5 border border-amber-500/20 rounded-lg p-3 mb-2">
+                            <p class="text-[11px] text-gray-300 font-mono leading-relaxed">
+                                Use o token PIT gerado na sub-account do GHL. <strong class="text-white">Não precisa de OAuth — token estático sem expiração.</strong>
+                            </p>
+                        </div>
+                        <div class="group">
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Nome da Empresa</label>
+                            <input type="text" name="company_name" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm" placeholder="ex: MapInvest" required>
+                        </div>
+                        <div class="group">
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Location ID (Sub-Account)</label>
+                            <input type="text" name="location_id" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" placeholder="ex: abc123xyz..." required>
+                        </div>
+                        <div class="group">
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Private Integration Token (PIT)</label>
+                            <input type="password" name="pit_token" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" placeholder="pit-XXXX..." required>
+                        </div>
+                        <details class="group">
+                            <summary class="text-gray-500 text-[10px] font-bold uppercase tracking-widest cursor-pointer hover:text-white transition-colors">Z-API (opcional)</summary>
+                            <div class="space-y-3 mt-3">
+                                <input type="text" name="zapi_instance_id" class="input-dark w-full py-2 px-3 rounded-lg text-xs font-mono" placeholder="Z-API Instance ID">
+                                <input type="text" name="zapi_token" class="input-dark w-full py-2 px-3 rounded-lg text-xs font-mono" placeholder="Z-API Token">
+                                <input type="text" name="zapi_client_token" class="input-dark w-full py-2 px-3 rounded-lg text-xs font-mono" placeholder="Z-API Client Token (opcional)">
+                            </div>
+                        </details>
+                        <button type="submit"
+                            class="w-full px-6 py-3 rounded-lg text-xs font-bold uppercase tracking-widest text-white flex justify-center items-center gap-2 bg-amber-600 hover:bg-amber-500 transition-colors shadow-lg">
+                            Criar com PIT
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Opção 3: WhatsApp Only -->
                 <div>
                     <button onclick="closeNewCompanyModal(); openWhatsAppOnlyModal()"
                         class="w-full text-left p-4 rounded-xl border border-gray-700 hover:border-purple-500/50 transition-all group">
@@ -2268,6 +2358,20 @@
                     </div>
                 </button>
 
+                <!-- PIT Token -->
+                <button onclick="instanceAction('pit')"
+                    class="flex items-center gap-4 p-4 bg-black/40 border border-gray-800 hover:border-amber-500/50 rounded-xl transition-all group text-left">
+                    <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                        </svg>
+                    </div>
+                    <div>
+                        <p id="instance_card_pit_title" class="text-sm font-bold text-white group-hover:text-amber-400 transition-colors">Token PIT</p>
+                        <p id="instance_card_pit_desc" class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Configurar Private Integration Token</p>
+                    </div>
+                </button>
+
                 <!-- Form Link -->
                 <button onclick="instanceAction('form')"
                     class="flex items-center gap-4 p-4 bg-black/40 border border-gray-800 hover:border-purple-500/50 rounded-xl transition-all group text-left">
@@ -2333,6 +2437,43 @@
                 <button type="button" onclick="submitConnectCRM()"
                     class="flex-1 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-yellow-600 hover:bg-yellow-500 transition-colors">Conectar ao GHL</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal PIT Token -->
+    <div id="pitModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-md" onclick="closePitModal()"></div>
+        <div class="relative glass-panel rounded-2xl border border-amber-500/30 w-full max-w-md p-8 z-10">
+            <button onclick="closePitModal()" class="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+
+            <h3 class="font-display text-xl font-bold text-white uppercase tracking-tight mb-1">Private Integration Token</h3>
+            <p class="text-amber-500 text-sm font-mono font-bold mb-4" id="pit_modal_company"></p>
+
+            <div class="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 mb-6">
+                <p class="text-sm text-gray-300">Token estático gerado na sub-account do GHL. <strong class="text-white">Substitui o OAuth — sem expiração, sem refresh.</strong></p>
+            </div>
+
+            <form action="" id="pitModalForm" method="POST" class="space-y-4">
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-1.5">Token PIT</label>
+                    <input type="password" name="pit_token" id="pit_modal_token" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" placeholder="pit-XXXX..." required>
+                </div>
+                <div id="pit_current_status" class="hidden">
+                    <p class="text-xs font-mono text-green-400 flex items-center gap-1.5">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                        PIT já configurado — inserir novo para substituir
+                    </p>
+                </div>
+
+                <div class="mt-6 flex gap-3">
+                    <button type="button" onclick="closePitModal()"
+                        class="flex-1 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">Cancelar</button>
+                    <button type="submit"
+                        class="flex-1 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-amber-600 hover:bg-amber-500 transition-colors">Salvar PIT</button>
+                </div>
+            </form>
         </div>
     </div>
 

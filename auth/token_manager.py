@@ -200,18 +200,21 @@ class TokenManager:
 
     async def get_valid_token(self, location_id: str) -> Optional[str]:
         """
-        Retorna um access_token válido.
-        Se estiver expirado, faz o refresh automaticamente.
+        Retorna um token válido para chamadas à API do GHL.
+        Se o tenant tem PIT (Private Integration Token), retorna direto sem refresh.
+        Se usa OAuth, faz refresh automático quando expirado.
         """
         tenant = self.get_tenant(location_id)
         if not tenant:
             logger.error(f"Tenant {location_id} não encontrado")
             return None
 
+        if tenant.pit_token:
+            return tenant.pit_token
+
         if not self.is_token_expired(tenant):
             return tenant.access_token
 
-        # Precisa renovar
         logger.info(f"Token expirado para {tenant.company_name}, renovando...")
         success = await self._refresh_token(tenant.location_id)
         if success:
@@ -279,8 +282,51 @@ class TokenManager:
         try:
             tenants = db.query(Tenant).all()
             for tenant in tenants:
+                if tenant.pit_token:
+                    continue
                 if self.is_token_expired(tenant):
                     await self._refresh_token(tenant.location_id)
+        finally:
+            db.close()
+
+    def register_pit_tenant(
+        self,
+        company_name: str,
+        pit_token: str,
+        location_id: str,
+    ) -> Tenant:
+        """Registra um tenant usando Private Integration Token (sem OAuth)."""
+        db = SessionLocal()
+        try:
+            tenant = self.get_tenant(location_id, db=db)
+            if not tenant:
+                tenant = Tenant(location_id=location_id)
+                db.add(tenant)
+
+            tenant.company_name = company_name
+            tenant.pit_token = pit_token
+            tenant.mode = "ghl"
+            tenant.is_active = True
+
+            db.commit()
+            db.refresh(tenant)
+
+            logger.info(f"Tenant PIT '{company_name}' ({location_id}) registrado.")
+            return tenant
+        finally:
+            db.close()
+
+    def update_pit_token(self, location_id: str, pit_token: str) -> bool:
+        """Atualiza ou adiciona PIT a um tenant existente."""
+        db = SessionLocal()
+        try:
+            tenant = self.get_tenant(location_id, db=db)
+            if not tenant:
+                return False
+            tenant.pit_token = pit_token
+            db.commit()
+            logger.info(f"PIT atualizado para tenant {tenant.company_name}")
+            return True
         finally:
             db.close()
 

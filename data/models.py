@@ -20,6 +20,9 @@ class Tenant(Base):
     zapi_token = Column(String, nullable=True)
     zapi_client_token = Column(String, nullable=True)
     
+    # Private Integration Token (alternativa ao OAuth — não expira)
+    pit_token = Column(String, nullable=True)
+
     # GHL App Configs
     conversation_provider_id = Column(String, nullable=True)
 

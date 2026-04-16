@@ -131,11 +131,12 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
             "company_name": t.company_name,
             "is_active": t.is_active,
             "mode": getattr(t, "mode", "ghl") or "ghl",
-            "is_token_expired": t.is_token_expired if getattr(t, "mode", "ghl") == "ghl" else False,
+            "is_token_expired": False if t.pit_token else (t.is_token_expired if getattr(t, "mode", "ghl") == "ghl" else False),
             "zapi_instance_id": t.zapi_instance_id,
             "zapi_token": t.zapi_token,
             "zapi_client_token": t.zapi_client_token,
             "client_id": t.client_id,
+            "pit_token": t.pit_token,
         }
         
         agent = agent_map.get(t.location_id)
@@ -414,6 +415,58 @@ async def get_usage_data(
         })
     finally:
         db.close()
+
+
+@router.post("/onboard-pit")
+async def onboard_pit(
+    company_name: str = Form(...),
+    pit_token: str = Form(...),
+    location_id: str = Form(...),
+    zapi_instance_id: str = Form(""),
+    zapi_token: str = Form(""),
+    zapi_client_token: str = Form(""),
+    authenticated: bool = Depends(verify_admin)
+):
+    """Cria um tenant usando Private Integration Token do GHL (sem OAuth)."""
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    try:
+        tenant = token_manager.register_pit_tenant(
+            company_name=company_name.strip(),
+            pit_token=pit_token.strip(),
+            location_id=location_id.strip(),
+        )
+        if zapi_instance_id.strip():
+            token_manager.update_zapi_credentials(
+                location_id=tenant.location_id,
+                instance_id=zapi_instance_id.strip(),
+                token=zapi_token.strip(),
+                client_token=zapi_client_token.strip(),
+            )
+        return RedirectResponse(
+            url=f"/admin/dashboard?msg=Instância '{tenant.company_name}' criada com PIT!",
+            status_code=303
+        )
+    except Exception as e:
+        logger.error(f"Erro ao criar tenant PIT: {e}")
+        return RedirectResponse(url=f"/admin/dashboard?err=Erro ao criar instância: {str(e)}", status_code=303)
+
+
+@router.post("/tenant/{location_id}/pit")
+async def update_tenant_pit(
+    location_id: str,
+    pit_token: str = Form(...),
+    authenticated: bool = Depends(verify_admin)
+):
+    """Atualiza/adiciona PIT a um tenant existente."""
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    success = token_manager.update_pit_token(location_id, pit_token.strip())
+    if success:
+        return RedirectResponse(url="/admin/dashboard?msg=PIT atualizado com sucesso!", status_code=303)
+    return RedirectResponse(url="/admin/dashboard?err=Tenant não encontrado.", status_code=303)
 
 
 @router.post("/onboard-whatsapp")
