@@ -304,6 +304,32 @@
                     </div>
 
                     <div class="group">
+                        <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Tipo de Atendimento *</label>
+                        <div class="grid grid-cols-2 gap-3 mt-2">
+                            <label class="cursor-pointer">
+                                <input type="radio" name="agent_type" value="inbound" class="hidden peer" checked>
+                                <div class="peer-checked:border-brand-red peer-checked:bg-brand-red/5 border border-gray-700 rounded-lg p-4 transition-all hover:border-gray-500">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                                        <span class="text-sm font-bold text-white">Inbound</span>
+                                    </div>
+                                    <p class="text-[10px] text-gray-400 leading-snug">Passivo — responde clientes que entram em contato</p>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="agent_type" value="outbound" class="hidden peer">
+                                <div class="peer-checked:border-brand-red peer-checked:bg-brand-red/5 border border-gray-700 rounded-lg p-4 transition-all hover:border-gray-500">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path></svg>
+                                        <span class="text-sm font-bold text-white">Outbound</span>
+                                    </div>
+                                    <p class="text-[10px] text-gray-400 leading-snug">Ativo — inicia contato com leads frios/prospects</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="group">
                         <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Nome do Agente *</label>
                         <input type="text" name="agent_name" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm"
                             placeholder="Ex: Sofia, Carlos, Assistente MapInvest..." required>

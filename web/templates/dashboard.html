@@ -218,7 +218,13 @@
             const channel = document.getElementById('ai_channel').value || 'whatsapp';
             const fields = document.querySelectorAll('#form_data_content [data-formkey]');
             const formData = {};
-            fields.forEach(el => { formData[el.dataset.formkey] = el.value; });
+            fields.forEach(el => {
+                if (el.type === 'radio') {
+                    if (el.checked) formData[el.dataset.formkey] = el.value;
+                } else {
+                    formData[el.dataset.formkey] = el.value;
+                }
+            });
 
             const btn = document.getElementById('btn_regenerate_prompt');
             const originalBtn = btn.innerHTML;
@@ -419,7 +425,27 @@
                         extra_info: 'Info Adicional'
                     };
                     const shortFields = ['company_name', 'industry', 'target_audience', 'website', 'instagram', 'agent_name', 'tone', 'business_hours'];
+                    const agentType = fd.agent_type || 'inbound';
                     let html = '';
+                    html += `<div>
+                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-2">Tipo de Atendimento</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="cursor-pointer">
+                                <input type="radio" name="form_agent_type" value="inbound" ${agentType==='inbound'?'checked':''} class="hidden peer" data-formkey="agent_type">
+                                <div class="peer-checked:border-brand-red peer-checked:bg-brand-red/5 border border-gray-700 rounded-lg p-3 transition-all">
+                                    <p class="text-sm font-bold text-white">📥 Inbound</p>
+                                    <p class="text-[10px] text-gray-400 mt-0.5">Passivo — responde clientes</p>
+                                </div>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="form_agent_type" value="outbound" ${agentType==='outbound'?'checked':''} class="hidden peer" data-formkey="agent_type">
+                                <div class="peer-checked:border-brand-red peer-checked:bg-brand-red/5 border border-gray-700 rounded-lg p-3 transition-all">
+                                    <p class="text-sm font-bold text-white">📤 Outbound</p>
+                                    <p class="text-[10px] text-gray-400 mt-0.5">Ativo — inicia contato</p>
+                                </div>
+                            </label>
+                        </div>
+                    </div>`;
                     for (const [key, label] of Object.entries(fieldLabels)) {
                         const val = fd[key] || '';
                         const escaped = val.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');

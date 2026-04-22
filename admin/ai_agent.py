@@ -906,7 +906,11 @@ async def save_form_data(location_id: str, request: Request):
                 return {"success": False, "error": "IA Mestre não configurada (System Settings)."}
 
             fd = form_data
+            agent_type = fd.get('agent_type', 'inbound')
+            agent_type_label = "OUTBOUND (Ativo — inicia contato com leads)" if agent_type == "outbound" else "INBOUND (Passivo — responde clientes que entram em contato)"
             company_context = f"""
+TIPO DE ATENDIMENTO: {agent_type_label}
+
 INFORMAÇÕES DA EMPRESA:
 - Nome: {fd.get('company_name', '')}
 - Segmento: {fd.get('industry', '')}
@@ -962,6 +966,19 @@ INFORMAÇÕES ADICIONAIS:
                                 "Você é um especialista sênior em Prompt Engineering para agentes de IA de WhatsApp.\n\n"
                                 "Sua tarefa: receber informações sobre uma empresa e criar um PROMPT DE SISTEMA completo, "
                                 "detalhado e profissional para o agente de IA que vai atender os clientes dessa empresa via WhatsApp.\n\n"
+                                "ADAPTE O PROMPT AO TIPO DE ATENDIMENTO:\n\n"
+                                "▸ Se INBOUND (passivo): o agente RECEBE mensagens de clientes já interessados. O prompt deve focar em:\n"
+                                "  - Receber a mensagem, entender a necessidade e responder com clareza\n"
+                                "  - Tom acolhedor e prestativo\n"
+                                "  - Tirar dúvidas, informar sobre produtos/preços, qualificar intenção\n"
+                                "  - Direcionar para agendamento/compra quando o cliente demonstrar interesse\n\n"
+                                "▸ Se OUTBOUND (ativo): o agente INICIA a conversa com leads frios ou prospects. O prompt deve focar em:\n"
+                                "  - Abertura que gera curiosidade e relevância (não spam)\n"
+                                "  - Qualificar rapidamente se o prospect tem fit com a oferta\n"
+                                "  - Despertar interesse ANTES de pedir informações\n"
+                                "  - Usar abordagem consultiva, fazer perguntas que engajem\n"
+                                "  - Respeitar quem não tem interesse (sem insistência)\n"
+                                "  - Ter um script de abertura claro (primeira mensagem enviada)\n\n"
                                 "O prompt deve:\n"
                                 "1. Definir claramente a identidade do agente (nome, personalidade, tom)\n"
                                 "2. Descrever o que a empresa faz e seus serviços/produtos com detalhes\n"
