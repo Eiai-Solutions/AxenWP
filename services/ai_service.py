@@ -13,6 +13,10 @@ from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, Base
 from data.database import SessionLocal
 from data.models import AIAgent, ChatHistory, UsageLog, QualifiedLead
 from utils.logger import logger
+from utils.guardrails import (
+    contains_forbidden_phrase,
+    should_escalate as check_escalation,
+)
 
 
 def _save_usage_log(location_id: str, service: str, model: str = None,
@@ -455,6 +459,11 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
         elif is_audio and not self.agent_config.groq_api_key:
             logger.warning("Áudio recebido mas Groq API Key não configurada. Ignorando transcrição.")
 
+        # ── Guardrail: detecta frustração ou pedido de humano ──
+        escalate, escalate_reason = check_escalation(actual_message)
+        if escalate:
+            logger.warning(f"Escalação detectada ({escalate_reason}) para {user_phone}")
+
         # Identificador único de sessão de memória
         session_id = f"{self.agent_config.location_id}_{user_phone}"
         memory = PostgresChatMessageHistory(session_id)
@@ -477,6 +486,30 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
             response = await self.llm.ainvoke(messages_for_llm)
 
             ai_text = response.content
+
+            # ── Guardrail: remove frases proibidas em modo outbound ──
+            form_data = getattr(self.agent_config, 'form_data', None) or {}
+            agent_mode = form_data.get('agent_type', 'inbound')
+            if agent_mode == 'outbound':
+                forbidden = contains_forbidden_phrase(ai_text, 'outbound')
+                if forbidden:
+                    logger.warning(f"Resposta outbound contém frase proibida ({forbidden}). Regenerando...")
+                    regen_prompt = (
+                        "Reescreva a mensagem ABAIXO sem usar frases tipo 'como posso ajudar', "
+                        "'tudo bem', 'em que posso ser útil'. Use o tom OUTBOUND — pergunta "
+                        "direta sobre o produto/dor, não oferta de ajuda. Retorne APENAS a "
+                        "mensagem reescrita.\n\n"
+                        f"Mensagem original: {ai_text}"
+                    )
+                    regen_msgs = [
+                        SystemMessage(content=system_prompt),
+                        HumanMessage(content=regen_prompt),
+                    ]
+                    try:
+                        regen = await self.llm.ainvoke(regen_msgs)
+                        ai_text = regen.content
+                    except Exception as e_regen:
+                        logger.warning(f"Falha ao regenerar resposta outbound: {e_regen}")
 
             # ── Log de uso OpenRouter ──
             try:
@@ -579,6 +612,9 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
             if qualified_data:
                 result["qualified_data"] = qualified_data
                 result["qualification_summary"] = qualification_summary
+            if escalate:
+                result["escalate"] = True
+                result["escalate_reason"] = escalate_reason
             return result
 
         except Exception as e:

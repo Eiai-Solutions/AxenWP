@@ -1378,7 +1378,7 @@
             const activeBtn = btn || document.getElementById('btn_ai_tab_' + tabName);
             if (activeBtn) {
                 activeBtn.classList.remove('border-transparent', 'text-gray-500');
-                activeBtn.classList.add('border-brand-red', 'text-brand-red', 'bg-brand-red/10');
+                activeBtn.classList.add('border-brand-red', 'text-brand-red');
             }
 
             // Auto-refresh: start when history tab active, stop otherwise
@@ -2788,31 +2788,56 @@
                         </button>
                     </div>
 
-                    <nav class="flex border-b border-gray-800 mb-8 overflow-x-auto scrollbar-none">
+                    <nav class="flex items-center gap-0 border-b border-gray-800 mb-8 overflow-x-auto scrollbar-none">
+                        <!-- Grupo: CORE -->
                         <button type="button" id="btn_ai_tab_settings" onclick="switchAITab('settings', this)"
-                            class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-brand-red text-brand-red bg-brand-red/10 transition-all whitespace-nowrap">⚙️
-                            Config</button>
-                        <button type="button" id="btn_ai_tab_voice" onclick="switchAITab('voice', this)"
-                            class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">🗣️
-                            Voz</button>
-                        <button type="button" id="btn_ai_tab_knowledge" onclick="switchAITab('knowledge', this)"
-                            class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">🧠
-                            Conhecimento</button>
-                        <button type="button" id="btn_ai_tab_tester" onclick="switchAITab('tester', this)"
-                            class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">🚀
-                            Testador</button>
-                        <button type="button" id="btn_ai_tab_costs" onclick="switchAITab('costs', this); loadUsageData();"
-                            class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">💰
-                            Custos</button>
-                        <button type="button" id="btn_ai_tab_qualification" onclick="switchAITab('qualification', this); loadQualCustomFields();"
-                            class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">🎯
-                            Qualificacao</button>
-                        <button type="button" id="btn_ai_tab_history" onclick="switchAITab('history', this); loadConversations();"
-                            class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">📋
-                            Historico</button>
+                            class="ai-tab-btn inline-flex items-center gap-2 px-3.5 py-3 text-[11px] font-semibold uppercase tracking-wider border-b-2 border-brand-red text-brand-red transition-all whitespace-nowrap">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                            Config
+                        </button>
                         <button type="button" id="btn_ai_tab_form" onclick="switchAITab('form', this);"
-                            class="ai-tab-btn px-3 py-3 text-[10px] font-bold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">📝
-                            Cadastro</button>
+                            class="ai-tab-btn inline-flex items-center gap-2 px-3.5 py-3 text-[11px] font-semibold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            Cadastro
+                        </button>
+                        <button type="button" id="btn_ai_tab_qualification" onclick="switchAITab('qualification', this); loadQualCustomFields();"
+                            class="ai-tab-btn inline-flex items-center gap-2 px-3.5 py-3 text-[11px] font-semibold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+                            Qualificação
+                        </button>
+
+                        <div class="h-6 w-px bg-gray-800 mx-1"></div>
+
+                        <!-- Grupo: MEDIA -->
+                        <button type="button" id="btn_ai_tab_voice" onclick="switchAITab('voice', this)"
+                            class="ai-tab-btn inline-flex items-center gap-2 px-3.5 py-3 text-[11px] font-semibold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+                            Voz
+                        </button>
+                        <button type="button" id="btn_ai_tab_knowledge" onclick="switchAITab('knowledge', this)"
+                            class="ai-tab-btn inline-flex items-center gap-2 px-3.5 py-3 text-[11px] font-semibold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                            Conhecimento
+                        </button>
+
+                        <div class="h-6 w-px bg-gray-800 mx-1"></div>
+
+                        <!-- Grupo: OPERATIONS -->
+                        <button type="button" id="btn_ai_tab_tester" onclick="switchAITab('tester', this)"
+                            class="ai-tab-btn inline-flex items-center gap-2 px-3.5 py-3 text-[11px] font-semibold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                            Testador
+                        </button>
+                        <button type="button" id="btn_ai_tab_history" onclick="switchAITab('history', this); loadConversations();"
+                            class="ai-tab-btn inline-flex items-center gap-2 px-3.5 py-3 text-[11px] font-semibold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                            Histórico
+                        </button>
+                        <button type="button" id="btn_ai_tab_costs" onclick="switchAITab('costs', this); loadUsageData();"
+                            class="ai-tab-btn inline-flex items-center gap-2 px-3.5 py-3 text-[11px] font-semibold uppercase tracking-wider border-b-2 border-transparent text-gray-500 hover:text-white transition-all whitespace-nowrap">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                            Métricas
+                        </button>
                     </nav>
 
                     <!-- TAB: SETTINGS -->
