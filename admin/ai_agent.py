@@ -866,6 +866,28 @@ async def test_ai_agent(location_id: str, request: Request):
 
             data = resp.json()
             ai_response = data["choices"][0]["message"]["content"]
+
+            # Aplica os mesmos guardrails do fluxo real de produção
+            from utils.guardrails import strip_emojis, contains_forbidden_phrase
+            ai_response = strip_emojis(ai_response)
+
+            # Detecta modo do agente pelo form_data salvo
+            agent_mode = "inbound"
+            try:
+                db = SessionLocal()
+                agent_db = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
+                if agent_db and agent_db.form_data:
+                    agent_mode = agent_db.form_data.get("agent_type", "inbound")
+                db.close()
+            except Exception:
+                pass
+
+            if agent_mode == "outbound" and contains_forbidden_phrase(ai_response, "outbound"):
+                ai_response = (
+                    ai_response
+                    + "\n\n⚠️ [debug: resposta contém frase proibida outbound — em produção seria regenerada automaticamente. Clique em Regenerar Prompt na aba Cadastro.]"
+                )
+
             return {"success": True, "response": ai_response}
     except Exception as e:
         logger.error(f"Erro no chat tester: {e}", exc_info=True)
