@@ -1995,28 +1995,32 @@
                                 {{ tenant.location_id }}
                             </td>
                             <td class="px-6 py-5 text-center">
-                                {% if tenant.mode == 'whatsapp_only' %}
+                                {% if tenant.mode == 'whatsapp_only' and not tenant.pit_token and not tenant.client_id %}
                                 <span
-                                    class="status-badge text-purple-400 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-purple-500 shadow-[0_0_5px_#a855f7]"></span>
-                                    Somente WP
+                                    class="status-badge text-gray-500 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-gray-600"></span>
+                                    Desconectado
                                 </span>
                                 {% elif tenant.pit_token %}
                                 <span
-                                    class="status-badge text-amber-400 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_5px_#f59e0b]"></span>
-                                    PIT
+                                    class="status-badge text-green-400 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono"
+                                    title="Conectado via PIT">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_#22c55e]"></span>
+                                    Conectado
                                 </span>
                                 {% elif tenant.is_token_expired %}
                                 <span
-                                    class="status-badge text-red-400 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span> Offline
+                                    class="status-badge text-red-400 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono"
+                                    title="Token OAuth expirado — reconectar CRM">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                                    Desconectado
                                 </span>
                                 {% else %}
                                 <span
-                                    class="status-badge text-green-400 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono">
+                                    class="status-badge text-green-400 py-1 px-3 rounded-md text-[10px] uppercase tracking-widest inline-flex items-center gap-1.5 font-mono"
+                                    title="Conectado via OAuth">
                                     <span class="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_#22c55e]"></span>
-                                    Sincronizado
+                                    Conectado
                                 </span>
                                 {% endif %}
                             </td>
