@@ -58,6 +58,34 @@ def contains_forbidden_phrase(text: str, mode: Mode) -> str | None:
     return None
 
 
+# Regex para capturar qualquer emoji (blocos Unicode comuns de emoji)
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F300-\U0001F5FF"  # symbols & pictographs
+    "\U0001F680-\U0001F6FF"  # transport & map
+    "\U0001F700-\U0001F77F"
+    "\U0001F780-\U0001F7FF"
+    "\U0001F800-\U0001F8FF"
+    "\U0001F900-\U0001F9FF"
+    "\U0001FA00-\U0001FA6F"
+    "\U0001FA70-\U0001FAFF"
+    "\U00002600-\U000026FF"  # misc symbols
+    "\U00002700-\U000027BF"  # dingbats
+    "]+",
+    flags=re.UNICODE,
+)
+
+
+def strip_emojis(text: str) -> str:
+    """Remove todos os emojis da mensagem e limpa espaços extras."""
+    cleaned = _EMOJI_RE.sub("", text)
+    # Normaliza múltiplos espaços/quebras que sobraram
+    cleaned = re.sub(r" +", " ", cleaned)
+    cleaned = re.sub(r" ?\n ?", "\n", cleaned)
+    return cleaned.strip()
+
+
 def detect_negative_sentiment(text: str) -> bool:
     """True se a mensagem contém sinal claro de frustração/sentimento negativo."""
     text_lower = text.lower()

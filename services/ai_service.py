@@ -16,6 +16,7 @@ from utils.logger import logger
 from utils.guardrails import (
     contains_forbidden_phrase,
     should_escalate as check_escalation,
+    strip_emojis,
 )
 
 
@@ -486,6 +487,9 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
             response = await self.llm.ainvoke(messages_for_llm)
 
             ai_text = response.content
+
+            # ── Guardrail: remove emojis (default — WhatsApp empresarial) ──
+            ai_text = strip_emojis(ai_text)
 
             # ── Guardrail: remove frases proibidas em modo outbound ──
             form_data = getattr(self.agent_config, 'form_data', None) or {}
