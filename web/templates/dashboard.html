@@ -546,6 +546,7 @@
 
             document.getElementById('form_ai_agent').action = '/admin/agents/' + locationId + '/save';
             document.getElementById('ai_channel').value = 'whatsapp';
+            _toggleInheritKeysButton('whatsapp');
             document.getElementById('aiAgentModal').classList.remove('hidden');
 
             // Default to Settings Tab
@@ -598,6 +599,37 @@
             }).join('');
         }
 
+        function _toggleInheritKeysButton(channel) {
+            const btn = document.getElementById('btn_inherit_keys');
+            if (!btn) return;
+            // Só mostra o "Usar chaves do WhatsApp" em canais que NÃO sejam o whatsapp
+            if (channel && channel !== 'whatsapp') {
+                btn.classList.remove('hidden');
+            } else {
+                btn.classList.add('hidden');
+            }
+        }
+
+        async function inheritKeysFromWhatsApp() {
+            const locationId = document.getElementById('ai_location_id').value;
+            if (!locationId) return;
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/inherit-keys`);
+                const data = await resp.json();
+                if (!data.success) {
+                    alert(data.error || 'Erro ao buscar chaves do WhatsApp.');
+                    return;
+                }
+                if (data.api_key) document.getElementById('ai_api_key').value = data.api_key;
+                if (data.model) document.getElementById('ai_model').value = data.model;
+                if (data.groq_api_key) document.getElementById('ai_groq_api_key').value = data.groq_api_key;
+                if (data.elevenlabs_api_key) document.getElementById('ai_elevenlabs_api_key').value = data.elevenlabs_api_key;
+                if (data.elevenlabs_voice_id) document.getElementById('ai_elevenlabs_voice_id').dataset.preselected = data.elevenlabs_voice_id;
+            } catch(e) {
+                alert('Erro de rede ao buscar chaves.');
+            }
+        }
+
         async function switchChannel(channel) {
             const locationId = document.getElementById('ai_location_id').value;
             if (!locationId) return;
@@ -610,6 +642,7 @@
                 }
                 document.getElementById('ai_channel').value = channel;
                 _populateAgentForm(data.agent || {});
+                _toggleInheritKeysButton(channel);
                 // Re-render tabs com o novo canal ativo
                 const tabs = document.querySelectorAll('#channel_tabs_container button');
                 const channels = Array.from(tabs).map(b => {
@@ -748,6 +781,9 @@
             const baseFormData = (row && row.dataset.aiformdata) ? row.dataset.aiformdata : '';
             document.getElementById('ai_channel').value = normalized;
             _populateAgentForm({ form_data: baseFormData ? JSON.parse(baseFormData) : null });
+            _toggleInheritKeysButton(normalized);
+            // Auto-herda as chaves do WhatsApp pra economizar re-cadastro
+            await inheritKeysFromWhatsApp();
             // Adiciona o novo canal as tabs
             const tabs = document.querySelectorAll('#channel_tabs_container button');
             const existingChannels = Array.from(tabs).map(b => {
@@ -3101,10 +3137,16 @@
 
                         <div class="group">
                             <label
-                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
+                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between items-center gap-2">
                                 <span class="group-focus-within:text-white">Chave API (OpenRouter)</span>
-                                <a href="https://openrouter.ai/keys" target="_blank"
-                                    class="text-brand-red hover:underline">Obter Chave</a>
+                                <span class="flex items-center gap-3">
+                                    <button type="button" id="btn_inherit_keys" onclick="inheritKeysFromWhatsApp()"
+                                        class="hidden text-sky-400 hover:underline normal-case font-normal text-[10px]">
+                                        Usar chaves do WhatsApp
+                                    </button>
+                                    <a href="https://openrouter.ai/keys" target="_blank"
+                                        class="text-brand-red hover:underline">Obter Chave</a>
+                                </span>
                             </label>
                             <input type="password" id="ai_api_key" name="api_key"
                                 class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"

@@ -197,6 +197,29 @@ async def delete_agent_by_channel(location_id: str, channel: str):
         db.close()
 
 
+@router.get("/{location_id}/inherit-keys")
+async def get_inherit_keys(location_id: str):
+    """Retorna as chaves do agente WhatsApp para o front pré-preencher outro canal."""
+    db = SessionLocal()
+    try:
+        wa = db.query(AIAgent).filter(
+            AIAgent.location_id == location_id,
+            AIAgent.channel == "whatsapp",
+        ).first()
+        if not wa:
+            return {"success": False, "error": "Nenhum agente WhatsApp encontrado para herdar chaves."}
+        return {
+            "success": True,
+            "api_key": wa.api_key or "",
+            "model": wa.model or "openai/gpt-4o",
+            "groq_api_key": wa.groq_api_key or "",
+            "elevenlabs_api_key": wa.elevenlabs_api_key or "",
+            "elevenlabs_voice_id": wa.elevenlabs_voice_id or "",
+        }
+    finally:
+        db.close()
+
+
 @router.get("/{location_id}/ghl/pipelines")
 async def get_ghl_pipelines(location_id: str):
     """Busca pipelines (funis de oportunidades) do GHL para o tenant."""
@@ -916,17 +939,28 @@ async def save_form_data(location_id: str, request: Request):
         ).first()
         if not agent:
             # Cria o agente do canal sob demanda (caso o usuário tenha
-            # adicionado o canal mas ainda não salvou via aba Config)
+            # adicionado o canal mas ainda não salvou via aba Config).
+            # Herda chaves de API do agente WhatsApp se existir (evita re-cadastro).
             agent_name = form_data.get("agent_name") or "Agente Inteligente"
+            wa_agent = db.query(AIAgent).filter(
+                AIAgent.location_id == location_id,
+                AIAgent.channel == "whatsapp",
+            ).first()
             agent = AIAgent(
                 location_id=location_id,
                 channel=channel,
                 name=agent_name,
                 prompt="Você é um assistente virtual prestativo.",
+                api_key=(wa_agent.api_key if wa_agent else None),
+                model=(wa_agent.model if wa_agent else "openai/gpt-4o"),
+                groq_api_key=(wa_agent.groq_api_key if wa_agent else None),
+                elevenlabs_api_key=(wa_agent.elevenlabs_api_key if wa_agent else None),
+                elevenlabs_voice_id=(wa_agent.elevenlabs_voice_id if wa_agent else None),
+                debounce_seconds=(wa_agent.debounce_seconds if wa_agent else 1.5),
             )
             db.add(agent)
             db.flush()
-            logger.info(f"Agente criado sob demanda em form-data: location={location_id} channel={channel}")
+            logger.info(f"Agente criado sob demanda em form-data: location={location_id} channel={channel} (chaves herdadas do whatsapp={bool(wa_agent)})")
 
         agent.form_data = form_data
         if agent.name and form_data.get("agent_name"):
