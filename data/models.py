@@ -71,6 +71,9 @@ class AIAgent(Base):
     id = Column(Integer, primary_key=True, index=True)
     location_id = Column(String, ForeignKey("tenants.location_id", ondelete="CASCADE"), index=True, nullable=False)
     channel = Column(String, nullable=False, default="whatsapp", server_default="whatsapp", index=True)
+    # Se preenchido, este "agente" é apenas um alias e usa as configs do canal indicado
+    # (ex: telegram linked_to_channel=whatsapp → mesmo prompt, mesmas chaves, mesmo form_data)
+    linked_to_channel = Column(String, nullable=True)
     name = Column(String, nullable=False, default="Agente Inteligente")
     prompt = Column(Text, nullable=False, default="Você é um assistente virtual prestativo.")
     model = Column(String, nullable=False, default="openai/gpt-4o") # Formato OpenRouter

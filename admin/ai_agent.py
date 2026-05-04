@@ -122,6 +122,7 @@ async def list_agents(location_id: str):
                     "is_active": a.is_active,
                     "model": a.model,
                     "qualification_enabled": bool(a.qualification_enabled),
+                    "linked_to_channel": a.linked_to_channel,
                 }
                 for a in agents
             ],
@@ -166,6 +167,7 @@ async def get_agent_by_channel(location_id: str, channel: str = "whatsapp"):
                 "qualification_stage_id": agent.qualification_stage_id or "",
                 "qualification_fields": agent.qualification_fields or [],
                 "qualification_summary_prompt": agent.qualification_summary_prompt or "",
+                "linked_to_channel": agent.linked_to_channel,
             },
         }
     except Exception as e:
@@ -193,6 +195,82 @@ async def delete_agent_by_channel(location_id: str, channel: str):
         db.rollback()
         logger.error(f"Erro ao remover agente: {e}")
         return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
+@router.post("/{location_id}/link-channel")
+async def link_channel_to_existing(location_id: str, request: Request):
+    """
+    Cria/atualiza um canal como ALIAS de um agente existente.
+    Body: {"channel": "telegram", "linked_to": "whatsapp"}
+    O canal vinculado compartilha prompt, chaves, qualificação, form_data.
+    """
+    body = await request.json()
+    channel = (body.get("channel") or "").strip()
+    linked_to = (body.get("linked_to") or "").strip()
+    if not channel or not linked_to:
+        return {"success": False, "error": "channel e linked_to são obrigatórios."}
+    if channel == linked_to:
+        return {"success": False, "error": "Não pode vincular um canal a ele mesmo."}
+
+    db = SessionLocal()
+    try:
+        target = db.query(AIAgent).filter(
+            AIAgent.location_id == location_id,
+            AIAgent.channel == linked_to,
+        ).first()
+        if not target:
+            return {"success": False, "error": f"Agente do canal {linked_to} não existe."}
+        if getattr(target, "linked_to_channel", None):
+            return {"success": False, "error": f"Canal {linked_to} já é um alias. Vincule ao canal raiz."}
+
+        agent = db.query(AIAgent).filter(
+            AIAgent.location_id == location_id,
+            AIAgent.channel == channel,
+        ).first()
+        if agent:
+            agent.linked_to_channel = linked_to
+        else:
+            agent = AIAgent(
+                location_id=location_id,
+                channel=channel,
+                name=target.name or "Agente",
+                prompt="(alias — usa as configs do canal vinculado)",
+                linked_to_channel=linked_to,
+            )
+            db.add(agent)
+
+        db.commit()
+        logger.info(f"Canal {channel} vinculado a {linked_to} para tenant {location_id}")
+        return {"success": True, "channel": channel, "linked_to": linked_to}
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Erro ao vincular canal: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
+@router.post("/{location_id}/unlink-channel")
+async def unlink_channel(location_id: str, request: Request):
+    """Remove o vínculo de um canal alias (volta a ser independente, mas vazio)."""
+    body = await request.json()
+    channel = (body.get("channel") or "").strip()
+    if not channel or channel == "whatsapp":
+        return {"success": False, "error": "Canal inválido."}
+
+    db = SessionLocal()
+    try:
+        agent = db.query(AIAgent).filter(
+            AIAgent.location_id == location_id,
+            AIAgent.channel == channel,
+        ).first()
+        if not agent:
+            return {"success": False, "error": "Canal não encontrado."}
+        agent.linked_to_channel = None
+        db.commit()
+        return {"success": True}
     finally:
         db.close()
 

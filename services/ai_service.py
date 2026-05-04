@@ -658,12 +658,26 @@ class AIService:
                 AIAgent.location_id == location_id,
                 AIAgent.channel == channel,
             ).first()
+            if not agent:
+                self._engine_cache.pop((location_id, channel), None)
+                return None
+
+            # Se o canal é apenas um ALIAS (linked_to_channel), resolve para o agente alvo
+            if getattr(agent, "linked_to_channel", None):
+                target_channel = agent.linked_to_channel
+                if target_channel != channel:
+                    target = db.query(AIAgent).filter(
+                        AIAgent.location_id == location_id,
+                        AIAgent.channel == target_channel,
+                    ).first()
+                    if target:
+                        agent = target
+
             cache_key = (location_id, channel)
-            if not agent or not agent.is_active or not agent.api_key:
+            if not agent.is_active or not agent.api_key:
                 self._engine_cache.pop(cache_key, None)
                 return None
 
-            # Retorna do cache se o agente não foi alterado desde a última vez
             cached = self._engine_cache.get(cache_key)
             if cached and cached[0] == agent.updated_at:
                 return cached[1]

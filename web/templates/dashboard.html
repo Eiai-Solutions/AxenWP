@@ -547,6 +547,7 @@
             document.getElementById('form_ai_agent').action = '/admin/agents/' + locationId + '/save';
             document.getElementById('ai_channel').value = 'whatsapp';
             _toggleInheritKeysButton('whatsapp');
+            if (typeof _hideLinkedBanner === 'function') _hideLinkedBanner();
             document.getElementById('aiAgentModal').classList.remove('hidden');
 
             // Default to Settings Tab
@@ -630,6 +631,59 @@
             }
         }
 
+        function _showLinkedBanner(channel, linkedTo) {
+            // Esconde o form completo de config e mostra um aviso "vinculado a X"
+            const form = document.getElementById('form_ai_agent');
+            let banner = document.getElementById('linked_channel_banner');
+            if (!banner) {
+                banner = document.createElement('div');
+                banner.id = 'linked_channel_banner';
+                banner.className = 'bg-sky-500/10 border border-sky-500/30 rounded-xl p-6 text-center';
+                form.parentNode.insertBefore(banner, form);
+            }
+            const meta = CHANNEL_LABELS[linkedTo] || { label: linkedTo, icon: '🔌' };
+            banner.innerHTML = `
+                <div class="flex items-center justify-center gap-3 mb-3">
+                    <svg class="w-6 h-6 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
+                    <p class="text-white font-bold uppercase tracking-wider">Canal Vinculado</p>
+                </div>
+                <p class="text-sm text-gray-300 mb-2">Este canal usa as configurações do agente <span class="text-white font-bold">${meta.label}</span>.</p>
+                <p class="text-xs text-gray-500 mb-5">Edite o agente ${meta.label} para alterar prompt, qualificação ou chaves de ambos.</p>
+                <div class="flex gap-3 justify-center">
+                    <button type="button" onclick="switchChannel('${linkedTo}')"
+                        class="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest bg-sky-600 hover:bg-sky-500 text-white transition-colors">
+                        Ir para ${meta.label}
+                    </button>
+                    <button type="button" onclick="unlinkChannel('${channel}')"
+                        class="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white border border-gray-700 transition-colors">
+                        Desvincular
+                    </button>
+                </div>`;
+            banner.classList.remove('hidden');
+            form.classList.add('hidden');
+        }
+
+        function _hideLinkedBanner() {
+            const banner = document.getElementById('linked_channel_banner');
+            if (banner) banner.classList.add('hidden');
+            document.getElementById('form_ai_agent').classList.remove('hidden');
+        }
+
+        async function unlinkChannel(channel) {
+            if (!confirm(`Desvincular o canal ${channel}? Vai virar um agente independente vazio.`)) return;
+            const locationId = document.getElementById('ai_location_id').value;
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/unlink-channel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ channel }),
+                });
+                const data = await resp.json();
+                if (data.success) await switchChannel(channel);
+                else alert('Erro: ' + (data.error || 'desconhecido'));
+            } catch(e) { alert('Erro de rede.'); }
+        }
+
         async function switchChannel(channel) {
             const locationId = document.getElementById('ai_location_id').value;
             if (!locationId) return;
@@ -641,6 +695,20 @@
                     return;
                 }
                 document.getElementById('ai_channel').value = channel;
+
+                // Se o canal é alias, mostra banner em vez do form
+                const linkedTo = data.agent && data.agent.linked_to_channel;
+                if (linkedTo) {
+                    _showLinkedBanner(channel, linkedTo);
+                    const tabs = document.querySelectorAll('#channel_tabs_container button');
+                    const channels = Array.from(tabs).map(b => {
+                        const m = b.getAttribute('onclick').match(/switchChannel\('([^']+)'\)/);
+                        return m ? m[1] : null;
+                    }).filter(Boolean);
+                    _renderChannelTabs(channels, channel);
+                    return;
+                }
+                _hideLinkedBanner();
                 _populateAgentForm(data.agent || {});
                 _toggleInheritKeysButton(channel);
                 // Re-render tabs com o novo canal ativo
@@ -774,17 +842,52 @@
                 alert('Canal invalido. Use: ' + channels.join(', '));
                 return;
             }
-            // Copia form_data do canal whatsapp como base para o novo canal
-            // (a Cadastro vem preenchida; o usuário ajusta o que for específico daquele canal)
+
+            // Pergunta: vincular ao agente existente ou criar separado?
+            const linkChoice = confirm(
+                `Adicionar canal ${CHANNEL_LABELS[normalized].label}.\n\n` +
+                `OK = Vincular ao agente WhatsApp (mesmo prompt, chaves, qualificação)\n` +
+                `Cancelar = Criar agente separado (config independente)`
+            );
+
             const locationId = document.getElementById('ai_location_id').value;
+
+            if (linkChoice) {
+                // Cria como alias do canal whatsapp
+                try {
+                    const resp = await fetch(`/admin/agents/${locationId}/link-channel`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ channel: normalized, linked_to: 'whatsapp' }),
+                    });
+                    const data = await resp.json();
+                    if (!data.success) {
+                        alert('Erro ao vincular: ' + (data.error || 'desconhecido'));
+                        return;
+                    }
+                } catch(e) {
+                    alert('Erro de rede ao vincular canal.');
+                    return;
+                }
+                // Adiciona aba e troca pra ela (vai mostrar a tela de "vinculado")
+                const tabs = document.querySelectorAll('#channel_tabs_container button');
+                const existingChannels = Array.from(tabs).map(b => {
+                    const m = b.getAttribute('onclick').match(/switchChannel\('([^']+)'\)/);
+                    return m ? m[1] : null;
+                }).filter(Boolean);
+                if (!existingChannels.includes(normalized)) existingChannels.push(normalized);
+                _renderChannelTabs(existingChannels, normalized);
+                await switchChannel(normalized);
+                return;
+            }
+
+            // Caminho ANTIGO: agente independente
             const row = document.querySelector(`tr[data-location="${locationId}"]`);
             const baseFormData = (row && row.dataset.aiformdata) ? row.dataset.aiformdata : '';
             document.getElementById('ai_channel').value = normalized;
             _populateAgentForm({ form_data: baseFormData ? JSON.parse(baseFormData) : null });
             _toggleInheritKeysButton(normalized);
-            // Auto-herda as chaves do WhatsApp pra economizar re-cadastro
             await inheritKeysFromWhatsApp();
-            // Adiciona o novo canal as tabs
             const tabs = document.querySelectorAll('#channel_tabs_container button');
             const existingChannels = Array.from(tabs).map(b => {
                 const m = b.getAttribute('onclick').match(/switchChannel\('([^']+)'\)/);
