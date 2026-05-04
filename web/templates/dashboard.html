@@ -227,7 +227,9 @@
             }
         }
 
-        async function saveFormData(regenerate) {
+        async function saveFormData(_regenerateLegacy) {
+            // Salva apenas os dados do formulário. A geração/melhoria do prompt
+            // agora vive na aba Testador → "Aplicar Melhoria".
             const locationId = document.getElementById('ai_location_id').value;
             const channel = document.getElementById('ai_channel').value || 'whatsapp';
             const fields = document.querySelectorAll('#form_data_content [data-formkey]');
@@ -240,36 +242,20 @@
                 }
             });
 
-            const btn = document.getElementById('btn_regenerate_prompt');
-            const originalBtn = btn.innerHTML;
-            if (regenerate) {
-                btn.innerHTML = '<span class="animate-pulse">Gerando prompt...</span>';
-                btn.disabled = true;
-            }
-
             try {
                 const resp = await fetch(`/admin/agents/${locationId}/form-data`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ form_data: formData, regenerate, channel })
+                    body: JSON.stringify({ form_data: formData, regenerate: false, channel })
                 });
                 const data = await resp.json();
-
                 if (data.success) {
-                    if (regenerate && data.prompt) {
-                        document.getElementById('ai_prompt').value = data.prompt;
-                        alert('Prompt regenerado com sucesso! Veja na aba Settings.');
-                    } else {
-                        alert('Dados salvos com sucesso!');
-                    }
+                    alert('Dados salvos com sucesso!');
                 } else {
                     alert('Erro: ' + (data.error || 'desconhecido'));
                 }
             } catch (e) {
                 alert('Erro de rede ao salvar.');
-            } finally {
-                btn.innerHTML = originalBtn;
-                btn.disabled = false;
             }
         }
 
@@ -1962,6 +1948,60 @@
             }
         }
 
+        async function runOptimizePrompt(mode) {
+            const locationId = document.getElementById('ai_location_id').value;
+            const channel = document.getElementById('ai_channel').value || 'whatsapp';
+            const feedback = document.getElementById('optimize_feedback').value.trim();
+            const status = document.getElementById('optimize_status');
+            const resultBox = document.getElementById('tester_analysis_result');
+            const resultTitle = document.getElementById('tester_analysis_title');
+            const resultContent = document.getElementById('tester_analysis_content');
+            const histInd = document.getElementById('optimize_history_indicator');
+
+            status.classList.remove('hidden');
+            resultBox.classList.add('hidden');
+
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/improve-prompt`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode,
+                        channel,
+                        feedback,
+                        test_history: (typeof testHistory !== 'undefined' ? testHistory : []),
+                    }),
+                });
+                const data = await resp.json();
+                status.classList.add('hidden');
+
+                if (!data.success) {
+                    alert('Erro: ' + (data.error || 'desconhecido'));
+                    return;
+                }
+
+                histInd.textContent = (
+                    data.history_source === 'real' ? `${data.history_used} mensagens reais` :
+                    data.history_source === 'test' ? `${data.history_used} mensagens do simulador` :
+                    'Sem histórico'
+                );
+
+                if (mode === 'apply') {
+                    document.getElementById('ai_prompt').value = data.prompt;
+                    resultTitle.textContent = 'Prompt atualizado com sucesso';
+                    resultContent.textContent = 'O novo prompt foi salvo no agente e preenchido na aba Config. Faça um novo teste no simulador para validar.';
+                    resultBox.classList.remove('hidden');
+                } else {
+                    resultTitle.textContent = 'Diagnóstico da IA Mestre';
+                    resultContent.textContent = data.diagnosis || '(sem retorno)';
+                    resultBox.classList.remove('hidden');
+                }
+            } catch (e) {
+                status.classList.add('hidden');
+                alert('Erro de rede.');
+            }
+        }
+
         async function sendTestMessage() {
             const input = document.getElementById('test_chat_input');
             const body = document.getElementById('test_chat_body');
@@ -3276,31 +3316,9 @@
                                 class="input-dark w-full py-3 px-4 rounded-lg text-sm font-mono leading-relaxed resize-y scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent"
                                 placeholder="You are a helpful assistant..."></textarea>
 
-                            <div class="flex items-start justify-between mt-2 gap-4">
-                                <p class="text-[10px] text-gray-500 font-mono mt-1">Este prompt dita o comportamento exato,
-                                    tom e restricoes do agente.</p>
-                                <button type="button" id="btn_analyze_prompt" onclick="analyzePrompt()"
-                                    class="shrink-0 bg-brand-red/10 text-brand-red hover:bg-brand-red hover:text-white border border-brand-red/30 transition-colors px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest font-mono flex items-center gap-1.5">
-                                    ✨ Analisar Prompt
-                                </button>
-                            </div>
-
-                            <!-- Analysis Result Container -->
-                            <div id="ai_analysis_result"
-                                class="hidden mt-4 bg-black/60 border border-brand-red/30 rounded-lg p-4 shadow-inner">
-                                <h4
-                                    class="text-white text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2 border-b border-gray-800 pb-2">
-                                    <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor"
-                                        viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M13 10V3L4 14h7v7l9-11h-7z"></path>
-                                    </svg>
-                                    Diagnóstico & Sugestões Mestre
-                                </h4>
-                                <div id="ai_analysis_content"
-                                    class="text-xs text-gray-300 font-mono leading-relaxed max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-brand-red/50 scrollbar-track-transparent pr-2">
-                                </div>
-                            </div>
+                            <p class="text-[10px] text-gray-500 font-mono mt-2">Este prompt dita o comportamento exato,
+                                tom e restricoes do agente. Para otimizá-lo com base em conversas reais,
+                                use a aba <span class="text-brand-red">Testador</span>.</p>
                         </div>
 
                         <!-- Collapsible: Voz -->
@@ -3509,16 +3527,52 @@
                             </div>
                         </div>
 
-                        <!-- Painel de Diagnóstico do Tester (aparece após simulação) -->
+                        <!-- Otimização do Prompt — IA Mestre considera form, prompt atual e histórico -->
+                        <div class="mt-4 bg-black/40 border border-gray-800 rounded-xl p-4 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-white text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                                    <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                                    Otimização do Prompt
+                                </h4>
+                                <span id="optimize_history_indicator" class="text-[9px] font-mono text-gray-500">Sem histórico</span>
+                            </div>
+                            <p class="text-[10px] text-gray-500 font-mono leading-relaxed">
+                                A IA Mestre vai considerar o cadastro, o prompt atual e o histórico de conversas
+                                (reais quando existirem, simuladas como fallback) para diagnosticar ou aplicar melhorias.
+                            </p>
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-1.5">
+                                    Feedback do operador (opcional)
+                                </label>
+                                <textarea id="optimize_feedback" rows="2"
+                                    class="input-dark w-full py-2 px-3 rounded-lg text-sm"
+                                    placeholder="ex: tá agressivo demais, ou: precisa qualificar antes de oferecer preço"></textarea>
+                            </div>
+                            <div class="flex gap-2">
+                                <button type="button" onclick="runOptimizePrompt('diagnose')"
+                                    class="flex-1 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest border border-gray-700 text-gray-300 hover:text-white hover:border-gray-500 transition-colors">
+                                    Diagnosticar
+                                </button>
+                                <button type="button" onclick="runOptimizePrompt('apply')"
+                                    class="flex-1 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white bg-brand-red hover:bg-brand-darkred transition-colors">
+                                    Aplicar Melhoria
+                                </button>
+                            </div>
+                            <div id="optimize_status" class="hidden text-[10px] font-mono text-amber-400 animate-pulse">
+                                IA Mestre processando...
+                            </div>
+                        </div>
+
+                        <!-- Resultado (diagnóstico textual) -->
                         <div id="tester_analysis_result" class="hidden mt-4 bg-black/60 border border-brand-red/30 rounded-lg p-4 shadow-inner">
                             <h4 class="text-white text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2 border-b border-gray-800 pb-2">
                                 <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                                 </svg>
-                                Diagnóstico & Sugestões Mestre
+                                <span id="tester_analysis_title">Diagnóstico</span>
                             </h4>
                             <div id="tester_analysis_content"
-                                class="text-xs text-gray-300 font-mono leading-relaxed max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-brand-red/50 scrollbar-track-transparent pr-2">
+                                class="text-xs text-gray-300 font-mono leading-relaxed max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-brand-red/50 scrollbar-track-transparent pr-2 whitespace-pre-wrap">
                             </div>
                         </div>
                     </div>
@@ -3756,16 +3810,15 @@
                         </div>
                         <div id="form_data_content" class="hidden space-y-3">
                         </div>
-                        <div id="form_data_actions" class="hidden mt-4 flex gap-3 pt-4 border-t border-gray-800">
+                        <div id="form_data_actions" class="hidden mt-4 pt-4 border-t border-gray-800">
                             <button type="button" onclick="saveFormData(false)"
-                                class="flex-1 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 transition-colors">
+                                class="w-full px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 transition-colors">
                                 Salvar Alterações
                             </button>
-                            <button type="button" onclick="saveFormData(true)" id="btn_regenerate_prompt"
-                                class="flex-1 px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-brand-red hover:bg-brand-darkred transition-colors flex items-center justify-center gap-2">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                                Regenerar Prompt
-                            </button>
+                            <p class="text-[10px] text-gray-600 font-mono text-center mt-3">
+                                Para gerar/melhorar o prompt usando esses dados + conversas reais,
+                                vá para a aba <span class="text-brand-red">Testador</span>.
+                            </p>
                         </div>
                     </div>
                         </div> <!-- /Content Area -->

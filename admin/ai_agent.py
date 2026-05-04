@@ -1001,6 +1001,143 @@ async def test_ai_agent(location_id: str, request: Request):
         return {"success": False, "error": str(e)}
 
 
+@router.post("/{location_id}/improve-prompt")
+async def improve_prompt(location_id: str, request: Request):
+    """
+    Diagnostica ou melhora o prompt do agente considerando contexto rico:
+    form_data + prompt atual + histórico de conversas + feedback do operador.
+
+    Body:
+      {
+        "mode": "diagnose" | "apply",
+        "channel": "whatsapp" (default),
+        "feedback": "texto opcional do operador",
+        "test_history": [{role, content}, ...]  # opcional, do simulador
+      }
+    """
+    from admin.dashboard import verify_admin
+    admin_session = request.cookies.get("admin_session")
+    if not verify_admin(admin_session):
+        return {"success": False, "error": "Não autenticado."}
+
+    body = await request.json()
+    mode = body.get("mode", "diagnose")
+    channel = body.get("channel", "whatsapp")
+    feedback = (body.get("feedback") or "").strip()
+    test_history = body.get("test_history") or []
+
+    if mode not in ("diagnose", "apply"):
+        return {"success": False, "error": "mode inválido."}
+
+    db = SessionLocal()
+    try:
+        agent = db.query(AIAgent).filter(
+            AIAgent.location_id == location_id,
+            AIAgent.channel == channel,
+        ).first()
+        if not agent:
+            return {"success": False, "error": "Agente não encontrado."}
+
+        # Se é alias, opera no agente raiz
+        if getattr(agent, "linked_to_channel", None):
+            root = db.query(AIAgent).filter(
+                AIAgent.location_id == location_id,
+                AIAgent.channel == agent.linked_to_channel,
+            ).first()
+            if root:
+                agent = root
+
+        settings_row = db.query(SystemSettings).first()
+        if not settings_row or not settings_row.admin_openrouter_key:
+            return {"success": False, "error": "IA Mestre não configurada (System Settings)."}
+
+        # Combina histórico salvo do banco com histórico do simulador (test)
+        # Prioriza conversas reais; complementa com simulador se vazio
+        from data.models import ChatHistory
+        real_history = []
+        try:
+            session_prefix = f"{location_id}_"
+            rows = (
+                db.query(ChatHistory)
+                .filter(ChatHistory.session_id.like(f"{session_prefix}%"))
+                .order_by(ChatHistory.created_at.desc())
+                .limit(40)
+                .all()
+            )
+            rows.reverse()
+            for r in rows:
+                real_history.append({
+                    "role": "human" if r.message_type == "human" else "ai",
+                    "content": r.content,
+                })
+        except Exception as e:
+            logger.warning(f"Falha ao ler chat_histories: {e}")
+
+        # Se não tiver histórico real, usa o do simulador
+        history = real_history if real_history else [
+            {"role": ("human" if (h.get("from") == "me" or h.get("role") == "user") else "ai"),
+             "content": h.get("text") or h.get("content") or ""}
+            for h in test_history
+            if (h.get("text") or h.get("content"))
+        ]
+
+        from utils.master_prompt import build_improve_messages
+        messages = build_improve_messages(
+            form_data=agent.form_data or {},
+            current_prompt=agent.prompt or "",
+            conversation_history=history,
+            mode=mode,
+            user_feedback=feedback,
+        )
+
+        api_key = settings_row.admin_openrouter_key
+        model = settings_row.admin_openrouter_model or "openai/gpt-4o"
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "HTTP-Referer": "https://axenwp.com",
+                    "X-Title": "AxenWP Prompt Optimizer",
+                },
+                json={
+                    "model": model,
+                    "max_tokens": 6000,
+                    "messages": messages,
+                },
+            )
+            if resp.status_code != 200:
+                logger.error(f"Erro OpenRouter improve-prompt: {resp.status_code} {resp.text}")
+                return {"success": False, "error": "Erro ao chamar IA Mestre."}
+            output = resp.json()["choices"][0]["message"]["content"]
+
+        if mode == "apply":
+            agent.prompt = output
+            db.commit()
+            return {
+                "success": True,
+                "mode": "apply",
+                "prompt": output,
+                "history_used": len(history),
+                "history_source": "real" if real_history else ("test" if history else "none"),
+            }
+
+        return {
+            "success": True,
+            "mode": "diagnose",
+            "diagnosis": output,
+            "history_used": len(history),
+            "history_source": "real" if real_history else ("test" if history else "none"),
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Erro em improve-prompt: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
 @router.post("/{location_id}/form-data")
 async def save_form_data(location_id: str, request: Request):
     """Salva form_data editado e opcionalmente regenera o prompt via IA Mestre."""

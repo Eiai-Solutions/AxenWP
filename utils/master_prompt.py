@@ -417,3 +417,128 @@ def build_messages(form_data: dict) -> list[dict]:
         {"role": "system", "content": MASTER_SYSTEM_PROMPT},
         {"role": "user", "content": MASTER_USER_PROMPT.format(company_context=context)},
     ]
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Improve Prompt — análise contextual usando histórico de conversas
+# ─────────────────────────────────────────────────────────────────────
+
+IMPROVE_SYSTEM_PROMPT = """Você é um especialista sênior em Prompt Engineering para agentes de IA de WhatsApp, treinado em Regie.ai, Intercom Fin, Drift, SalesGPT e Ada.
+
+Sua tarefa NÃO é gerar prompt do zero — é DIAGNOSTICAR e MELHORAR um prompt existente
+considerando como ele performou em conversas reais com leads.
+
+Você vai receber:
+1. CONTEXTO DA EMPRESA (form_data — fonte da verdade do que o agente deveria ser)
+2. PROMPT ATUAL do agente (o que está rodando hoje)
+3. HISTÓRICO DE CONVERSAS recentes (sinal real de como o agente está se comportando)
+4. FEEDBACK DO OPERADOR (opcional — observação específica do humano supervisionando)
+
+Você terá um MODO de execução:
+
+▸ MODO "diagnose": apenas escreva um diagnóstico em markdown com:
+  ## O que o agente está fazendo bem
+  - bullet 1
+  - bullet 2
+  ## Problemas detectados
+  - bullet 1 (citar trecho da conversa quando possível)
+  ## Recomendações
+  - bullet 1 (mudanças específicas que melhorariam o prompt)
+  NÃO retornar prompt novo nesse modo. APENAS o diagnóstico.
+
+▸ MODO "apply": fazer o diagnóstico INTERNAMENTE e retornar APENAS o prompt MELHORADO.
+  Mantenha o que funciona, corrija o que está ruim. NÃO reescreva do zero.
+  Mude só o necessário. Preserve identidade, tom, estrutura, exemplos que funcionam.
+  Retorne APENAS o prompt completo melhorado, sem comentários ou diff.
+
+REGRAS UNIVERSAIS (válidas para ambos os modos):
+
+- Considere o tipo do agente (inbound consultivo / outbound SDR ativo)
+- Não permita placeholders literais ([NOME], [EMPRESA], etc) no prompt
+- Mensagens curtas no estilo WhatsApp brasileiro, sem emoji por padrão
+- Sem frases de SAC robotizado ("Perfeito!", "Ótimo!", "Estou à disposição")
+- Outbound nunca abre com "como posso ajudar" — sempre pergunta direta sobre dor
+- Aplicar reversão UMA vez antes de aceitar "não tenho interesse"
+
+PRIORIDADES NA ANÁLISE:
+1. Mensagens longas demais (qualquer coisa > 40 palavras = problema)
+2. Falta de calor humano (interrogatório seco) ou pitch institucional
+3. Aceitação prematura de objeção (sem reversão)
+4. Perguntas em sequência sem reação/contexto
+5. Resposta inadequada ao agent_type (outbound passivo / inbound rude)
+6. Conteúdo que diverge do form_data (inventou ou ignorou dados)"""
+
+
+IMPROVE_USER_TEMPLATE = """MODO: {mode}
+
+CONTEXTO DA EMPRESA (form_data):
+{company_context}
+
+PROMPT ATUAL DO AGENTE:
+\"\"\"
+{current_prompt}
+\"\"\"
+
+HISTÓRICO DE CONVERSAS RECENTES:
+{conversation_block}
+
+FEEDBACK DO OPERADOR:
+{user_feedback}
+
+Execute o modo solicitado."""
+
+
+def _format_conversation(messages: list[dict]) -> str:
+    """Formata histórico em lista numerada, indicando quem disse o quê."""
+    if not messages:
+        return "(Nenhum histórico disponível ainda — agente ainda não foi testado.)"
+    lines = []
+    for i, m in enumerate(messages[-30:], start=1):
+        role = m.get("role", "")
+        content = (m.get("content") or "").strip()
+        if not content:
+            continue
+        if role in ("human", "user"):
+            speaker = "Lead"
+        elif role in ("ai", "assistant"):
+            speaker = "Agente"
+        elif role == "system":
+            continue  # skip system messages
+        else:
+            speaker = role
+        lines.append(f"[{i}] {speaker}: {content}")
+    return "\n".join(lines) if lines else "(Histórico vazio)"
+
+
+def build_improve_messages(
+    form_data: dict,
+    current_prompt: str,
+    conversation_history: list[dict],
+    mode: str = "diagnose",
+    user_feedback: str = "",
+) -> list[dict]:
+    """
+    Monta as mensagens para a IA Mestre fazer diagnóstico OU melhoria contextual.
+
+    Args:
+        form_data: dados do formulário (fonte da verdade do que o agente deve ser)
+        current_prompt: prompt que está rodando hoje no agente
+        conversation_history: lista de {role, content} das últimas msgs
+        mode: "diagnose" (só análise) ou "apply" (retorna prompt melhorado)
+        user_feedback: instrução opcional do operador (ex: "tá agressivo demais")
+    """
+    context = build_company_context(form_data or {})
+    convo = _format_conversation(conversation_history or [])
+    feedback = user_feedback.strip() or "(Operador não forneceu feedback adicional.)"
+
+    user_msg = IMPROVE_USER_TEMPLATE.format(
+        mode=mode,
+        company_context=context,
+        current_prompt=current_prompt or "(Agente ainda sem prompt definido.)",
+        conversation_block=convo,
+        user_feedback=feedback,
+    )
+    return [
+        {"role": "system", "content": IMPROVE_SYSTEM_PROMPT},
+        {"role": "user", "content": user_msg},
+    ]
