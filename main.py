@@ -16,11 +16,13 @@ from utils.config import settings
 from auth.token_manager import token_manager
 from services.ghl_service import ghl_service
 from services.zapi_service import zapi_service
+from services.telegram_service import telegram_service
 
 # Importa as rotas
 from auth.oauth import router as oauth_router
 from webhooks.ghl_provider import router as ghl_webhook_router
 from webhooks.zapi_receiver import router as zapi_webhook_router
+from webhooks.telegram_receiver import router as telegram_webhook_router
 from admin.dashboard import router as admin_router
 from admin.ai_agent import router as admin_ai_agent_router
 from public.onboarding import router as onboarding_router
@@ -91,6 +93,7 @@ async def lifespan(app: FastAPI):
     # Inicializa clientes HTTP compartilhados
     await ghl_service.startup()
     await zapi_service.startup()
+    await telegram_service.startup()
 
     await refresh_tokens_job()
     cleanup_old_chat_history()
@@ -100,6 +103,7 @@ async def lifespan(app: FastAPI):
     logger.info("Desligando servidor...")
     await ghl_service.shutdown()
     await zapi_service.shutdown()
+    await telegram_service.shutdown()
     scheduler.shutdown()
 
 # =============================================================================
@@ -137,6 +141,7 @@ app.add_middleware(
 app.include_router(oauth_router)
 app.include_router(ghl_webhook_router)
 app.include_router(zapi_webhook_router)
+app.include_router(telegram_webhook_router)
 app.include_router(admin_router)
 app.include_router(admin_ai_agent_router)
 app.include_router(onboarding_router)

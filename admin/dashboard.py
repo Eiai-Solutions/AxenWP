@@ -16,6 +16,7 @@ from utils.logger import logger
 from utils.config import settings as app_settings
 from auth.token_manager import token_manager
 from services.zapi_service import zapi_service
+from services.telegram_service import telegram_service
 
 router = APIRouter(prefix="/admin", tags=["Admin UI"])
 templates = Jinja2Templates(directory="web/templates")
@@ -137,6 +138,8 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
             "zapi_client_token": t.zapi_client_token,
             "client_id": t.client_id,
             "pit_token": t.pit_token,
+            "telegram_bot_token": t.telegram_bot_token,
+            "telegram_bot_username": t.telegram_bot_username,
         }
         
         agent = agent_map.get(t.location_id)
@@ -536,6 +539,75 @@ async def test_pit_connection(
     except Exception as e:
         logger.error(f"Erro ao testar PIT: {e}")
         return JSONResponse({"success": False, "error": f"Erro de conexão: {str(e)}"})
+
+
+@router.post("/tenant/{location_id}/telegram")
+async def save_telegram_config(
+    request: Request,
+    location_id: str,
+    bot_token: str = Form(...),
+    authenticated: bool = Depends(verify_admin),
+):
+    """Salva o bot_token do Telegram e registra o webhook automaticamente."""
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    bot_token = bot_token.strip()
+    bot_info = await telegram_service.get_me(bot_token)
+    if not bot_info:
+        return RedirectResponse(
+            url="/admin/dashboard?err=Token do bot inválido. Confira o token recebido do @BotFather.",
+            status_code=303,
+        )
+
+    from data.database import SessionLocal
+    db = SessionLocal()
+    try:
+        tenant = token_manager.get_tenant(location_id, db=db)
+        if not tenant:
+            return RedirectResponse(url="/admin/dashboard?err=Tenant não encontrado.", status_code=303)
+
+        tenant.telegram_bot_token = bot_token
+        tenant.telegram_bot_username = bot_info.get("username")
+        db.commit()
+    finally:
+        db.close()
+
+    base_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{base_url}/webhook/telegram/{location_id}"
+    ok = await telegram_service.set_webhook(bot_token, webhook_url)
+
+    if not ok:
+        return RedirectResponse(
+            url="/admin/dashboard?err=Token salvo mas falhou ao registrar webhook (URL precisa ser HTTPS público).",
+            status_code=303,
+        )
+
+    return RedirectResponse(
+        url=f"/admin/dashboard?msg=Telegram conectado com sucesso! Bot: @{bot_info.get('username')}",
+        status_code=303,
+    )
+
+
+@router.post("/test-telegram")
+async def test_telegram_token(request: Request, authenticated: bool = Depends(verify_admin)):
+    """Valida um bot token do Telegram (botão Testar Conexão na UI)."""
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+
+    body = await request.json()
+    bot_token = body.get("bot_token", "").strip()
+    if not bot_token:
+        return JSONResponse({"success": False, "error": "Token não informado."})
+
+    info = await telegram_service.get_me(bot_token)
+    if info:
+        return JSONResponse({
+            "success": True,
+            "bot_username": info.get("username"),
+            "bot_name": info.get("first_name"),
+        })
+    return JSONResponse({"success": False, "error": "Token inválido."})
 
 
 @router.post("/onboard-whatsapp")

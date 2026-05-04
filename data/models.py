@@ -19,6 +19,10 @@ class Tenant(Base):
     zapi_instance_id = Column(String, nullable=True)
     zapi_token = Column(String, nullable=True)
     zapi_client_token = Column(String, nullable=True)
+
+    # Telegram configs
+    telegram_bot_token = Column(String, nullable=True)
+    telegram_bot_username = Column(String, nullable=True)
     
     # Private Integration Token (alternativa ao OAuth — não expira)
     pit_token = Column(String, nullable=True)
