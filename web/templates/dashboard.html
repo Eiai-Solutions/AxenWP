@@ -662,6 +662,74 @@
                 _updateFieldsVisibility();
             }
             serializeQualFields();
+
+            // Atualiza a aba Cadastro (form_data) com os dados do canal corrente
+            const fdRaw = agent.form_data ? JSON.stringify(agent.form_data) : '';
+            const row = document.querySelector(`tr[data-location="${document.getElementById('ai_location_id').value}"]`);
+            if (row) row.dataset.aiformdata = fdRaw;
+            _renderFormDataTab(fdRaw);
+        }
+
+        function _renderFormDataTab(formDataRaw) {
+            const formEmpty = document.getElementById('form_data_empty');
+            const formContent = document.getElementById('form_data_content');
+            const formActions = document.getElementById('form_data_actions');
+            if (!formDataRaw) {
+                formEmpty.classList.remove('hidden');
+                formContent.classList.add('hidden');
+                formActions.classList.add('hidden');
+                return;
+            }
+            try {
+                const fd = JSON.parse(formDataRaw);
+                formEmpty.classList.add('hidden');
+                formContent.classList.remove('hidden');
+                formActions.classList.remove('hidden');
+                const fieldLabels = {
+                    company_name: 'Empresa', industry: 'Segmento', company_description: 'Descrição',
+                    target_audience: 'Público-alvo', website: 'Website', instagram: 'Instagram',
+                    products_services: 'Produtos/Serviços', differentials: 'Diferenciais', faq: 'FAQ',
+                    agent_name: 'Nome do Agente', tone: 'Tom de Voz', business_hours: 'Horário',
+                    contact_info: 'Contatos', agent_goal: 'Objetivo', restrictions: 'Restrições',
+                    qualification_questions: 'Perguntas Qualificatórias',
+                    extra_info: 'Info Adicional'
+                };
+                const shortFields = ['company_name', 'industry', 'target_audience', 'website', 'instagram', 'agent_name', 'tone', 'business_hours'];
+                const agentType = fd.agent_type || 'inbound';
+                let html = `<div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-2">Tipo de Atendimento</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="cursor-pointer">
+                            <input type="radio" name="form_agent_type" value="inbound" ${agentType==='inbound'?'checked':''} class="hidden peer" data-formkey="agent_type">
+                            <div class="peer-checked:border-brand-red peer-checked:bg-brand-red/5 border border-gray-700 rounded-lg p-3 transition-all">
+                                <p class="text-sm font-bold text-white">Inbound</p>
+                                <p class="text-[10px] text-gray-400 mt-0.5">Passivo — responde clientes</p>
+                            </div>
+                        </label>
+                        <label class="cursor-pointer">
+                            <input type="radio" name="form_agent_type" value="outbound" ${agentType==='outbound'?'checked':''} class="hidden peer" data-formkey="agent_type">
+                            <div class="peer-checked:border-brand-red peer-checked:bg-brand-red/5 border border-gray-700 rounded-lg p-3 transition-all">
+                                <p class="text-sm font-bold text-white">Outbound</p>
+                                <p class="text-[10px] text-gray-400 mt-0.5">Ativo — inicia contato</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>`;
+                for (const [key, label] of Object.entries(fieldLabels)) {
+                    const val = fd[key] || '';
+                    const escaped = val.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                    if (shortFields.includes(key)) {
+                        html += `<div><label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-1">${label}</label><input type="text" data-formkey="${key}" value="${escaped}" class="input-dark w-full py-2 px-3 rounded-lg text-sm"></div>`;
+                    } else {
+                        html += `<div><label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-1">${label}</label><textarea data-formkey="${key}" class="input-dark w-full py-2 px-3 rounded-lg text-sm" rows="3">${escaped}</textarea></div>`;
+                    }
+                }
+                formContent.innerHTML = html;
+            } catch(e) {
+                formEmpty.classList.remove('hidden');
+                formContent.classList.add('hidden');
+                formActions.classList.add('hidden');
+            }
         }
 
         function openAddChannelModal() {
@@ -673,9 +741,13 @@
                 alert('Canal invalido. Use: ' + channels.join(', '));
                 return;
             }
-            // Carrega o form vazio para o novo canal
+            // Copia form_data do canal whatsapp como base para o novo canal
+            // (a Cadastro vem preenchida; o usuário ajusta o que for específico daquele canal)
+            const locationId = document.getElementById('ai_location_id').value;
+            const row = document.querySelector(`tr[data-location="${locationId}"]`);
+            const baseFormData = (row && row.dataset.aiformdata) ? row.dataset.aiformdata : '';
             document.getElementById('ai_channel').value = normalized;
-            _populateAgentForm({});
+            _populateAgentForm({ form_data: baseFormData ? JSON.parse(baseFormData) : null });
             // Adiciona o novo canal as tabs
             const tabs = document.querySelectorAll('#channel_tabs_container button');
             const existingChannels = Array.from(tabs).map(b => {

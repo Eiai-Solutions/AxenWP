@@ -915,7 +915,18 @@ async def save_form_data(location_id: str, request: Request):
             AIAgent.channel == channel,
         ).first()
         if not agent:
-            return {"success": False, "error": "Agente não encontrado."}
+            # Cria o agente do canal sob demanda (caso o usuário tenha
+            # adicionado o canal mas ainda não salvou via aba Config)
+            agent_name = form_data.get("agent_name") or "Agente Inteligente"
+            agent = AIAgent(
+                location_id=location_id,
+                channel=channel,
+                name=agent_name,
+                prompt="Você é um assistente virtual prestativo.",
+            )
+            db.add(agent)
+            db.flush()
+            logger.info(f"Agente criado sob demanda em form-data: location={location_id} channel={channel}")
 
         agent.form_data = form_data
         if agent.name and form_data.get("agent_name"):
