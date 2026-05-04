@@ -765,7 +765,7 @@
             }
         }
 
-        function openAddChannelModal() {
+        async function openAddChannelModal() {
             const channels = Object.keys(CHANNEL_LABELS).filter(c => c !== 'whatsapp');
             const choice = prompt('Qual canal voce quer adicionar?\n\nOpcoes: ' + channels.join(', '));
             if (!choice) return;
