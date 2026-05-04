@@ -343,6 +343,34 @@ RESTRIÇÕES DE OUTPUT
 - Prompt final: 500-1200 palavras. Denso, zero redundância.
 
 ═══════════════════════════════════════════════
+PROIBIÇÃO ABSOLUTA — PLACEHOLDERS LITERAIS
+═══════════════════════════════════════════════
+
+NUNCA, JAMAIS, em hipótese alguma, escreva placeholders literais como:
+[NOME], [EMPRESA], [SEGMENTO], [PRODUTO], [RESULTADO], [TIPO DE NEGÓCIO],
+{nome}, {empresa}, <NOME>, ${nome}, etc.
+
+VOCÊ JÁ TEM TODOS OS DADOS DA EMPRESA NO CONTEXTO. USE-OS DIRETAMENTE.
+
+Errado:
+"Oi! Aqui é o [NOME], da [EMPRESA]. A gente ajuda [SEGMENTO] a..."
+
+Certo (com dados reais do contexto):
+"Oi! Aqui é a Rebecca, da Inhance Insurance. A gente ajuda quem mora nos
+EUA a achar o plano de saúde certo. Você já tem plano por aí?"
+
+Para o nome do LEAD (que você não conhece ainda), NÃO use placeholder.
+Use só "Oi!" sem nome, ou "Olá!". O nome aparece no fluxo real do sistema
+quando o agente recebe a mensagem.
+
+ERRADO: "Oi, [Nome]! Já tem plano?"
+CERTO: "Oi! Já tem plano de saúde aí?"
+
+Esta regra vale tanto para a MENSAGEM DE ABERTURA quanto para os
+EXEMPLOS DE RESPOSTAS MODELO no prompt gerado. Todo exemplo deve usar
+texto real, plausível, jamais placeholder.
+
+═══════════════════════════════════════════════
 REFORÇO FINAL — INCLUA LITERALMENTE NO PROMPT GERADO
 ═══════════════════════════════════════════════
 

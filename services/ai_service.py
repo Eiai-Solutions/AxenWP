@@ -17,6 +17,7 @@ from utils.guardrails import (
     contains_forbidden_phrase,
     should_escalate as check_escalation,
     strip_emojis,
+    contains_placeholder,
 )
 
 
@@ -490,6 +491,25 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
 
             # ── Guardrail: remove emojis (default — WhatsApp empresarial) ──
             ai_text = strip_emojis(ai_text)
+
+            # ── Guardrail: detecta placeholders não resolvidos ──
+            placeholder = contains_placeholder(ai_text)
+            if placeholder:
+                logger.warning(f"Resposta contém placeholder não resolvido ({placeholder}). Regenerando...")
+                regen_msgs = [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=(
+                        f"A resposta abaixo veio com placeholder literal não resolvido: '{placeholder}'. "
+                        "Reescreva usando os dados reais da empresa que estão no system prompt. "
+                        "JAMAIS use [PLACEHOLDER], {nome}, <X> etc — sempre valores reais. "
+                        f"Resposta a corrigir: {ai_text}"
+                    )),
+                ]
+                try:
+                    regen = await self.llm.ainvoke(regen_msgs)
+                    ai_text = strip_emojis(regen.content)
+                except Exception as e_ph:
+                    logger.warning(f"Falha ao regenerar placeholder: {e_ph}")
 
             # ── Guardrail: remove frases proibidas em modo outbound ──
             form_data = getattr(self.agent_config, 'form_data', None) or {}

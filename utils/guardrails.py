@@ -86,6 +86,25 @@ def strip_emojis(text: str) -> str:
     return cleaned.strip()
 
 
+# Detecta placeholders literais não-substituídos como [NOME], [EMPRESA], {nome}, <NOME>, ${nome}
+# Heurística: token em maiúsculas ou snake_case curto entre delimitadores comuns de template
+_PLACEHOLDER_RE = re.compile(
+    r"(?:"
+    r"\[[A-ZÁÉÍÓÚÂÊÔÃÕÇ_][A-ZÁÉÍÓÚÂÊÔÃÕÇ_\s\d]{1,30}\]"   # [NOME], [TIPO DE NEGOCIO]
+    r"|\{[a-z_][a-z_0-9]{1,30}\}"                          # {nome}, {empresa}
+    r"|<[A-Z_][A-Z_0-9]{1,30}>"                            # <NOME>
+    r"|\$\{[a-z_][a-z_0-9]{1,30}\}"                        # ${nome}
+    r")",
+    flags=re.UNICODE,
+)
+
+
+def contains_placeholder(text: str) -> str | None:
+    """Retorna o primeiro placeholder não-resolvido encontrado, ou None."""
+    m = _PLACEHOLDER_RE.search(text)
+    return m.group(0) if m else None
+
+
 def detect_negative_sentiment(text: str) -> bool:
     """True se a mensagem contém sinal claro de frustração/sentimento negativo."""
     text_lower = text.lower()

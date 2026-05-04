@@ -891,8 +891,14 @@ async def test_ai_agent(location_id: str, request: Request):
             ai_response = data["choices"][0]["message"]["content"]
 
             # Aplica os mesmos guardrails do fluxo real de produção
-            from utils.guardrails import strip_emojis, contains_forbidden_phrase
+            from utils.guardrails import strip_emojis, contains_forbidden_phrase, contains_placeholder
             ai_response = strip_emojis(ai_response)
+            ph = contains_placeholder(ai_response)
+            if ph:
+                ai_response = (
+                    ai_response
+                    + f"\n\n⚠️ [debug: placeholder não resolvido detectado: {ph}. Em produção seria regenerado. Clique em Regenerar Prompt na aba Cadastro.]"
+                )
 
             # Detecta modo do agente pelo form_data salvo
             agent_mode = "inbound"
