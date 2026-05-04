@@ -51,6 +51,10 @@ class Settings(BaseSettings):
         description="Base URL da API GHL",
     )
 
+    # URL pública do servidor (usada para registrar webhooks externos como Telegram).
+    # Em produção atrás de proxy, defina explicitamente. Ex: https://axenwp.eiai.com.br
+    public_base_url: str = Field(default="", description="URL HTTPS pública do servidor")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

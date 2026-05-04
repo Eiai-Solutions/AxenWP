@@ -573,13 +573,30 @@ async def save_telegram_config(
     finally:
         db.close()
 
-    base_url = str(request.base_url).rstrip("/")
-    webhook_url = f"{base_url}/webhook/telegram/{location_id}"
+    # Resolve a URL pública. Prioridade:
+    # 1. PUBLIC_BASE_URL (configurado no .env)
+    # 2. X-Forwarded-Host / X-Forwarded-Proto (proxy reverso)
+    # 3. request.base_url (último recurso, normalmente HTTP em dev)
+    public_base = (app_settings.public_base_url or "").strip().rstrip("/")
+    if not public_base:
+        forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+        forwarded_proto = request.headers.get("x-forwarded-proto", "https")
+        if forwarded_host:
+            public_base = f"{forwarded_proto}://{forwarded_host}"
+        else:
+            public_base = str(request.base_url).rstrip("/")
+
+    # Telegram exige HTTPS. Força protocolo se vier HTTP de um proxy reverso.
+    if public_base.startswith("http://") and "localhost" not in public_base and "127.0.0.1" not in public_base:
+        public_base = "https://" + public_base[len("http://"):]
+
+    webhook_url = f"{public_base}/webhook/telegram/{location_id}"
+    logger.info(f"Tentando registrar webhook Telegram: {webhook_url}")
     ok = await telegram_service.set_webhook(bot_token, webhook_url)
 
     if not ok:
         return RedirectResponse(
-            url="/admin/dashboard?err=Token salvo mas falhou ao registrar webhook (URL precisa ser HTTPS público).",
+            url=f"/admin/dashboard?err=Token salvo mas falhou ao registrar webhook em {webhook_url}. Confira se a URL é HTTPS público acessível.",
             status_code=303,
         )
 
@@ -587,6 +604,34 @@ async def save_telegram_config(
         url=f"/admin/dashboard?msg=Telegram conectado com sucesso! Bot: @{bot_info.get('username')}",
         status_code=303,
     )
+
+
+@router.post("/tenant/{location_id}/telegram/resync-webhook")
+async def resync_telegram_webhook(
+    request: Request, location_id: str, authenticated: bool = Depends(verify_admin)
+):
+    """Re-registra o webhook do Telegram com a URL pública resolvida atual."""
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+
+    tenant = token_manager.get_tenant(location_id)
+    if not tenant or not tenant.telegram_bot_token:
+        return JSONResponse({"success": False, "error": "Tenant sem bot configurado."})
+
+    public_base = (app_settings.public_base_url or "").strip().rstrip("/")
+    if not public_base:
+        forwarded_host = request.headers.get("x-forwarded-host") or request.headers.get("host", "")
+        forwarded_proto = request.headers.get("x-forwarded-proto", "https")
+        if forwarded_host:
+            public_base = f"{forwarded_proto}://{forwarded_host}"
+        else:
+            public_base = str(request.base_url).rstrip("/")
+    if public_base.startswith("http://") and "localhost" not in public_base and "127.0.0.1" not in public_base:
+        public_base = "https://" + public_base[len("http://"):]
+
+    webhook_url = f"{public_base}/webhook/telegram/{location_id}"
+    ok = await telegram_service.set_webhook(tenant.telegram_bot_token, webhook_url)
+    return JSONResponse({"success": ok, "webhook_url": webhook_url})
 
 
 @router.post("/test-telegram")
