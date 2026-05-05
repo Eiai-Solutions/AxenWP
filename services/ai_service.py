@@ -674,7 +674,7 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
                         similarity = float(self.agent_config.elevenlabs_similarity or 0.75)
 
                         response_el = await client.post(
-                            f"https://api.elevenlabs.io/v1/text-to-speech/{self.agent_config.elevenlabs_voice_id}?output_format=ogg_opus",
+                            f"https://api.elevenlabs.io/v1/text-to-speech/{self.agent_config.elevenlabs_voice_id}?output_format=opus_48000_128",
                             headers={
                                 "xi-api-key": self.agent_config.elevenlabs_api_key,
                                 "Content-Type": "application/json",
