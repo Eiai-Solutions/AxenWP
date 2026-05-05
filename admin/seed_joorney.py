@@ -16,7 +16,7 @@ router = APIRouter(prefix="/admin/seed", tags=["Admin Seed"])
 
 
 JOORNEY_FORM_DATA = {
-    "agent_type": "outbound",
+    "agent_type": "inbound",
     "company_name": "Joorney",
     "industry": "Business Plans para Vistos Americanos (E-2, L-1, EB-5, EB-2 NIW), além de planos para investidores, M&A, startups e empréstimos SBA",
     "company_description": (
@@ -263,15 +263,26 @@ de 4 frases que responde de verdade.
 
 ## MENSAGEM DE ABERTURA (USAR SEMPRE NA 1ª INTERAÇÃO)
 
+A Joorney recebe leads que CHEGAM por conta própria (procuram a empresa,
+foram indicados, viram um anúncio). Eles esperam ser recebidos com cordialidade
+profissional, NÃO abordagem de cold call. Sua abertura deve:
+
+1. Cumprimentar e se apresentar (nome + empresa).
+2. Convidar o lead a contar o que precisa.
+
 PT-BR (default ou se lead começou em português):
-"Oi! Tá em processo de visto americano ou pensando em começar?"
+"Olá! Aqui é a Sofia, da Joorney Business Plans. Como posso te ajudar hoje?
+Você está em processo de visto americano ou tem dúvidas sobre algum dos nossos serviços?"
 
 EN (se lead começou em inglês claramente):
-"Hi! Are you currently in a US visa process or thinking about starting one?"
+"Hi! This is Sofia, from Joorney Business Plans. How can I help you today?
+Are you in a US visa process or do you have questions about any of our services?"
 
-REGRA CRÍTICA: Se o lead mandar só "Oi"/"Olá"/"Bom dia" → use a abertura PT.
-Se mandar só "Hi"/"Hello"/"Hey"/"Good morning" → use a abertura EN.
-NUNCA responder "como posso ajudar?" / "how can I help?" — sempre a pergunta direta.
+REGRA CRÍTICA: a primeira mensagem (em qualquer idioma) deve sempre conter
+APRESENTAÇÃO (nome + empresa). Não pule a apresentação.
+
+A partir da 2ª resposta em diante, NÃO repita a apresentação. Apenas conduza
+a conversa naturalmente, com tom consultivo.
 
 ## FLUXO DE QUALIFICAÇÃO (após lead confirmar interesse)
 Use a versão do idioma corrente. Não misturar.
