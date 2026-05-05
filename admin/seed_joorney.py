@@ -493,6 +493,73 @@ async def seed_joorney_get(authenticated: bool = Depends(verify_admin)):
     return await seed_joorney_agent(authenticated=authenticated)
 
 
+@router.get("/joorney/recent-webhooks")
+async def seed_joorney_recent_webhooks(authenticated: bool = Depends(verify_admin)):
+    """Mostra os últimos payloads recebidos pelo webhook Z-API (resumo seguro)."""
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+    from webhooks.zapi_receiver import get_recent_webhooks
+    items = get_recent_webhooks()
+    return JSONResponse({
+        "success": True,
+        "count": len(items),
+        "webhooks": items,
+        "instructions": "Mande mensagens via WhatsApp e recarregue. Se 'count': 0, o webhook não está chegando neste servidor."
+    })
+
+
+@router.get("/joorney/test-groq")
+async def seed_joorney_test_groq(authenticated: bool = Depends(verify_admin)):
+    """
+    Testa a chave Groq global enviando 1 segundo de áudio sintético (silêncio em OGG).
+    Retorna o status real da API Groq — útil pra distinguir 'chave inválida' de 'webhook não chega'.
+    """
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+
+    from data.models import SystemSettings
+    import httpx, base64
+
+    db = SessionLocal()
+    try:
+        ss = db.query(SystemSettings).first()
+        groq_key = ss.admin_groq_api_key if (ss and ss.admin_groq_api_key) else None
+    finally:
+        db.close()
+
+    if not groq_key:
+        return JSONResponse({"success": False, "error": "admin_groq_api_key não configurada."})
+
+    # 1 segundo de OGG/Opus silêncio (base64 de um arquivo válido pequeno)
+    silence_ogg_b64 = (
+        "T2dnUwACAAAAAAAAAACR1pCNAAAAAOLY+QABHgF2b3JiaXMAAAAAAUSsAAAAAAAAAHcBAAAAAAC4AU9nZ1MAAAAAAAA"
+        "AAAAAkdaQjQEAAAAUMaWGCy3//////////////////8BA3ZvcmJpcw0AAABMYXZmNTguNzYuMTAwAQAAAB0AAABlbmNv"
+        "ZGVyPUxhdmY1OC43Ni4xMDABBXZvcmJpcyJCQ1YBAEAAACRzGCpGpXMWhBCaQVAZ4xxCzlpKIYWYMUYhZM5SaiGElkJoIY"
+    )
+    audio_bytes = base64.b64decode(silence_ogg_b64 + "=" * (-len(silence_ogg_b64) % 4))
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {groq_key}"},
+                data={"model": "whisper-large-v3", "language": "pt", "response_format": "text"},
+                files={"file": ("test.ogg", audio_bytes, "audio/ogg")},
+            )
+            return JSONResponse({
+                "success": resp.status_code == 200,
+                "status_code": resp.status_code,
+                "body_preview": resp.text[:500],
+                "groq_key_prefix": groq_key[:8] + "…",
+                "interpretation": (
+                    "Chave Groq válida e API respondendo." if resp.status_code == 200
+                    else "Chave Groq rejeitada ou modelo indisponível — veja status/body."
+                ),
+            })
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+
 @router.post("/joorney/zapi-webhook")
 @router.get("/joorney/zapi-webhook")
 async def seed_joorney_zapi_webhook(authenticated: bool = Depends(verify_admin)):

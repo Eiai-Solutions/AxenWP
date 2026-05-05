@@ -27,6 +27,32 @@ _ai_pending_tasks: Dict[str, asyncio.Task] = {}   # contact_key -> Task
 _ai_message_buffers: Dict[str, list] = {}          # contact_key -> [(text, is_audio, audio_url), ...]
 _ai_debounce_config: Dict[str, float] = {}         # contact_key -> debounce_seconds
 
+# Buffer dos últimos N payloads recebidos (debug)
+_recent_webhooks: list = []
+_RECENT_WEBHOOKS_MAX = 20
+
+def get_recent_webhooks() -> list:
+    return list(_recent_webhooks)
+
+def _record_webhook(payload: dict, location_id: str | None):
+    import time
+    safe = {
+        "received_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "location_id": location_id,
+        "top_level_keys": list(payload.keys()),
+        "phone": payload.get("phone"),
+        "fromMe": payload.get("fromMe"),
+        "type": payload.get("type") or payload.get("messageType"),
+        "isStatusReply": payload.get("isStatusReply"),
+        "audio_keys": list(payload["audio"].keys()) if isinstance(payload.get("audio"), dict) else None,
+        "voice_keys": list(payload["voice"].keys()) if isinstance(payload.get("voice"), dict) else None,
+        "audio_url_audioUrl": (payload.get("audio") or {}).get("audioUrl") if isinstance(payload.get("audio"), dict) else None,
+        "audio_url_url": (payload.get("audio") or {}).get("url") if isinstance(payload.get("audio"), dict) else None,
+    }
+    _recent_webhooks.append(safe)
+    if len(_recent_webhooks) > _RECENT_WEBHOOKS_MAX:
+        _recent_webhooks.pop(0)
+
 # Dedup: guarda os zapiMessageId que NÓS enviamos para ignorar quando voltarem como callback
 _sent_message_ids: Dict[str, float] = {}           # zapiMessageId -> timestamp
 _SENT_IDS_MAX_AGE = 300  # 5 minutos
@@ -377,6 +403,12 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
     if message_type not in ["ReceivedCallback", "MessageReceived"]:
         logger.debug(f"Ignorando evento de tipo '{message_type}' (não é mensagem recebida).")
         return
+
+    # Salva snapshot do payload pra debug via endpoint /admin/seed/joorney/recent-webhooks
+    try:
+        _record_webhook(payload, location_id)
+    except Exception:
+        pass
 
     logger.info(f"Processando inbound Z-API para tenant {location_id} (origem: {phone})")
 
