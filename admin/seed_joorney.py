@@ -508,6 +508,38 @@ async def seed_joorney_recent_webhooks(authenticated: bool = Depends(verify_admi
     })
 
 
+@router.post("/clear-agent-groq-keys")
+@router.get("/clear-agent-groq-keys")
+async def clear_agent_groq_keys(authenticated: bool = Depends(verify_admin)):
+    """
+    Remove a chave Groq de TODOS os agentes (zera a coluna groq_api_key).
+    Após isso, todos os agentes passam a usar a chave global do SystemSettings.
+    Útil quando a chave Groq foi rotacionada e a antiga ficou herdada nos agentes.
+    """
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+
+    db = SessionLocal()
+    try:
+        agents = db.query(AIAgent).filter(AIAgent.groq_api_key.isnot(None)).all()
+        cleared = []
+        for a in agents:
+            cleared.append({"location_id": a.location_id, "channel": a.channel, "name": a.name})
+            a.groq_api_key = None
+        db.commit()
+        return JSONResponse({
+            "success": True,
+            "cleared_count": len(cleared),
+            "cleared_agents": cleared,
+            "instructions": "Todos os agentes agora usam a chave Groq global (Config Admin).",
+        })
+    except Exception as e:
+        db.rollback()
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+    finally:
+        db.close()
+
+
 @router.get("/joorney/audio-pipeline")
 async def seed_joorney_audio_pipeline(authenticated: bool = Depends(verify_admin)):
     """
