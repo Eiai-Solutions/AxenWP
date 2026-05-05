@@ -36,6 +36,40 @@ class ZAPIService:
         """Monta a URL completa do endpoint Z-API."""
         return f"{self.BASE_URL}/instances/{instance_id}/token/{token}/{endpoint}"
 
+    async def get_webhook_received(self, instance_id: str, token: str, client_token: str = "") -> dict | None:
+        """Lê a URL de webhook 'on-receive' atualmente configurada na Z-API."""
+        try:
+            resp = await self.client.get(
+                self._build_url(instance_id, token, "webhook-received"),
+                headers=self._get_headers(client_token),
+            )
+            if resp.status_code == 200:
+                return resp.json()
+            logger.warning(f"webhook-received GET retornou {resp.status_code}: {resp.text[:200]}")
+            return None
+        except Exception as e:
+            logger.error(f"Erro ao ler webhook Z-API: {e}")
+            return None
+
+    async def set_webhook_received(
+        self, instance_id: str, token: str, webhook_url: str, client_token: str = ""
+    ) -> bool:
+        """Registra a URL de webhook 'on-receive' na Z-API."""
+        try:
+            resp = await self.client.put(
+                self._build_url(instance_id, token, "update-webhook-received"),
+                headers=self._get_headers(client_token),
+                json={"value": webhook_url},
+            )
+            if resp.status_code == 200:
+                logger.info(f"Z-API webhook-received configurado: {webhook_url}")
+                return True
+            logger.error(f"Falha set webhook Z-API: {resp.status_code} {resp.text[:200]}")
+            return False
+        except Exception as e:
+            logger.error(f"Exception set webhook Z-API: {e}")
+            return False
+
     def _get_headers(self, client_token: str = "") -> dict:
         """Headers padrão para chamadas Z-API."""
         headers = {"Content-Type": "application/json"}

@@ -493,6 +493,59 @@ async def seed_joorney_get(authenticated: bool = Depends(verify_admin)):
     return await seed_joorney_agent(authenticated=authenticated)
 
 
+@router.post("/joorney/zapi-webhook")
+@router.get("/joorney/zapi-webhook")
+async def seed_joorney_zapi_webhook(authenticated: bool = Depends(verify_admin)):
+    """
+    Diagnostica e registra o webhook 'on-receive' da Z-API da Joorney
+    apontando para o endpoint correto deste servidor.
+    """
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+
+    from services.zapi_service import zapi_service
+    from utils.config import settings as app_settings
+
+    db = SessionLocal()
+    try:
+        tenant = _find_joorney_tenant(db, "joorney") or _find_joorney_tenant(db, "jorney")
+        if not tenant:
+            return JSONResponse({"success": False, "error": "Joorney não encontrada."})
+        if not (tenant.zapi_instance_id and tenant.zapi_token):
+            return JSONResponse({"success": False, "error": "Z-API não configurada para este tenant."})
+
+        public_base = (app_settings.public_base_url or "").strip().rstrip("/")
+        if not public_base:
+            return JSONResponse({"success": False, "error": "PUBLIC_BASE_URL não está no .env."})
+
+        target_url = f"{public_base}/webhook/zapi/inbound/{tenant.location_id}"
+
+        current = await zapi_service.get_webhook_received(
+            tenant.zapi_instance_id, tenant.zapi_token, tenant.zapi_client_token or ""
+        )
+        current_url = (current or {}).get("value") or (current or {}).get("url")
+
+        ok = await zapi_service.set_webhook_received(
+            tenant.zapi_instance_id, tenant.zapi_token, target_url, tenant.zapi_client_token or ""
+        )
+
+        return JSONResponse({
+            "success": ok,
+            "tenant": tenant.company_name,
+            "location_id": tenant.location_id,
+            "previous_webhook_url": current_url,
+            "new_webhook_url": target_url,
+            "instructions": (
+                "Webhook on-receive registrado. Mande um áudio agora pra Sofia "
+                "e veja os logs do servidor — devem aparecer linhas '[AUDIO] is_audio=True'."
+                if ok else
+                "Falha ao registrar webhook. Confira instance_id/token da Z-API."
+            ),
+        })
+    finally:
+        db.close()
+
+
 @router.get("/joorney/status")
 async def seed_joorney_status(authenticated: bool = Depends(verify_admin)):
     """Diagnóstico: confirma se a Sofia tem todos os ingredientes pra rodar."""
