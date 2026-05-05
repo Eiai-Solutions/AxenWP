@@ -508,6 +508,74 @@ async def seed_joorney_recent_webhooks(authenticated: bool = Depends(verify_admi
     })
 
 
+@router.get("/groq-key-inspect")
+async def inspect_groq_key(authenticated: bool = Depends(verify_admin)):
+    """
+    Mostra detalhes da chave Groq salva no banco para comparar com a real.
+    Mostra: prefixo (8 chars), sufixo (4 chars), length, has_spaces, has_newline.
+    Sem expor a chave inteira.
+    """
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+
+    from data.models import SystemSettings
+    db = SessionLocal()
+    try:
+        ss = db.query(SystemSettings).first()
+        key = (ss.admin_groq_api_key if ss else None) or ""
+    finally:
+        db.close()
+
+    return JSONResponse({
+        "stored_in_db": bool(key),
+        "length": len(key),
+        "prefix": key[:8] if key else None,
+        "suffix": key[-4:] if len(key) >= 4 else None,
+        "has_leading_space": key != key.lstrip() if key else False,
+        "has_trailing_space": key != key.rstrip() if key else False,
+        "has_newline": "\n" in key or "\r" in key,
+        "has_internal_space": " " in key.strip(),
+        "starts_with_gsk_": key.startswith("gsk_") if key else False,
+    })
+
+
+@router.post("/groq-key-set")
+async def set_groq_key_direct(request: Request, authenticated: bool = Depends(verify_admin)):
+    """
+    Sobrescreve a chave Groq global aplicando strip() agressivo (newline, spaces, tabs).
+    Body: {"key": "gsk_..."}
+    """
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+
+    body = await request.json()
+    raw = body.get("key") or ""
+    cleaned = raw.strip().replace("\r", "").replace("\n", "")
+    if not cleaned.startswith("gsk_"):
+        return JSONResponse({"success": False, "error": "Chave deve começar com gsk_."})
+
+    from data.models import SystemSettings
+    db = SessionLocal()
+    try:
+        ss = db.query(SystemSettings).first()
+        if not ss:
+            ss = SystemSettings()
+            db.add(ss)
+        ss.admin_groq_api_key = cleaned
+        db.commit()
+        return JSONResponse({
+            "success": True,
+            "stored_length": len(cleaned),
+            "stored_prefix": cleaned[:8],
+            "stored_suffix": cleaned[-4:],
+        })
+    except Exception as e:
+        db.rollback()
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+    finally:
+        db.close()
+
+
 @router.post("/clear-agent-groq-keys")
 @router.get("/clear-agent-groq-keys")
 async def clear_agent_groq_keys(authenticated: bool = Depends(verify_admin)):
