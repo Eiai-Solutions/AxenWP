@@ -423,6 +423,7 @@
 
             // Set voice if exists, otherwise load won't pre-select it perfectly until fetched, handled in fetch
             document.getElementById('ai_elevenlabs_voice_id').dataset.preselected = elevenlabsVoiceId || '';
+            _restoreVoicePlaceholder();
 
             // Qualification tab
             const qualAtivard = String(btn.dataset.aiqualenabled).toLowerCase() === 'true';
@@ -719,6 +720,7 @@
             document.getElementById('ai_elevenlabs_api_key').value = agent.elevenlabs_api_key || '';
             document.getElementById('ai_groq_api_key').value = agent.groq_api_key || '';
             document.getElementById('ai_elevenlabs_voice_id').dataset.preselected = agent.elevenlabs_voice_id || '';
+            _restoreVoicePlaceholder();
 
             const speedVal = agent.elevenlabs_speed || 1.0;
             const stabilityVal = agent.elevenlabs_stability || 0.5;
@@ -2059,6 +2061,31 @@
             }
             body.innerHTML += html;
             body.scrollTop = body.scrollHeight;
+        }
+
+        function _restoreVoicePlaceholder() {
+            // Mostra a voz salva no dropdown ANTES de buscar a lista completa.
+            // Assim o usuário vê que está salva e não pensa que sumiu.
+            const voiceSelect = document.getElementById('ai_elevenlabs_voice_id');
+            if (!voiceSelect) return;
+            const preselected = voiceSelect.dataset.preselected || '';
+            voiceSelect.innerHTML = '';
+            if (preselected) {
+                const opt = document.createElement('option');
+                opt.value = preselected;
+                opt.textContent = 'Voz salva (clique "Buscar Vozes" para ver nome)';
+                opt.selected = true;
+                voiceSelect.appendChild(opt);
+                const optDefault = document.createElement('option');
+                optDefault.value = '';
+                optDefault.textContent = '-- Trocar voz: Busque vozes primeiro --';
+                voiceSelect.appendChild(optDefault);
+            } else {
+                const optDefault = document.createElement('option');
+                optDefault.value = '';
+                optDefault.textContent = '-- Busque as Vozes Primeiro --';
+                voiceSelect.appendChild(optDefault);
+            }
         }
 
         async function fetchElevenLabsVoices() {
