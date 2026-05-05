@@ -494,7 +494,10 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
 
         # Recupera histórico (async — não bloqueia o event loop)
         past_messages = await memory.aget_messages()
-        logger.info(f"Histórico carregado para {user_phone}: {len(past_messages)} mensagens (session: {session_id})")
+        logger.info(
+            f"[MEMORY] session_id={session_id} | past={len(past_messages)} | "
+            f"raw_phone={user_phone!r}"
+        )
 
         # Monta as mensagens diretamente (sem template string) para evitar
         # conflito com {} no prompt do usuário
