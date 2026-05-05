@@ -4,7 +4,7 @@ Acesso: POST /admin/seed/joorney (autenticado)
 Idempotente: ao chamar de novo, atualiza prompt + form_data.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from utils.logger import logger
