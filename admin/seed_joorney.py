@@ -698,7 +698,9 @@ async def seed_joorney_audio_pipeline(authenticated: bool = Depends(verify_admin
         "groq_global_prefix": (groq_key[:8] + "…") if groq_key else None,
         "groq_per_agent_set": bool(agent and agent.groq_api_key),
         "agent_active": bool(agent and agent.is_active),
+        "elevenlabs_api_key_set": bool(agent and agent.elevenlabs_api_key),
         "elevenlabs_voice_set": bool(agent and agent.elevenlabs_voice_id),
+        "tts_will_work": bool(agent and agent.elevenlabs_api_key and agent.elevenlabs_voice_id),
     }
 
     if not groq_key and not (agent and agent.groq_api_key):

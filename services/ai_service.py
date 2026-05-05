@@ -596,11 +596,15 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
             # ── Decisão: responder com áudio ou texto ──
             # Regra: cliente mandou áudio → responde áudio / cliente mandou texto → responde texto
             should_send_audio = is_audio
+            logger.info(
+                f"[TTS-DECISION] is_audio={is_audio} | has_el_key={bool(self.agent_config.elevenlabs_api_key)} | "
+                f"has_voice_id={bool(self.agent_config.elevenlabs_voice_id)} | special_content={_contains_special_content(ai_text)}"
+            )
 
             # Exceção: fallback para texto se a resposta contém conteúdo especial
             # (R$, URLs, endereços, CPF, CNPJ, telefone, etc.)
             if should_send_audio and _contains_special_content(ai_text):
-                logger.info("Resposta contém conteúdo especial (R$, URL, endereço, etc.). Fallback para texto.")
+                logger.info(f"[TTS-DECISION] Fallback texto: resposta contém conteúdo especial. Resposta: {ai_text[:200]}")
                 should_send_audio = False
 
             # ── Gerar áudio via ElevenLabs (TTS) ──
