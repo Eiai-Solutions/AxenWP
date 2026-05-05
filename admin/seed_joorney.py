@@ -508,6 +508,154 @@ async def seed_joorney_recent_webhooks(authenticated: bool = Depends(verify_admi
     })
 
 
+@router.get("/joorney/audio-pipeline")
+async def seed_joorney_audio_pipeline(authenticated: bool = Depends(verify_admin)):
+    """
+    Diagnóstico completo do pipeline de áudio ponta a ponta.
+
+    Etapas:
+    1. Confere chaves (Groq global, ElevenLabs do agente)
+    2. Pega o último webhook que chegou — extrai estrutura de áudio se houver
+    3. Se houver audio_url no último webhook, baixa o arquivo
+    4. Envia o arquivo baixado pro Groq Whisper e retorna a transcrição
+    5. Cada etapa retorna sucesso/erro pra identificar onde quebra
+    """
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+
+    from data.models import SystemSettings
+    from webhooks.zapi_receiver import get_recent_webhooks
+    import httpx
+
+    result = {
+        "step_1_keys": None,
+        "step_2_last_webhook": None,
+        "step_3_download_audio": None,
+        "step_4_groq_transcribe": None,
+        "verdict": None,
+    }
+
+    # ── STEP 1: chaves ──
+    db = SessionLocal()
+    try:
+        ss = db.query(SystemSettings).first()
+        groq_key = ss.admin_groq_api_key if (ss and ss.admin_groq_api_key) else None
+        tenant = _find_joorney_tenant(db, "joorney") or _find_joorney_tenant(db, "jorney")
+        agent = None
+        if tenant:
+            agent = (
+                db.query(AIAgent)
+                .filter(AIAgent.location_id == tenant.location_id, AIAgent.channel == "whatsapp")
+                .first()
+            )
+    finally:
+        db.close()
+
+    result["step_1_keys"] = {
+        "groq_global_set": bool(groq_key),
+        "groq_global_prefix": (groq_key[:8] + "…") if groq_key else None,
+        "groq_per_agent_set": bool(agent and agent.groq_api_key),
+        "agent_active": bool(agent and agent.is_active),
+        "elevenlabs_voice_set": bool(agent and agent.elevenlabs_voice_id),
+    }
+
+    if not groq_key and not (agent and agent.groq_api_key):
+        result["verdict"] = "BREAK at step 1: nenhuma chave Groq disponível."
+        return JSONResponse(result)
+
+    effective_groq = (agent.groq_api_key if (agent and agent.groq_api_key) else groq_key)
+
+    # ── STEP 2: último webhook ──
+    webhooks = get_recent_webhooks()
+    if not webhooks:
+        result["step_2_last_webhook"] = {"received": False, "note": "nenhum webhook capturado desde o último deploy"}
+        result["verdict"] = "BREAK at step 2: webhook do Z-API não chegou no servidor desde o último restart. Mande mensagem agora."
+        return JSONResponse(result)
+
+    audio_webhooks = [w for w in webhooks if w.get("audio_keys") or w.get("voice_keys")]
+    if not audio_webhooks:
+        result["step_2_last_webhook"] = {
+            "received": True,
+            "total_webhooks": len(webhooks),
+            "any_audio": False,
+            "last_webhook_summary": webhooks[-1],
+        }
+        result["verdict"] = "BREAK at step 2: webhooks chegando mas nenhum era áudio. Mande um áudio pelo WhatsApp e rode esse endpoint de novo."
+        return JSONResponse(result)
+
+    last_audio = audio_webhooks[-1]
+    audio_url = last_audio.get("audio_url_audioUrl") or last_audio.get("audio_url_url")
+    result["step_2_last_webhook"] = {
+        "received": True,
+        "audio_keys": last_audio.get("audio_keys"),
+        "voice_keys": last_audio.get("voice_keys"),
+        "extracted_url": audio_url,
+        "received_at": last_audio.get("received_at"),
+    }
+
+    if not audio_url:
+        result["verdict"] = (
+            "BREAK at step 2: áudio chegou mas não conseguimos extrair URL. "
+            f"Chaves disponíveis: audio={last_audio.get('audio_keys')} voice={last_audio.get('voice_keys')}. "
+            "Variante de payload Z-API não mapeada — preciso adicionar suporte."
+        )
+        return JSONResponse(result)
+
+    # ── STEP 3: baixar áudio ──
+    audio_bytes = None
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            dl = await client.get(audio_url)
+            result["step_3_download_audio"] = {
+                "status_code": dl.status_code,
+                "content_length": len(dl.content) if dl.status_code == 200 else None,
+                "content_type": dl.headers.get("content-type"),
+            }
+            if dl.status_code == 200:
+                audio_bytes = dl.content
+            else:
+                result["verdict"] = f"BREAK at step 3: falha ao baixar áudio ({dl.status_code}). URL pode ter expirado."
+                return JSONResponse(result)
+    except Exception as e:
+        result["step_3_download_audio"] = {"error": str(e)}
+        result["verdict"] = f"BREAK at step 3: exceção ao baixar áudio: {e}"
+        return JSONResponse(result)
+
+    # ── STEP 4: Groq Whisper ──
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                "https://api.groq.com/openai/v1/audio/transcriptions",
+                headers={"Authorization": f"Bearer {effective_groq}"},
+                data={"model": "whisper-large-v3", "language": "pt", "response_format": "text"},
+                files={"file": ("audio.ogg", audio_bytes, "audio/ogg")},
+            )
+            transcription = resp.text.strip() if resp.status_code == 200 else None
+            result["step_4_groq_transcribe"] = {
+                "status_code": resp.status_code,
+                "transcription": transcription,
+                "body_preview_on_error": resp.text[:500] if resp.status_code != 200 else None,
+            }
+            if resp.status_code == 200 and transcription:
+                result["verdict"] = (
+                    "PIPELINE COMPLETO COM SUCESSO. Áudio transcrito. "
+                    "Se Sofia ainda diz que não consegue ouvir, o problema está no flag is_audio "
+                    "que deve estar chegando False no engine — preciso adicionar log nessa parte."
+                )
+            elif resp.status_code != 200:
+                result["verdict"] = (
+                    f"BREAK at step 4: Groq retornou {resp.status_code}. "
+                    "Cole o body_preview_on_error que eu identifico."
+                )
+            else:
+                result["verdict"] = "BREAK at step 4: transcrição vazia (áudio em silêncio?)"
+    except Exception as e:
+        result["step_4_groq_transcribe"] = {"error": str(e)}
+        result["verdict"] = f"BREAK at step 4: exceção: {e}"
+
+    return JSONResponse(result)
+
+
 @router.get("/joorney/test-groq")
 async def seed_joorney_test_groq(authenticated: bool = Depends(verify_admin)):
     """
