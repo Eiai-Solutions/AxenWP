@@ -216,6 +216,8 @@ class SystemSettings(Base):
     id = Column(Integer, primary_key=True, index=True)
     admin_openrouter_key = Column(String(512), nullable=True)
     admin_openrouter_model = Column(String(100), default="openai/gpt-4o")
+    # Groq é gratuito no plano free — chave global compartilhada por todos os agentes
+    admin_groq_api_key = Column(String(512), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

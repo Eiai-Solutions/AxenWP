@@ -2507,6 +2507,22 @@
 
                     <div class="group">
                         <label
+                            class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest mt-4 flex justify-between items-center">
+                            <span>Groq API Key (STT global — gratuito)</span>
+                            <a href="https://console.groq.com/keys" target="_blank"
+                                class="text-brand-red hover:underline normal-case font-normal">Obter Chave</a>
+                        </label>
+                        <input type="password" name="admin_groq_api_key"
+                            value="{{ system_settings.admin_groq_api_key if system_settings and system_settings.admin_groq_api_key else '' }}"
+                            placeholder="gsk_..."
+                            class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
+                        <p class="text-[10px] text-gray-600 mt-1">
+                            Chave única para transcrição de áudios em todos os agentes. Sobrescrita pela chave do agente se houver.
+                        </p>
+                    </div>
+
+                    <div class="group">
+                        <label
                             class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest mt-4">OpenRouter
                             Master Model</label>
                         <select name="admin_openrouter_model"

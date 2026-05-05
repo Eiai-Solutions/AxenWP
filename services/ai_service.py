@@ -440,13 +440,27 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
                 return None
 
         # ── Transcrição de áudio (STT) ──
+        # Resolve a chave Groq: agente primeiro, depois SystemSettings (global / gratuito)
+        groq_key = self.agent_config.groq_api_key
+        if not groq_key:
+            try:
+                from data.models import SystemSettings
+                _db = SessionLocal()
+                try:
+                    _ss = _db.query(SystemSettings).first()
+                    if _ss and _ss.admin_groq_api_key:
+                        groq_key = _ss.admin_groq_api_key
+                finally:
+                    _db.close()
+            except Exception as e_gk:
+                logger.warning(f"Erro ao ler Groq key global: {e_gk}")
+
         actual_message = user_message
-        if is_audio and audio_url and self.agent_config.groq_api_key:
+        if is_audio and audio_url and groq_key:
             logger.info(f"Áudio recebido de {user_phone}. Transcrevendo via Groq Whisper...")
-            transcription = await transcribe_audio(audio_url, self.agent_config.groq_api_key)
+            transcription = await transcribe_audio(audio_url, groq_key)
             if transcription:
                 actual_message = transcription
-                # Log de uso Groq (STT)
                 try:
                     await asyncio.to_thread(
                         _save_usage_log,
@@ -458,8 +472,8 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
                     logger.warning(f"Falha ao salvar usage log Groq: {e_log}")
             else:
                 logger.warning("Falha na transcrição. Usando mensagem original como fallback.")
-        elif is_audio and not self.agent_config.groq_api_key:
-            logger.warning("Áudio recebido mas Groq API Key não configurada. Ignorando transcrição.")
+        elif is_audio and not groq_key:
+            logger.warning("Áudio recebido mas nenhuma Groq API Key configurada (nem agente, nem global).")
 
         # ── Guardrail: detecta frustração ou pedido de humano ──
         escalate, escalate_reason = check_escalation(actual_message)
