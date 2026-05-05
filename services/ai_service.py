@@ -502,6 +502,30 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
         # Monta as mensagens diretamente (sem template string) para evitar
         # conflito com {} no prompt do usuário
         system_prompt = self._build_system_prompt()
+
+        # Quando o lead mandou áudio, sinaliza ao LLM que a próxima resposta
+        # será convertida em áudio (TTS). O LLM precisa formular o texto pra
+        # ser FALADO de forma natural — sem siglas que ficam ruins, sem links,
+        # sem números abreviados.
+        if is_audio:
+            system_prompt += (
+                "\n\n## MODO ÁUDIO (esta resposta será convertida em fala via TTS)\n"
+                "O lead enviou um áudio, então sua próxima resposta será LIDA em voz alta. "
+                "Formule a resposta para ser pronunciada de forma natural:\n"
+                "- Escreva números por extenso quando ficar mais natural falado "
+                "(ex: 'mais de trinta mil planos' em vez de '30.000+'; "
+                "'duzentos profissionais' em vez de '200+').\n"
+                "- Evite valores monetários numéricos. Se precisar mencionar valor, fale por extenso "
+                "(ex: 'a partir de mil e novecentos dólares' em vez de 'US$ 1.900').\n"
+                "- NÃO inclua URLs, links, ou e-mails — eles ficam impronunciáveis em áudio. "
+                "Se o lead pedir o link/proposta, fale 'vou te enviar isso por escrito em seguida'.\n"
+                "- Evite siglas duras ('USCIS' está OK, mas evite encadear muitas).\n"
+                "- Frase fluida, conversacional. Como você falaria, não como você escreveria.\n"
+                "- Mantenha curto: 2 a 4 frases bem ditas valem mais que parágrafo.\n"
+                "- Esta regra vale APENAS para esta resposta. Se o lead voltar a mandar texto, "
+                "volte ao formato escrito normal."
+            )
+
         messages_for_llm: list[BaseMessage] = [
             SystemMessage(content=system_prompt),
             *past_messages,
