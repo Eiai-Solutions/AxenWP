@@ -3417,17 +3417,15 @@
                             </div>
                         </div>
 
-                        <div class="group">
-                            <label
-                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
-                                <span class="group-focus-within:text-white">Groq API Key (Transcrição de Áudio)</span>
-                                <a href="https://console.groq.com/keys" target="_blank"
-                                    class="text-brand-red hover:underline">Obter Chave</a>
-                            </label>
-                            <input type="password" id="ai_groq_api_key" name="groq_api_key"
-                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
-                                placeholder="gsk_...">
-                            <p class="text-[10px] text-gray-600 mt-1">Necessária para transcrever áudios recebidos dos clientes (Whisper). Gratuita no Groq.</p>
+                        <!-- Groq global: campo escondido por padrão. A chave vem do Config Admin. -->
+                        <input type="hidden" id="ai_groq_api_key" name="groq_api_key" value="">
+                        <div class="bg-gray-800/30 border border-gray-700/50 rounded-lg p-3">
+                            <p class="text-[11px] text-gray-400 leading-relaxed">
+                                <span class="text-white font-bold">Transcrição de áudio (STT)</span>
+                                usa a chave Groq configurada globalmente em
+                                <span class="text-brand-red font-mono">Config. Admin</span>.
+                                Não precisa configurar por agente.
+                            </p>
                         </div>
 
                         <div class="group">
