@@ -328,11 +328,24 @@ async def seed_joorney_agent(authenticated: bool = Depends(verify_admin)):
             .first()
         )
 
-        # Tenta herdar API key de outro agente do mesmo tenant (caso já exista)
-        api_key_inherit = None
-        any_agent = db.query(AIAgent).filter(AIAgent.location_id == tenant.location_id).first()
-        if any_agent and any_agent.api_key:
-            api_key_inherit = any_agent.api_key
+        # Herda chaves de qualquer agente já existente no sistema (mesmo tenant
+        # primeiro, depois qualquer outro tenant) — assim a demo já sai com voz/STT
+        # configurados sem você precisar colar manualmente.
+        def _pick_first(query, attr):
+            for a in query:
+                v = getattr(a, attr, None)
+                if v:
+                    return v
+            return None
+
+        same_tenant = db.query(AIAgent).filter(AIAgent.location_id == tenant.location_id).all()
+        any_tenant = db.query(AIAgent).filter(AIAgent.location_id != tenant.location_id).all()
+        candidate_pool = same_tenant + any_tenant
+
+        api_key_inherit = _pick_first(candidate_pool, "api_key")
+        elevenlabs_key_inherit = _pick_first(candidate_pool, "elevenlabs_api_key")
+        elevenlabs_voice_inherit = _pick_first(candidate_pool, "elevenlabs_voice_id")
+        groq_key_inherit = _pick_first(candidate_pool, "groq_api_key")
 
         if agent:
             agent.name = "Sofia"
@@ -342,6 +355,12 @@ async def seed_joorney_agent(authenticated: bool = Depends(verify_admin)):
             agent.model = agent.model or "openai/gpt-4o"
             if not agent.api_key and api_key_inherit:
                 agent.api_key = api_key_inherit
+            if not agent.elevenlabs_api_key and elevenlabs_key_inherit:
+                agent.elevenlabs_api_key = elevenlabs_key_inherit
+            if not agent.elevenlabs_voice_id and elevenlabs_voice_inherit:
+                agent.elevenlabs_voice_id = elevenlabs_voice_inherit
+            if not agent.groq_api_key and groq_key_inherit:
+                agent.groq_api_key = groq_key_inherit
             action = "updated"
         else:
             agent = AIAgent(
@@ -353,6 +372,9 @@ async def seed_joorney_agent(authenticated: bool = Depends(verify_admin)):
                 is_active=True,
                 model="openai/gpt-4o",
                 api_key=api_key_inherit,
+                elevenlabs_api_key=elevenlabs_key_inherit,
+                elevenlabs_voice_id=elevenlabs_voice_inherit,
+                groq_api_key=groq_key_inherit,
                 debounce_seconds=1.5,
             )
             db.add(agent)
@@ -361,12 +383,14 @@ async def seed_joorney_agent(authenticated: bool = Depends(verify_admin)):
         db.commit()
         db.refresh(agent)
 
-        warning = None
+        warnings = []
         if not agent.api_key:
-            warning = (
-                "Agente criado/atualizado, mas SEM api_key (OpenRouter). "
-                "Vá ao Agente IA → Config → adicione a chave (ou clique 'Usar chaves do WhatsApp')."
-            )
+            warnings.append("SEM OpenRouter api_key — agente não vai responder até configurar.")
+        if not agent.elevenlabs_api_key or not agent.elevenlabs_voice_id:
+            warnings.append("SEM ElevenLabs (api_key + voice_id) — Sofia vai responder em texto mesmo recebendo áudio.")
+        if not agent.groq_api_key:
+            warnings.append("SEM Groq api_key — áudios recebidos não serão transcritos (lead manda áudio, agente perde a mensagem).")
+        warning = " | ".join(warnings) if warnings else None
 
         logger.info(f"Seed Joorney executado: {action} agent_id={agent.id} location={tenant.location_id}")
         return JSONResponse({
@@ -376,7 +400,9 @@ async def seed_joorney_agent(authenticated: bool = Depends(verify_admin)):
             "location_id": tenant.location_id,
             "agent_id": agent.id,
             "is_active": agent.is_active,
-            "has_api_key": bool(agent.api_key),
+            "has_openrouter_key": bool(agent.api_key),
+            "has_elevenlabs": bool(agent.elevenlabs_api_key and agent.elevenlabs_voice_id),
+            "has_groq": bool(agent.groq_api_key),
             "warning": warning,
         })
     except Exception as e:
