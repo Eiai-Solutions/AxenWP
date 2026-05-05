@@ -535,6 +535,16 @@ async def seed_joorney_get(authenticated: bool = Depends(verify_admin)):
     return await seed_joorney_agent(authenticated=authenticated)
 
 
+@router.get("/joorney/recent-processings")
+async def seed_joorney_recent_processings(authenticated: bool = Depends(verify_admin)):
+    """Mostra os últimos processamentos do AI engine (com decisão TTS)."""
+    if not authenticated:
+        return JSONResponse({"success": False, "error": "Não autenticado."}, status_code=401)
+    from services.ai_service import get_recent_processings
+    items = get_recent_processings()
+    return JSONResponse({"success": True, "count": len(items), "processings": items})
+
+
 @router.get("/joorney/recent-webhooks")
 async def seed_joorney_recent_webhooks(authenticated: bool = Depends(verify_admin)):
     """Mostra os últimos payloads recebidos pelo webhook Z-API (resumo seguro)."""

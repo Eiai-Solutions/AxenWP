@@ -21,6 +21,21 @@ from utils.guardrails import (
 )
 
 
+# Buffer dos últimos processamentos do engine para diagnóstico via endpoint
+_recent_processings: list = []
+_RECENT_PROCESSINGS_MAX = 20
+
+def get_recent_processings() -> list:
+    return list(_recent_processings)
+
+def _record_processing(entry: dict):
+    import time
+    entry["timestamp"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    _recent_processings.append(entry)
+    if len(_recent_processings) > _RECENT_PROCESSINGS_MAX:
+        _recent_processings.pop(0)
+
+
 def _save_usage_log(location_id: str, service: str, model: str = None,
                     input_tokens: int = 0, output_tokens: int = 0,
                     characters: int = 0, cost_usd: float = 0.0):
@@ -621,14 +636,28 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
             logger.info(f"Histórico salvo para {user_phone}: user='{actual_message[:50]}...' ai='{ai_text[:50]}...'")
 
             # ── Decisão: responder com áudio ou texto ──
-            # Regra: cliente mandou áudio → responde áudio (resposta única, não fragmenta)
-            # Exceção: se a resposta INTEIRA tem conteúdo especial (link, valor, etc),
-            # cai pra texto pra evitar TTS bugado pronunciando link/CNPJ.
             should_send_audio = is_audio
             special = _contains_special_content(ai_text)
+            has_el_key = bool(self.agent_config.elevenlabs_api_key)
+            has_voice_id = bool(self.agent_config.elevenlabs_voice_id)
+
+            # Snapshot pro diagnóstico via endpoint
+            processing_entry = {
+                "location_id": self.agent_config.location_id,
+                "phone": user_phone,
+                "is_audio_input": is_audio,
+                "has_elevenlabs_key": has_el_key,
+                "has_elevenlabs_voice": has_voice_id,
+                "special_content_in_reply": special,
+                "ai_text_preview": ai_text[:200],
+                "tts_attempted": False,
+                "tts_status": None,
+                "final_type": None,
+            }
+
             logger.info(
-                f"[TTS-DECISION] is_audio={is_audio} | has_el_key={bool(self.agent_config.elevenlabs_api_key)} | "
-                f"has_voice_id={bool(self.agent_config.elevenlabs_voice_id)} | special_content={special}"
+                f"[TTS-DECISION] is_audio={is_audio} | has_el_key={has_el_key} | "
+                f"has_voice_id={has_voice_id} | special_content={special}"
             )
 
             if should_send_audio and special:
@@ -636,6 +665,7 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
                 should_send_audio = False
 
             if should_send_audio and self.agent_config.elevenlabs_api_key and self.agent_config.elevenlabs_voice_id:
+                processing_entry["tts_attempted"] = True
                 try:
                     logger.info(f"Gerando áudio via ElevenLabs (VoiceID: {self.agent_config.elevenlabs_voice_id})...")
                     async with httpx.AsyncClient(timeout=30.0) as client:
@@ -671,6 +701,9 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
                                 )
                             except Exception as e_log:
                                 logger.warning(f"Falha usage log ElevenLabs: {e_log}")
+                            processing_entry["tts_status"] = "ok"
+                            processing_entry["final_type"] = "audio"
+                            _record_processing(processing_entry)
                             result = {"type": "audio", "content": f"data:audio/ogg;base64,{b64_audio}", "text": ai_text}
                             if qualified_data:
                                 result["qualified_data"] = qualified_data
@@ -680,11 +713,18 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
                                 result["escalate_reason"] = escalate_reason
                             return result
                         else:
-                            logger.error(f"ElevenLabs erro: {response_el.text[:200]}. Fallback texto.")
+                            err_body = response_el.text[:300]
+                            logger.error(f"ElevenLabs erro: {err_body}. Fallback texto.")
+                            processing_entry["tts_status"] = f"http_{response_el.status_code}: {err_body}"
                 except Exception as ex_el:
                     logger.error(f"Exceção ElevenLabs: {ex_el}. Fallback texto.")
+                    processing_entry["tts_status"] = f"exception: {ex_el}"
 
             # Resposta padrão: texto (zapi_receiver vai dividir por \n\n e enviar separadamente)
+            processing_entry["final_type"] = "text"
+            if processing_entry.get("tts_status") is None:
+                processing_entry["tts_status"] = "skipped"
+            _record_processing(processing_entry)
             result = {"type": "text", "content": ai_text}
             if qualified_data:
                 result["qualified_data"] = qualified_data
