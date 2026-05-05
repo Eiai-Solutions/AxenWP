@@ -594,25 +594,24 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
             logger.info(f"Histórico salvo para {user_phone}: user='{actual_message[:50]}...' ai='{ai_text[:50]}...'")
 
             # ── Decisão: responder com áudio ou texto ──
-            # Regra: cliente mandou áudio → responde áudio / cliente mandou texto → responde texto
+            # Regra: cliente mandou áudio → responde áudio (resposta única, não fragmenta)
+            # Exceção: se a resposta INTEIRA tem conteúdo especial (link, valor, etc),
+            # cai pra texto pra evitar TTS bugado pronunciando link/CNPJ.
             should_send_audio = is_audio
+            special = _contains_special_content(ai_text)
             logger.info(
                 f"[TTS-DECISION] is_audio={is_audio} | has_el_key={bool(self.agent_config.elevenlabs_api_key)} | "
-                f"has_voice_id={bool(self.agent_config.elevenlabs_voice_id)} | special_content={_contains_special_content(ai_text)}"
+                f"has_voice_id={bool(self.agent_config.elevenlabs_voice_id)} | special_content={special}"
             )
 
-            # Exceção: fallback para texto se a resposta contém conteúdo especial
-            # (R$, URLs, endereços, CPF, CNPJ, telefone, etc.)
-            if should_send_audio and _contains_special_content(ai_text):
-                logger.info(f"[TTS-DECISION] Fallback texto: resposta contém conteúdo especial. Resposta: {ai_text[:200]}")
+            if should_send_audio and special:
+                logger.info(f"[TTS-DECISION] Fallback texto (conteúdo especial). Resposta: {ai_text[:200]}")
                 should_send_audio = False
 
-            # ── Gerar áudio via ElevenLabs (TTS) ──
             if should_send_audio and self.agent_config.elevenlabs_api_key and self.agent_config.elevenlabs_voice_id:
                 try:
                     logger.info(f"Gerando áudio via ElevenLabs (VoiceID: {self.agent_config.elevenlabs_voice_id})...")
                     async with httpx.AsyncClient(timeout=30.0) as client:
-                        # output_format=ogg_opus → formato nativo de mensagem de voz do WhatsApp (PTT com ondas)
                         speed = float(self.agent_config.elevenlabs_speed or 1.0)
                         stability = float(self.agent_config.elevenlabs_stability or 0.5)
                         similarity = float(self.agent_config.elevenlabs_similarity or 0.75)
@@ -621,7 +620,7 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
                             f"https://api.elevenlabs.io/v1/text-to-speech/{self.agent_config.elevenlabs_voice_id}?output_format=ogg_opus",
                             headers={
                                 "xi-api-key": self.agent_config.elevenlabs_api_key,
-                                "Content-Type": "application/json"
+                                "Content-Type": "application/json",
                             },
                             json={
                                 "text": ai_text,
@@ -630,14 +629,12 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
                                     "stability": stability,
                                     "similarity_boost": similarity,
                                     "speed": speed,
-                                }
-                            }
+                                },
+                            },
                         )
 
                         if response_el.status_code == 200:
-                            audio_content = response_el.content
-                            b64_audio = base64.b64encode(audio_content).decode("utf-8")
-                            # Log de uso ElevenLabs (TTS)
+                            b64_audio = base64.b64encode(response_el.content).decode("utf-8")
                             try:
                                 await asyncio.to_thread(
                                     _save_usage_log,
@@ -646,18 +643,21 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
                                     characters=len(ai_text),
                                 )
                             except Exception as e_log:
-                                logger.warning(f"Falha ao salvar usage log ElevenLabs: {e_log}")
+                                logger.warning(f"Falha usage log ElevenLabs: {e_log}")
                             result = {"type": "audio", "content": f"data:audio/ogg;base64,{b64_audio}", "text": ai_text}
                             if qualified_data:
                                 result["qualified_data"] = qualified_data
                                 result["qualification_summary"] = qualification_summary
+                            if escalate:
+                                result["escalate"] = True
+                                result["escalate_reason"] = escalate_reason
                             return result
                         else:
-                            logger.error(f"Erro ao gerar ElevenLabs: {response_el.text}. Fallback texto.")
+                            logger.error(f"ElevenLabs erro: {response_el.text[:200]}. Fallback texto.")
                 except Exception as ex_el:
-                    logger.error(f"Exceção no ElevenLabs: {ex_el}. Fallback texto.")
+                    logger.error(f"Exceção ElevenLabs: {ex_el}. Fallback texto.")
 
-            # Resposta Padrão de Texto
+            # Resposta padrão: texto (zapi_receiver vai dividir por \n\n e enviar separadamente)
             result = {"type": "text", "content": ai_text}
             if qualified_data:
                 result["qualified_data"] = qualified_data
