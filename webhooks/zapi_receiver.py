@@ -380,6 +380,11 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
 
     logger.info(f"Processando inbound Z-API para tenant {location_id} (origem: {phone})")
 
+    # Log de estrutura: tipo de payload recebido
+    payload_keys = [k for k in payload.keys() if k not in ("phone", "text")]
+    if any(k in payload_keys for k in ("audio", "voice", "image", "document", "video")):
+        logger.info(f"Z-API payload contém mídia. Chaves de mídia: {payload_keys}")
+
     content_message = "Mensagem recebida do WhatsApp"
     attachments = []
     is_audio = False
@@ -395,9 +400,34 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
     elif "audio" in payload and isinstance(payload["audio"], dict):
         content_message = "🎙️ Áudio recebido"
         is_audio = True
-        if "audioUrl" in payload["audio"]:
-            audio_url = payload["audio"]["audioUrl"]
+        # Z-API às vezes envia 'audioUrl', outras vezes 'url' ou 'mediaUrl'
+        audio_url = (
+            payload["audio"].get("audioUrl")
+            or payload["audio"].get("url")
+            or payload["audio"].get("mediaUrl")
+        )
+        if audio_url:
             attachments.append(audio_url)
+        else:
+            logger.warning(
+                f"Áudio recebido mas sem URL detectada. Chaves disponíveis em payload.audio: "
+                f"{list(payload['audio'].keys())}"
+            )
+    elif "voice" in payload and isinstance(payload["voice"], dict):
+        # Algumas integrações Z-API usam a chave 'voice' em vez de 'audio'
+        content_message = "🎙️ Áudio recebido"
+        is_audio = True
+        audio_url = (
+            payload["voice"].get("audioUrl")
+            or payload["voice"].get("url")
+            or payload["voice"].get("mediaUrl")
+        )
+        if audio_url:
+            attachments.append(audio_url)
+        else:
+            logger.warning(
+                f"Voice recebida mas sem URL. Chaves: {list(payload['voice'].keys())}"
+            )
     elif "document" in payload and isinstance(payload["document"], dict):
         content_message = payload["document"].get("fileName", "📄 Documento recebido")
         if "documentUrl" in payload["document"]:

@@ -456,11 +456,17 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
                 logger.warning(f"Erro ao ler Groq key global: {e_gk}")
 
         actual_message = user_message
+        if is_audio:
+            logger.info(
+                f"[AUDIO] is_audio=True | url={'sim' if audio_url else 'NÃO'} | "
+                f"groq_key={'agente' if self.agent_config.groq_api_key else ('global' if groq_key else 'NENHUMA')}"
+            )
         if is_audio and audio_url and groq_key:
-            logger.info(f"Áudio recebido de {user_phone}. Transcrevendo via Groq Whisper...")
+            logger.info(f"[AUDIO] Transcrevendo {audio_url[:80]}... via Groq Whisper")
             transcription = await transcribe_audio(audio_url, groq_key)
             if transcription:
                 actual_message = transcription
+                logger.info(f"[AUDIO] Transcrição OK: {transcription[:120]}")
                 try:
                     await asyncio.to_thread(
                         _save_usage_log,
@@ -471,9 +477,11 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
                 except Exception as e_log:
                     logger.warning(f"Falha ao salvar usage log Groq: {e_log}")
             else:
-                logger.warning("Falha na transcrição. Usando mensagem original como fallback.")
+                logger.warning("[AUDIO] Transcrição retornou None — fallback texto.")
+        elif is_audio and not audio_url:
+            logger.error("[AUDIO] is_audio=True mas audio_url vazia — webhook não extraiu URL.")
         elif is_audio and not groq_key:
-            logger.warning("Áudio recebido mas nenhuma Groq API Key configurada (nem agente, nem global).")
+            logger.error("[AUDIO] is_audio=True mas nenhuma Groq API Key (nem agente, nem global).")
 
         # ── Guardrail: detecta frustração ou pedido de humano ──
         escalate, escalate_reason = check_escalation(actual_message)
