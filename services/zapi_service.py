@@ -157,14 +157,21 @@ class ZAPIService:
         record_audio: bool = True,
     ) -> dict | None:
         """
-        Envia um áudio.
+        Envia um áudio como mensagem de voz (PTT) — formato nativo do WhatsApp,
+        com ondulação (waveform), velocidade e ícone de microfone.
+
         POST /instances/{id}/token/{token}/send-audio
         """
         url = self._build_url(instance_id, token, "send-audio")
         payload = {
             "phone": self._format_phone(phone),
             "audio": audio_url,
+            # 'recordAudio' é o parâmetro que sinaliza PTT (mensagem de voz)
             "recordAudio": record_audio,
+            # 'waveform' (parâmetro mais recente da Z-API) gera a ondulação visual
+            "waveform": record_audio,
+            # 'viewOnce' false garante que não vai ser mensagem de uma vez só
+            "viewOnce": False,
         }
 
         return await self._post(url, payload, client_token)
