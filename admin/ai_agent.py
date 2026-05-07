@@ -456,7 +456,7 @@ async def get_qualification_progress(location_id: str, phone: str):
     - Se qualificado: retorna os dados confirmados do QualifiedLead
     - Se em andamento: retorna o cache de progresso extraído pelo AI
     """
-    from services.ai_service import _qual_progress_cache
+    from services.qualification_engine import qual_progress_cache as _qual_progress_cache
     db = SessionLocal()
     try:
         agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
@@ -494,7 +494,7 @@ async def reset_qualification(location_id: str, phone: str, clear_history: bool 
     Se clear_history=true, apaga também o histórico de conversa (necessário para
     evitar que a IA re-qualifique imediatamente ao ler as mensagens anteriores).
     """
-    from services.ai_service import _qual_progress_cache
+    from services.qualification_engine import qual_progress_cache as _qual_progress_cache
     db = SessionLocal()
     try:
         deleted_qual = db.query(QualifiedLead).filter(
