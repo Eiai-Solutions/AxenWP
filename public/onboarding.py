@@ -164,6 +164,19 @@ async def submit_onboarding_form(
         db.commit()
         logger.info(f"Prompt gerado via formulário para tenant {tenant.location_id} ({tenant.company_name})")
 
+        try:
+            from services.prompt_history import snapshot_prompt
+            snapshot_prompt(
+                location_id=tenant.location_id,
+                channel=agent.channel or "whatsapp",
+                prompt=agent.prompt,
+                source="form",
+                agent_id=agent.id,
+                form_data_snapshot=form_answers,
+            )
+        except Exception as e_snap:
+            logger.warning(f"Falha snapshot prompt (form): {e_snap}")
+
         return JSONResponse({"success": True})
 
     except Exception as e:

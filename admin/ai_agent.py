@@ -120,6 +120,20 @@ async def save_agent_settings(
         db.commit()
         logger.info(f"Configurações do Agente IA atualizadas para o Tenant {location_id}.")
 
+        # Snapshot da versão salva no histórico
+        try:
+            from services.prompt_history import snapshot_prompt
+            snapshot_prompt(
+                location_id=location_id,
+                channel=validated.channel,
+                prompt=agent.prompt,
+                source="manual_save",
+                agent_id=agent.id,
+                form_data_snapshot=agent.form_data,
+            )
+        except Exception as e_snap:
+            logger.warning(f"Falha snapshot prompt: {e_snap}")
+
         return RedirectResponse(url="/admin/dashboard?msg=Agente+IA+atualizado+com+sucesso", status_code=303)
 
     except Exception as e:
@@ -1138,6 +1152,19 @@ async def improve_prompt(location_id: str, request: Request):
         if mode == "apply":
             agent.prompt = output
             db.commit()
+            try:
+                from services.prompt_history import snapshot_prompt
+                snapshot_prompt(
+                    location_id=agent.location_id,
+                    channel=agent.channel,
+                    prompt=output,
+                    source="optimize_apply",
+                    agent_id=agent.id,
+                    form_data_snapshot=agent.form_data,
+                    note=feedback or None,
+                )
+            except Exception as e_snap:
+                logger.warning(f"Falha snapshot prompt (optimize): {e_snap}")
             return {
                 "success": True,
                 "mode": "apply",
@@ -1244,6 +1271,21 @@ async def save_form_data(location_id: str, request: Request):
                 agent.prompt = generated_prompt
 
         db.commit()
+
+        if regenerate:
+            try:
+                from services.prompt_history import snapshot_prompt
+                snapshot_prompt(
+                    location_id=agent.location_id,
+                    channel=agent.channel,
+                    prompt=agent.prompt,
+                    source="regenerate",
+                    agent_id=agent.id,
+                    form_data_snapshot=agent.form_data,
+                )
+            except Exception as e_snap:
+                logger.warning(f"Falha snapshot prompt (regenerate): {e_snap}")
+
         return {
             "success": True,
             "prompt": agent.prompt if regenerate else None,
@@ -1254,3 +1296,39 @@ async def save_form_data(location_id: str, request: Request):
         return {"success": False, "error": str(e)}
     finally:
         db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Histórico de versões do prompt
+# ─────────────────────────────────────────────────────────────────────
+
+@router.get("/{location_id}/prompt-history")
+async def list_prompt_history(
+    location_id: str,
+    channel: str = "whatsapp",
+    limit: int = 30,
+):
+    """Lista as versões anteriores do prompt do agente (mais recentes primeiro)."""
+    from services.prompt_history import list_history
+    items = list_history(location_id, channel, limit=limit)
+    return {"success": True, "count": len(items), "history": items}
+
+
+@router.get("/prompt-history/{history_id}")
+async def get_prompt_version(history_id: int):
+    """Retorna o prompt completo de uma versão específica."""
+    from services.prompt_history import get_version
+    version = get_version(history_id)
+    if not version:
+        return {"success": False, "error": "Versão não encontrada."}
+    return {"success": True, "version": version}
+
+
+@router.post("/prompt-history/{history_id}/restore")
+async def restore_prompt_version(history_id: int):
+    """Restaura uma versão antiga como prompt vivo do agente."""
+    from services.prompt_history import restore_version
+    result = restore_version(history_id)
+    if not result:
+        return {"success": False, "error": "Não foi possível restaurar."}
+    return result

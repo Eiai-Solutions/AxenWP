@@ -231,3 +231,23 @@ class SystemSettings(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+
+
+class AgentPromptHistory(Base):
+    """
+    Versionamento dos prompts de cada agente.
+    Cada save/regenerate/optimize gera um snapshot. Permite restaurar
+    versões anteriores e analisar evolução do prompt ao longo do tempo.
+    """
+    __tablename__ = "agent_prompt_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    location_id = Column(String, nullable=False, index=True)
+    channel = Column(String, nullable=False, default="whatsapp", server_default="whatsapp")
+    agent_id = Column(Integer, ForeignKey("ai_agents.id", ondelete="SET NULL"), nullable=True)
+    # Origem: 'form' | 'regenerate' | 'optimize_apply' | 'manual_save' | 'restore'
+    source = Column(String(50), nullable=False)
+    prompt = Column(Text, nullable=False)
+    form_data_snapshot = Column(JSON, nullable=True)
+    note = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
