@@ -64,6 +64,28 @@ class TestRegisterDetection:
         fd = {"industry": "Coisa qualquer que não tem keyword"}
         assert _detect_register(fd) == "neutro"
 
+    def test_manual_override_premium_wins(self):
+        # Indústria diria casual, mas operador forçou premium
+        fd = {"industry": "Pizzaria gourmet de luxo", "tone_register": "premium"}
+        assert _detect_register(fd) == "premium"
+
+    def test_manual_override_casual_wins(self):
+        fd = {"industry": "Consultoria de investimento", "tone_register": "casual"}
+        assert _detect_register(fd) == "casual"
+
+    def test_manual_override_invalid_falls_to_detection(self):
+        # Override inválido é ignorado, detecta normalmente
+        fd = {"industry": "Academia fitness", "tone_register": "xpto"}
+        assert _detect_register(fd) == "casual"
+
+    def test_manual_override_empty_falls_to_detection(self):
+        fd = {"industry": "Advocacia", "tone_register": ""}
+        assert _detect_register(fd) == "premium"
+
+    def test_manual_override_case_insensitive(self):
+        fd = {"industry": "Academia", "tone_register": "PREMIUM"}
+        assert _detect_register(fd) == "premium"
+
 
 class TestContextBuilder:
     def test_includes_register_label(self):

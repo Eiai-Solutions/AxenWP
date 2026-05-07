@@ -433,6 +433,18 @@
                     </div>
 
                     <div class="group">
+                        <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Registro de Linguagem (opcional)</label>
+                        <select name="tone_register" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm">
+                            <option value="">Auto (deixa o sistema detectar pelo segmento)</option>
+                            <option value="premium">Premium — B2B executivo, sem gírias</option>
+                            <option value="neutro">Neutro — profissional descontraído</option>
+                            <option value="casual">Casual — B2C, tom amigável</option>
+                            <option value="support">Suporte — técnico empático</option>
+                        </select>
+                        <p class="text-[10px] text-gray-600 font-mono mt-1">Use Auto na maioria dos casos. Force só se você quiser um tom diferente do que o sistema detectaria.</p>
+                    </div>
+
+                    <div class="group">
                         <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Informacoes Adicionais</label>
                         <textarea name="extra_info" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm" rows="4"
                             placeholder="Qualquer outra informacao relevante que o agente deve saber. Ex: politica de trocas, garantias, formas de pagamento, prazos, etc."></textarea>

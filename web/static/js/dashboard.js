@@ -444,6 +444,7 @@
                     };
                     const shortFields = ['company_name', 'industry', 'target_audience', 'website', 'instagram', 'agent_name', 'tone', 'business_hours'];
                     const agentType = fd.agent_type || 'inbound';
+                    const toneRegister = fd.tone_register || '';
                     let html = '';
                     html += `<div>
                         <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-2">Tipo de Atendimento</label>
@@ -463,6 +464,17 @@
                                 </div>
                             </label>
                         </div>
+                    </div>`;
+                    html += `<div>
+                        <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-1">Registro de Linguagem (opcional)</label>
+                        <select data-formkey="tone_register" class="input-dark w-full py-2 px-3 rounded-lg text-sm">
+                            <option value="" ${toneRegister===''?'selected':''}>Auto (detecta pelo segmento)</option>
+                            <option value="premium" ${toneRegister==='premium'?'selected':''}>Premium — B2B executivo, sem gírias</option>
+                            <option value="neutro" ${toneRegister==='neutro'?'selected':''}>Neutro — profissional descontraído</option>
+                            <option value="casual" ${toneRegister==='casual'?'selected':''}>Casual — B2C, tom amigável</option>
+                            <option value="support" ${toneRegister==='support'?'selected':''}>Suporte — técnico empático</option>
+                        </select>
+                        <p class="text-[10px] text-gray-600 mt-1">Use Auto na maioria dos casos. Force só se a detecção automática errar.</p>
                     </div>`;
                     for (const [key, label] of Object.entries(fieldLabels)) {
                         const val = fd[key] || '';
@@ -745,6 +757,7 @@
                 };
                 const shortFields = ['company_name', 'industry', 'target_audience', 'website', 'instagram', 'agent_name', 'tone', 'business_hours'];
                 const agentType = fd.agent_type || 'inbound';
+                const toneRegister = fd.tone_register || '';
                 let html = `<div>
                     <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-2">Tipo de Atendimento</label>
                     <div class="grid grid-cols-2 gap-2">
@@ -763,6 +776,16 @@
                             </div>
                         </label>
                     </div>
+                </div>`;
+                html += `<div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-widest font-mono mb-1">Registro de Linguagem (opcional)</label>
+                    <select data-formkey="tone_register" class="input-dark w-full py-2 px-3 rounded-lg text-sm">
+                        <option value="" ${toneRegister===''?'selected':''}>Auto (detecta pelo segmento)</option>
+                        <option value="premium" ${toneRegister==='premium'?'selected':''}>Premium — B2B executivo, sem gírias</option>
+                        <option value="neutro" ${toneRegister==='neutro'?'selected':''}>Neutro — profissional descontraído</option>
+                        <option value="casual" ${toneRegister==='casual'?'selected':''}>Casual — B2C, tom amigável</option>
+                        <option value="support" ${toneRegister==='support'?'selected':''}>Suporte — técnico empático</option>
+                    </select>
                 </div>`;
                 for (const [key, label] of Object.entries(fieldLabels)) {
                     const val = fd[key] || '';
@@ -1481,6 +1504,106 @@
                     }
                 }
             });
+        }
+
+        // ─── Prompt History Modal ─────────────────────────────────────
+        let _historyContext = { locationId: null, channel: 'whatsapp', selectedId: null };
+
+        async function openPromptHistoryModal() {
+            const locationId = document.getElementById('ai_location_id').value;
+            const channel = document.getElementById('ai_channel').value || 'whatsapp';
+            if (!locationId) { alert('Salve o agente primeiro.'); return; }
+            _historyContext = { locationId, channel, selectedId: null };
+
+            document.getElementById('promptHistoryModal').classList.remove('hidden');
+            document.getElementById('prompt_history_loading').classList.remove('hidden');
+            document.getElementById('prompt_history_empty').classList.add('hidden');
+            document.getElementById('prompt_history_list').innerHTML = '';
+            document.getElementById('prompt_history_detail').classList.add('hidden');
+
+            try {
+                const resp = await fetch(`/admin/agents/${locationId}/prompt-history?channel=${encodeURIComponent(channel)}&limit=30`);
+                const data = await resp.json();
+                document.getElementById('prompt_history_loading').classList.add('hidden');
+                if (!data.success || !data.history || data.history.length === 0) {
+                    document.getElementById('prompt_history_empty').classList.remove('hidden');
+                    return;
+                }
+                _renderPromptHistoryList(data.history);
+            } catch (e) {
+                document.getElementById('prompt_history_loading').classList.add('hidden');
+                alert('Erro ao carregar histórico.');
+            }
+        }
+
+        function _renderPromptHistoryList(items) {
+            const sourceLabels = {
+                form: { label: 'Formulário', color: 'text-purple-400' },
+                regenerate: { label: 'Regenerado', color: 'text-blue-400' },
+                optimize_apply: { label: 'Melhoria aplicada', color: 'text-amber-400' },
+                manual_save: { label: 'Salvo manual', color: 'text-gray-400' },
+                restore: { label: 'Restaurado', color: 'text-green-400' },
+            };
+            const html = items.map(it => {
+                const s = sourceLabels[it.source] || { label: it.source, color: 'text-gray-400' };
+                const noteHtml = it.note ? `<p class="text-[10px] text-gray-500 italic mt-1">"${it.note}"</p>` : '';
+                return `<div class="bg-black/30 border border-gray-800 rounded-lg p-3 hover:border-gray-700 cursor-pointer transition-colors" onclick="viewPromptVersion(${it.id})">
+                    <div class="flex items-center justify-between gap-2 mb-1">
+                        <span class="${s.color} text-[10px] font-bold uppercase tracking-widest font-mono">${s.label}</span>
+                        <span class="text-[10px] text-gray-600 font-mono">${(it.created_at || '').replace('T',' ').slice(0,16)}</span>
+                    </div>
+                    <p class="text-xs text-gray-300 font-mono line-clamp-2">${(it.prompt_preview || '').replace(/</g,'&lt;')}</p>
+                    <p class="text-[10px] text-gray-600 font-mono mt-1">${it.prompt_length} caracteres</p>
+                    ${noteHtml}
+                </div>`;
+            }).join('');
+            document.getElementById('prompt_history_list').innerHTML = html;
+        }
+
+        async function viewPromptVersion(historyId) {
+            try {
+                const resp = await fetch(`/admin/agents/prompt-history/${historyId}`);
+                const data = await resp.json();
+                if (!data.success || !data.version) {
+                    alert('Versão não encontrada.');
+                    return;
+                }
+                _historyContext.selectedId = historyId;
+                document.getElementById('prompt_history_list').classList.add('hidden');
+                document.getElementById('prompt_history_detail').classList.remove('hidden');
+                document.getElementById('prompt_history_detail_meta').textContent =
+                    `#${data.version.id} · ${data.version.source} · ${(data.version.created_at||'').replace('T',' ').slice(0,16)}`;
+                document.getElementById('prompt_history_detail_content').textContent = data.version.prompt;
+            } catch (e) {
+                alert('Erro ao carregar versão.');
+            }
+        }
+
+        function closePromptHistoryDetail() {
+            _historyContext.selectedId = null;
+            document.getElementById('prompt_history_detail').classList.add('hidden');
+            document.getElementById('prompt_history_list').classList.remove('hidden');
+        }
+
+        async function restorePromptVersion() {
+            if (!_historyContext.selectedId) return;
+            if (!confirm('Restaurar esta versão? O prompt atual será sobrescrito (mas continua salvo no histórico).')) return;
+            try {
+                const resp = await fetch(`/admin/agents/prompt-history/${_historyContext.selectedId}/restore`, { method: 'POST' });
+                const data = await resp.json();
+                if (data.success) {
+                    alert('Versão restaurada. Recarregue o agente para ver o novo prompt.');
+                    closePromptHistoryModal();
+                } else {
+                    alert('Erro: ' + (data.error || 'desconhecido'));
+                }
+            } catch (e) {
+                alert('Erro de rede ao restaurar.');
+            }
+        }
+
+        function closePromptHistoryModal() {
+            document.getElementById('promptHistoryModal').classList.add('hidden');
         }
 
         function closeAIAgentModal() {

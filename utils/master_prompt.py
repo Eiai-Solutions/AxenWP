@@ -47,13 +47,23 @@ _SUPPORT_KEYWORDS = [
 ]
 
 
+VALID_REGISTERS = {"premium", "casual", "support", "neutro"}
+
+
 def _detect_register(form_data: dict) -> str:
     """
     Decide o registro de linguagem do agente: 'premium' | 'casual' | 'support' | 'neutro'.
 
-    Heurística simples olhando industry, target_audience e produtos. Se nada bater,
-    retorna 'neutro' (padrão profissional brasileiro de WhatsApp B2B).
+    Prioridade:
+    1. Override explícito em form_data['tone_register'] — operador escolheu manualmente
+    2. Heurística por keywords em industry/audience/products
+    3. 'neutro' como fallback (B2B descontraído brasileiro)
     """
+    # Override manual do operador tem prioridade absoluta
+    override = (form_data.get("tone_register") or "").strip().lower()
+    if override in VALID_REGISTERS:
+        return override
+
     haystack = " ".join(
         str(form_data.get(k, "") or "")
         for k in ("industry", "company_description", "target_audience", "products_services")

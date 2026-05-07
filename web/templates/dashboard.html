@@ -991,6 +991,43 @@
         </div>
     </div>
 
+    <!-- Modal Histórico do Prompt -->
+    <div id="promptHistoryModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-md" onclick="closePromptHistoryModal()"></div>
+        <div class="relative w-full max-w-3xl max-h-[85vh] bg-gray-900 border border-brand-red/30 rounded-2xl shadow-[0_0_50px_rgba(225,29,72,0.2)] overflow-hidden flex flex-col">
+            <div class="flex items-center justify-between p-5 border-b border-gray-800">
+                <div>
+                    <h3 class="font-display text-lg font-bold text-white uppercase tracking-tight">Histórico do Prompt</h3>
+                    <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest mt-0.5">Versões anteriores deste agente</p>
+                </div>
+                <button onclick="closePromptHistoryModal()" class="text-gray-500 hover:text-white transition-colors">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-5">
+                <div id="prompt_history_loading" class="text-xs text-gray-500 font-mono animate-pulse text-center py-8">
+                    Carregando versões...
+                </div>
+                <div id="prompt_history_empty" class="hidden text-center py-12 border border-dashed border-gray-800 rounded-xl">
+                    <p class="text-gray-600 text-xs font-mono">Nenhuma versão salva ainda.</p>
+                    <p class="text-gray-700 text-[10px] font-mono mt-1">Histórico é gerado a cada save/regenerate/aplicar melhoria.</p>
+                </div>
+                <div id="prompt_history_list" class="space-y-2"></div>
+                <div id="prompt_history_detail" class="hidden">
+                    <div class="flex items-center gap-2 mb-3">
+                        <button onclick="closePromptHistoryDetail()" class="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded px-2 py-1 transition-colors">← Voltar</button>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase" id="prompt_history_detail_meta"></p>
+                    </div>
+                    <pre id="prompt_history_detail_content" class="text-xs text-gray-300 font-mono leading-relaxed whitespace-pre-wrap bg-black/40 border border-gray-800 rounded-lg p-4 max-h-[55vh] overflow-y-auto"></pre>
+                    <button id="prompt_history_restore_btn" onclick="restorePromptVersion()"
+                        class="mt-4 w-full px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-brand-red hover:bg-brand-darkred transition-colors">
+                        Restaurar esta versão
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Reconnect QR Code -->
     <div id="qrModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/80 backdrop-blur-md" onclick="closeQRModal()"></div>
@@ -1188,9 +1225,15 @@
                         </div>
 
                         <div class="group">
-                            <label
-                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">System
-                                Prompt (Cognitive Instructions)</label>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label class="block text-gray-400 text-[10px] font-bold uppercase tracking-widest group-focus-within:text-white transition-colors">System
+                                    Prompt (Cognitive Instructions)</label>
+                                <button type="button" onclick="openPromptHistoryModal()"
+                                    class="text-[10px] font-bold uppercase tracking-widest text-brand-red hover:text-white border border-brand-red/30 hover:border-brand-red rounded px-2 py-1 transition-colors flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    Histórico
+                                </button>
+                            </div>
                             <textarea id="ai_prompt" name="prompt" rows="12"
                                 class="input-dark w-full py-3 px-4 rounded-lg text-sm font-mono leading-relaxed resize-y scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent"
                                 placeholder="You are a helpful assistant..."></textarea>

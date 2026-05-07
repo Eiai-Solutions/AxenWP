@@ -81,6 +81,7 @@ async def submit_onboarding_form(
     extra_info: str = Form(""),
     qualification_questions: str = Form(""),
     agent_type: str = Form("inbound"),
+    tone_register: str = Form(""),
 ):
     """Recebe os dados do formulário e gera o prompt via IA Mestre."""
     # Rate limit aplicado em main.py via decorator do limiter; também validamos
@@ -124,6 +125,7 @@ async def submit_onboarding_form(
             "extra_info": extra_info,
             "qualification_questions": qualification_questions,
             "agent_type": agent_type,
+            "tone_register": tone_register or None,
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
