@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     # Em produção atrás de proxy, defina explicitamente. Ex: https://axenwp.eiai.com.br
     public_base_url: str = Field(default="", description="URL HTTPS pública do servidor")
 
+    # Token de inspeção read-only — quando setado, libera /admin/inspect/* via header
+    # X-Inspect-Token. Permite analisar agentes/prompts sem cookie de admin.
+    # Gerar com: openssl rand -hex 32
+    inspect_token: str = Field(default="", description="Token read-only para /admin/inspect")
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

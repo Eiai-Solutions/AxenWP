@@ -31,6 +31,7 @@ from admin.dashboard import router as admin_router
 from admin.ai_agent import router as admin_ai_agent_router
 from admin.seed_joorney import router as seed_joorney_router
 from admin.diagnostics import router as diagnostics_router
+from admin.inspect import router as inspect_router
 from public.onboarding import router as onboarding_router
 
 # =============================================================================
@@ -156,6 +157,7 @@ app.include_router(admin_router)
 app.include_router(admin_ai_agent_router)
 app.include_router(seed_joorney_router)
 app.include_router(diagnostics_router)
+app.include_router(inspect_router)
 app.include_router(onboarding_router)
 
 
