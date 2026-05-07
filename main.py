@@ -10,6 +10,10 @@ import uvicorn
 from contextlib import asynccontextmanager
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+
+from utils.limiter import limiter
 
 from utils.logger import logger
 from utils.config import settings
@@ -26,6 +30,7 @@ from webhooks.telegram_receiver import router as telegram_webhook_router
 from admin.dashboard import router as admin_router
 from admin.ai_agent import router as admin_ai_agent_router
 from admin.seed_joorney import router as seed_joorney_router
+from admin.diagnostics import router as diagnostics_router
 from public.onboarding import router as onboarding_router
 
 # =============================================================================
@@ -116,6 +121,8 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS: restrito a origens configuradas; em debug mode permite tudo
 _cors_origins = (
@@ -146,6 +153,7 @@ app.include_router(telegram_webhook_router)
 app.include_router(admin_router)
 app.include_router(admin_ai_agent_router)
 app.include_router(seed_joorney_router)
+app.include_router(diagnostics_router)
 app.include_router(onboarding_router)
 
 

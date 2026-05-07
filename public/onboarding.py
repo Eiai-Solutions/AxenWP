@@ -16,6 +16,8 @@ from data.database import SessionLocal
 from data.models import Tenant, AIAgent, SystemSettings
 from auth.token_manager import token_manager
 from utils.master_prompt import build_messages
+from utils.validators import is_valid_form_token
+from utils.limiter import limiter
 
 router = APIRouter(prefix="/form", tags=["public_form"])
 logger = logging.getLogger(__name__)
@@ -33,6 +35,11 @@ def _openrouter_headers(api_key: str) -> dict:
 @router.get("/{form_token}", response_class=HTMLResponse)
 async def show_onboarding_form(request: Request, form_token: str):
     """Exibe o formulário público de onboarding."""
+    if not is_valid_form_token(form_token):
+        return HTMLResponse(
+            content="<h1 style='color:#fff;font-family:sans-serif;text-align:center;margin-top:100px;'>Link invalido.</h1>",
+            status_code=400
+        )
     db = SessionLocal()
     try:
         tenant = db.query(Tenant).filter(Tenant.form_token == form_token).first()
@@ -52,7 +59,9 @@ async def show_onboarding_form(request: Request, form_token: str):
 
 
 @router.post("/{form_token}/submit")
+@limiter.limit("5/minute")
 async def submit_onboarding_form(
+    request: Request,
     form_token: str,
     company_name: str = Form(""),
     industry: str = Form(""),
@@ -74,6 +83,11 @@ async def submit_onboarding_form(
     agent_type: str = Form("inbound"),
 ):
     """Recebe os dados do formulário e gera o prompt via IA Mestre."""
+    # Rate limit aplicado em main.py via decorator do limiter; também validamos
+    # o formato do token aqui para falhar cedo em payloads aleatórios.
+    if not is_valid_form_token(form_token):
+        return JSONResponse({"success": False, "error": "Token inválido."}, status_code=400)
+
     db = SessionLocal()
     try:
         tenant = db.query(Tenant).filter(Tenant.form_token == form_token).first()

@@ -9,6 +9,8 @@ import base64
 from fastapi import APIRouter, Request, BackgroundTasks, Path
 
 from utils.logger import logger
+from utils.validators import is_valid_location_id
+from utils.limiter import limiter
 from auth.token_manager import token_manager
 from services.telegram_service import telegram_service
 from services.ai_service import AIService
@@ -28,12 +30,16 @@ def _is_text_message(msg: dict) -> tuple[str, bool, str | None]:
 
 
 @router.post("/{location_id}")
+@limiter.limit("120/minute")
 async def receive_telegram_update(
     location_id: str = Path(..., description="Tenant location_id"),
     request: Request = None,
     background_tasks: BackgroundTasks = None,
 ):
     """Endpoint que o Telegram chama via setWebhook."""
+    if not is_valid_location_id(location_id):
+        return {"ok": False, "error": "Invalid location_id"}
+
     try:
         payload = await request.json()
     except Exception as e:

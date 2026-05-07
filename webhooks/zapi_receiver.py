@@ -5,11 +5,14 @@ que formata e insere no GHL via /conversations/messages/inbound
 """
 
 import asyncio
+from collections import deque, OrderedDict
 from fastapi import APIRouter, Request, BackgroundTasks, Path
 from typing import Dict, Any
 
 from utils.logger import logger
 from utils.config import settings
+from utils.validators import is_valid_location_id
+from utils.limiter import limiter
 from auth.token_manager import token_manager
 from services.ghl_service import ghl_service
 from services.zapi_service import zapi_service
@@ -27,12 +30,15 @@ _ai_pending_tasks: Dict[str, asyncio.Task] = {}   # contact_key -> Task
 _ai_message_buffers: Dict[str, list] = {}          # contact_key -> [(text, is_audio, audio_url), ...]
 _ai_debounce_config: Dict[str, float] = {}         # contact_key -> debounce_seconds
 
-# Buffer dos últimos N payloads recebidos (debug)
-_recent_webhooks: list = []
-_RECENT_WEBHOOKS_MAX = 20
+# Buffer dos últimos N payloads recebidos (debug). deque com maxlen evita
+# crescimento indefinido — entradas mais antigas são descartadas automaticamente.
+_RECENT_WEBHOOKS_MAX = 30
+_recent_webhooks: deque = deque(maxlen=_RECENT_WEBHOOKS_MAX)
+
 
 def get_recent_webhooks() -> list:
     return list(_recent_webhooks)
+
 
 def _record_webhook(payload: dict, location_id: str | None):
     import time
@@ -50,19 +56,30 @@ def _record_webhook(payload: dict, location_id: str | None):
         "audio_url_url": (payload.get("audio") or {}).get("url") if isinstance(payload.get("audio"), dict) else None,
     }
     _recent_webhooks.append(safe)
-    if len(_recent_webhooks) > _RECENT_WEBHOOKS_MAX:
-        _recent_webhooks.pop(0)
 
-# Dedup: guarda os zapiMessageId que NÓS enviamos para ignorar quando voltarem como callback
-_sent_message_ids: Dict[str, float] = {}           # zapiMessageId -> timestamp
-_SENT_IDS_MAX_AGE = 300  # 5 minutos
+
+# Dedup: guarda os zapiMessageId que NÓS enviamos para ignorar quando voltarem como callback.
+# OrderedDict + cap garante que mesmo entre limpezas do scheduler o uso de memória é limitado.
+_SENT_IDS_MAX_AGE = 300         # 5 minutos
+_SENT_IDS_HARD_CAP = 5000       # cap absoluto para evitar acúmulo entre cleanups
+_sent_message_ids: "OrderedDict[str, float]" = OrderedDict()
+
+
+# Limites para os buffers de debounce — protege contra picos com muitos contatos simultâneos
+_DEBOUNCE_HARD_CAP = 2000
 
 
 def _track_sent_message(zapi_message_id: str):
-    """Registra um messageId enviado por nós para evitar reprocessamento via callback."""
+    """Registra um messageId enviado por nós para evitar reprocessamento via callback.
+
+    OrderedDict mantém ordem de inserção; quando atinge o cap, removemos o mais antigo.
+    """
     import time
-    if zapi_message_id:
-        _sent_message_ids[zapi_message_id] = time.time()
+    if not zapi_message_id:
+        return
+    _sent_message_ids[zapi_message_id] = time.time()
+    while len(_sent_message_ids) > _SENT_IDS_HARD_CAP:
+        _sent_message_ids.popitem(last=False)
 
 
 def cleanup_stale_debounce_entries():
@@ -583,6 +600,21 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
             finally:
                 _db.close()
 
+            # Hard cap para evitar memory leak em picos extremos (milhares de
+            # contatos diferentes ao mesmo tempo). Se atingiu o limite, descarta
+            # entradas com tasks já concluídas antes de aceitar a nova.
+            if len(_ai_message_buffers) >= _DEBOUNCE_HARD_CAP:
+                stale = [k for k, t in _ai_pending_tasks.items() if t.done()]
+                for k in stale:
+                    _ai_pending_tasks.pop(k, None)
+                    _ai_message_buffers.pop(k, None)
+                    _ai_debounce_config.pop(k, None)
+                if len(_ai_message_buffers) >= _DEBOUNCE_HARD_CAP:
+                    logger.warning(
+                        f"Debounce buffer cheio ({_DEBOUNCE_HARD_CAP}), descartando msg de {contact_key}"
+                    )
+                    return
+
             if contact_key not in _ai_message_buffers:
                 _ai_message_buffers[contact_key] = []
             _ai_message_buffers[contact_key].append((content_message, is_audio, audio_url))
@@ -601,6 +633,7 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
 
 
 @router.post("/inbound/{location_id}")
+@limiter.limit("120/minute")
 async def zapi_inbound_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -609,18 +642,22 @@ async def zapi_inbound_webhook(
     """
     URL de Webhook que você vai colar no painel administrativo do Z-API:
     https://seu-servidor.com/webhook/zapi/inbound/{SEU_LOCATION_ID_DO_GHL}
-    
+
     Ex: https://axenwp.meudominio.com/webhook/zapi/inbound/HjiMUOsCCHCjtxzEf8PR
     """
+    if not is_valid_location_id(location_id):
+        logger.warning(f"Z-API inbound: location_id rejeitado por validação ({location_id!r})")
+        return {"success": False, "error": "Invalid location_id"}
+
     try:
         payload = await request.json()
-    except Exception as e:
+    except Exception:
         logger.error("Payload Z-API Inbound inválido.")
         return {"success": False, "error": "Invalid JSON"}
 
     # Envia pro processamento em background
     background_tasks.add_task(process_inbound_message, location_id, payload)
-    
+
     # Se o GHL exigir 200 sempre, Z-API também precisa para parar de reenviar
     return {"success": True}
 
@@ -668,6 +705,7 @@ async def process_status_update(location_id: str, payload: Dict[str, Any]):
 
 
 @router.post("/status/{location_id}")
+@limiter.limit("240/minute")
 async def zapi_status_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -677,9 +715,12 @@ async def zapi_status_webhook(
     URL de Webhook (onMessageStatus) para colar no Z-API:
     https://seu-servidor.com/webhook/zapi/status/{SEU_LOCATION_ID_DO_GHL}
     """
+    if not is_valid_location_id(location_id):
+        return {"success": False, "error": "Invalid location_id"}
+
     try:
         payload = await request.json()
-    except Exception as e:
+    except Exception:
         logger.error("Payload Z-API Status inválido.")
         return {"success": False, "error": "Invalid JSON"}
 

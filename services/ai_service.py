@@ -3,6 +3,7 @@ import re
 import base64
 import tempfile
 import os
+from collections import deque
 from typing import List, Optional
 from datetime import datetime
 
@@ -21,19 +22,20 @@ from utils.guardrails import (
 )
 
 
-# Buffer dos últimos processamentos do engine para diagnóstico via endpoint
-_recent_processings: list = []
-_RECENT_PROCESSINGS_MAX = 20
+# Buffer dos últimos processamentos do engine para diagnóstico via endpoint.
+# deque com maxlen elimina necessidade de podar manualmente.
+_RECENT_PROCESSINGS_MAX = 30
+_recent_processings: deque = deque(maxlen=_RECENT_PROCESSINGS_MAX)
+
 
 def get_recent_processings() -> list:
     return list(_recent_processings)
+
 
 def _record_processing(entry: dict):
     import time
     entry["timestamp"] = time.strftime("%Y-%m-%d %H:%M:%S")
     _recent_processings.append(entry)
-    if len(_recent_processings) > _RECENT_PROCESSINGS_MAX:
-        _recent_processings.pop(0)
 
 
 def _save_usage_log(location_id: str, service: str, model: str = None,
