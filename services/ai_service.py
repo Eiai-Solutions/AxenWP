@@ -29,6 +29,7 @@ from utils.guardrails import (
     strip_emojis,
 )
 from utils.logger import logger
+from utils import metrics
 
 from services.audio_handler import (
     contains_special_content,
@@ -277,6 +278,7 @@ class AIEngine:
         escalate, escalate_reason = check_escalation(actual_message)
         if escalate:
             logger.warning(f"Escalação detectada ({escalate_reason}) para {user_phone}")
+            metrics.inc("axenwp_escalations_total", labels={"reason": escalate_reason or "unknown"})
 
         # 3. Carrega histórico da sessão.
         session_id = make_session_id(self.agent_config.location_id, user_phone)
@@ -304,8 +306,10 @@ class AIEngine:
         try:
             response = await self.llm.ainvoke(messages_for_llm)
             ai_text = response.content
+            metrics.inc("axenwp_ai_calls_total", labels={"model": self.agent_config.model})
         except Exception as e:
             logger.error(f"Erro na chamada do LLM: {e}")
+            metrics.inc("axenwp_ai_calls_failed_total", labels={"model": self.agent_config.model})
             return None
 
         # 6. Guardrails de saída (emojis + placeholders + outbound).

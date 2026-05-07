@@ -54,8 +54,11 @@ class PostgresChatMessageHistory:
     def _add_message_sync(self, type_: str, content: str) -> None:
         db = SessionLocal()
         try:
+            # Extrai location_id do session_id (padrão "{location_id}_{phone}")
+            location_id = self.session_id.split("_", 1)[0] if "_" in self.session_id else None
             history = ChatHistory(
                 session_id=self.session_id,
+                location_id=location_id,
                 message_type=type_,
                 content=content,
             )

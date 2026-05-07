@@ -206,12 +206,41 @@ async def health_check():
             "zapi_instance_id": t.zapi_instance_id
         })
 
+    # Resumo agregado por canal — útil pra dashboards rápidos
+    from data.models import AIAgent, QualifiedLead
+    db = SessionLocal()
+    try:
+        agents_active = db.query(AIAgent).filter(AIAgent.is_active.is_(True)).count()
+        agents_total = db.query(AIAgent).count()
+        qualified_total = db.query(QualifiedLead).count()
+    except Exception as e:
+        logger.error(f"Health: erro consultando contagens: {e}")
+        agents_active = agents_total = qualified_total = -1
+    finally:
+        db.close()
+
+    from utils.metrics import snapshot as metrics_snapshot
     return {
         "status": "healthy",
         "database": "connected",
         "tenants_loaded": len(tenants),
-        "tenants": active_tenants
+        "agents_active": agents_active,
+        "agents_total": agents_total,
+        "qualified_leads_total": qualified_total,
+        "metrics_summary": metrics_snapshot(),
+        "tenants": active_tenants,
     }
+
+
+@app.get("/metrics", tags=["Health"], include_in_schema=False)
+async def metrics_endpoint():
+    """
+    Expose counters in Prometheus exposition format.
+    Em deploy multi-worker, números são parciais por worker (process-local).
+    """
+    from fastapi.responses import PlainTextResponse
+    from utils.metrics import prometheus_text
+    return PlainTextResponse(content=prometheus_text(), media_type="text/plain; version=0.0.4")
 
 
 if __name__ == "__main__":

@@ -129,15 +129,25 @@ class KnowledgeDocument(Base):
 class ChatHistory(Base):
     """
     Armazena o histórico do langchain na unha ou pra fallback.
-    session_id é o número do cliente (ou ID da conversa).
+    session_id segue o padrão "{location_id}_{phone}".
+
+    location_id existe redundantemente como coluna pra permitir queries
+    multi-tenant sem fazer string contains no session_id.
     """
     __tablename__ = "chat_histories"
-    
+    __table_args__ = (
+        # Cleanup periódico filtra por created_at; queries multi-tenant
+        # (estatísticas, métricas) filtram por location_id + created_at
+        # Index("ix_chat_histories_loc_created", "location_id", "created_at"),
+        # Definido na migration 017 para coexistir com bancos legados.
+    )
+
     id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(String, index=True, nullable=False) # Ex: numero de telefone +55...
-    message_type = Column(String, nullable=False) # "human", "ai", "system"
+    session_id = Column(String, index=True, nullable=False)  # ex: location_id_5511...
+    location_id = Column(String, index=True, nullable=True)   # backfilled em migration
+    message_type = Column(String, nullable=False)             # "human" | "ai" | "system"
     content = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
 class ContactMapping(Base):

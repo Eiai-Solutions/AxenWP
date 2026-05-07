@@ -13,6 +13,7 @@ from utils.logger import logger
 from utils.config import settings
 from utils.validators import is_valid_location_id
 from utils.limiter import limiter
+from utils import metrics
 from auth.token_manager import token_manager
 from services.ghl_service import ghl_service
 from services.zapi_service import zapi_service
@@ -647,14 +648,17 @@ async def zapi_inbound_webhook(
     """
     if not is_valid_location_id(location_id):
         logger.warning(f"Z-API inbound: location_id rejeitado por validação ({location_id!r})")
+        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_location_id"})
         return {"success": False, "error": "Invalid location_id"}
 
     try:
         payload = await request.json()
     except Exception:
         logger.error("Payload Z-API Inbound inválido.")
+        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_json"})
         return {"success": False, "error": "Invalid JSON"}
 
+    metrics.inc("axenwp_webhooks_received_total", labels={"channel": "whatsapp"})
     # Envia pro processamento em background
     background_tasks.add_task(process_inbound_message, location_id, payload)
 

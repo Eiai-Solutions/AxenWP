@@ -46,6 +46,34 @@ async def save_agent_settings(
     """
     Cria ou atualiza as configurações do Agente de IA para um Tenant + canal específico.
     """
+    from utils.agent_validators import AgentSettingsInput
+
+    # Validação centralizada (clamps + parsing de qualification_fields)
+    try:
+        validated = AgentSettingsInput(
+            name=name,
+            prompt=prompt,
+            model=model,
+            api_key=api_key,
+            elevenlabs_api_key=elevenlabs_api_key,
+            elevenlabs_voice_id=elevenlabs_voice_id,
+            elevenlabs_speed=elevenlabs_speed,
+            elevenlabs_stability=elevenlabs_stability,
+            elevenlabs_similarity=elevenlabs_similarity,
+            groq_api_key=groq_api_key,
+            is_active=is_active,
+            debounce_seconds=debounce_seconds,
+            qualification_enabled=qualification_enabled,
+            qualification_pipeline_id=qualification_pipeline_id,
+            qualification_stage_id=qualification_stage_id,
+            qualification_fields=qualification_fields,
+            qualification_summary_prompt=qualification_summary_prompt,
+            channel=channel,
+        )
+    except Exception as e:
+        logger.error(f"Validação falhou ao salvar Agente IA: {e}")
+        return RedirectResponse(url="/admin/dashboard?err=Dados+invalidos", status_code=303)
+
     db = SessionLocal()
     try:
         tenant = db.query(Tenant).filter(Tenant.location_id == location_id).first()
@@ -56,41 +84,36 @@ async def save_agent_settings(
         # Busca agente existente ou cria novo (escopo: location_id + channel)
         agent = db.query(AIAgent).filter(
             AIAgent.location_id == location_id,
-            AIAgent.channel == channel,
+            AIAgent.channel == validated.channel,
         ).first()
 
         if not agent:
-            agent = AIAgent(location_id=location_id, channel=channel)
+            agent = AIAgent(location_id=location_id, channel=validated.channel)
             db.add(agent)
 
-        agent.name = name
-        agent.prompt = prompt
-        agent.model = model
-        agent.api_key = api_key
-        agent.elevenlabs_api_key = elevenlabs_api_key
-        agent.elevenlabs_voice_id = elevenlabs_voice_id
-        agent.elevenlabs_speed = max(0.25, min(float(elevenlabs_speed), 4.0))
-        agent.elevenlabs_stability = max(0.0, min(float(elevenlabs_stability), 1.0))
-        agent.elevenlabs_similarity = max(0.0, min(float(elevenlabs_similarity), 1.0))
-        agent.groq_api_key = groq_api_key
-        agent.is_active = is_active
-        agent.debounce_seconds = max(0.5, min(float(debounce_seconds), 30.0))
+        agent.name = validated.name
+        agent.prompt = validated.prompt
+        agent.model = validated.model
+        agent.api_key = validated.api_key
+        agent.elevenlabs_api_key = validated.elevenlabs_api_key
+        agent.elevenlabs_voice_id = validated.elevenlabs_voice_id
+        agent.elevenlabs_speed = validated.elevenlabs_speed
+        agent.elevenlabs_stability = validated.elevenlabs_stability
+        agent.elevenlabs_similarity = validated.elevenlabs_similarity
+        agent.groq_api_key = validated.groq_api_key
+        agent.is_active = validated.is_active
+        agent.debounce_seconds = validated.debounce_seconds
 
         # Qualificação de leads
-        agent.qualification_enabled = qualification_enabled
-        agent.qualification_pipeline_id = qualification_pipeline_id or None
-        agent.qualification_stage_id = qualification_stage_id or None
-        agent.qualification_summary_prompt = qualification_summary_prompt or None
-
-        # Parse dos campos de qualificação (JSON string do frontend)
-        if qualification_fields:
-            try:
-                parsed_fields = json.loads(qualification_fields)
-                agent.qualification_fields = parsed_fields if isinstance(parsed_fields, list) else None
-            except (json.JSONDecodeError, ValueError):
-                agent.qualification_fields = None
-        else:
-            agent.qualification_fields = None
+        agent.qualification_enabled = validated.qualification_enabled
+        agent.qualification_pipeline_id = validated.qualification_pipeline_id
+        agent.qualification_stage_id = validated.qualification_stage_id
+        agent.qualification_summary_prompt = validated.qualification_summary_prompt
+        agent.qualification_fields = (
+            [f.model_dump(exclude_none=True) for f in validated.qualification_fields]
+            if validated.qualification_fields
+            else None
+        )
 
         agent.updated_at = datetime.now(timezone.utc)
 

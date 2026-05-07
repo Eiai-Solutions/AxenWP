@@ -11,6 +11,7 @@ from fastapi import APIRouter, Request, BackgroundTasks, Path
 from utils.logger import logger
 from utils.validators import is_valid_location_id
 from utils.limiter import limiter
+from utils import metrics
 from auth.token_manager import token_manager
 from services.telegram_service import telegram_service
 from services.ai_service import AIService
@@ -38,13 +39,17 @@ async def receive_telegram_update(
 ):
     """Endpoint que o Telegram chama via setWebhook."""
     if not is_valid_location_id(location_id):
+        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "telegram", "reason": "invalid_location_id"})
         return {"ok": False, "error": "Invalid location_id"}
 
     try:
         payload = await request.json()
     except Exception as e:
         logger.error(f"Telegram webhook: payload inválido: {e}")
+        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "telegram", "reason": "invalid_json"})
         return {"ok": False}
+
+    metrics.inc("axenwp_webhooks_received_total", labels={"channel": "telegram"})
 
     msg = payload.get("message") or payload.get("edited_message")
     if not msg:
