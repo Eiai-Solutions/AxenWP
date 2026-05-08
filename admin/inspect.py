@@ -471,6 +471,76 @@ async def inspect_system(request: Request, x_inspect_token: Optional[str] = Head
 # ─────────────────────────────────────────────────────────────────────
 
 
+@router.get("/webhooks/recent")
+@limiter.limit("60/minute")
+async def inspect_recent_webhooks(
+    request: Request,
+    x_inspect_token: Optional[str] = Header(None),
+):
+    """Últimos webhooks Z-API/Telegram recebidos (buffer in-memory)."""
+    gated = _gate(x_inspect_token)
+    if gated:
+        return gated
+    from webhooks.zapi_receiver import get_recent_webhooks
+    items = get_recent_webhooks()
+    return {"success": True, "count": len(items), "webhooks": items}
+
+
+@router.get("/processings/recent")
+@limiter.limit("60/minute")
+async def inspect_recent_processings(
+    request: Request,
+    x_inspect_token: Optional[str] = Header(None),
+):
+    """Últimos processamentos do AI engine (decisão TTS, status, etc)."""
+    gated = _gate(x_inspect_token)
+    if gated:
+        return gated
+    from services.ai_service import get_recent_processings
+    items = get_recent_processings()
+    return {"success": True, "count": len(items), "processings": items}
+
+
+@router.get("/zapi/{location_id}/webhook-url")
+@limiter.limit("30/minute")
+async def inspect_zapi_webhook_url(
+    request: Request,
+    location_id: str = Path(...),
+    x_inspect_token: Optional[str] = Header(None),
+):
+    """Lê a URL on-receive registrada na Z-API para este tenant — confirma se aponta pro servidor certo."""
+    gated = _gate(x_inspect_token)
+    if gated:
+        return gated
+
+    from services.zapi_service import zapi_service
+
+    db = SessionLocal()
+    try:
+        tenant = db.query(Tenant).filter(Tenant.location_id == location_id).first()
+        if not tenant:
+            return {"success": False, "error": f"Tenant {location_id} não existe."}
+        if not (tenant.zapi_instance_id and tenant.zapi_token):
+            return {"success": False, "error": "Z-API não configurada para este tenant."}
+        instance = tenant.zapi_instance_id
+        zapi_token = tenant.zapi_token
+        client_token = tenant.zapi_client_token or ""
+    finally:
+        db.close()
+
+    expected = f"{(app_settings.public_base_url or '').strip().rstrip('/')}/webhook/zapi/inbound/{location_id}"
+    current = await zapi_service.get_webhook_received(instance, zapi_token, client_token)
+    current_url = (current or {}).get("value") or (current or {}).get("url") or None
+    return {
+        "success": True,
+        "location_id": location_id,
+        "expected_webhook_url": expected,
+        "current_webhook_url": current_url,
+        "matches": bool(current_url and current_url.rstrip("/") == expected.rstrip("/")),
+        "raw_response": current,
+    }
+
+
 @router.get("/usage")
 @limiter.limit("60/minute")
 async def inspect_usage(
