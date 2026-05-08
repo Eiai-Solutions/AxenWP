@@ -164,6 +164,9 @@
                             data-aifishvoice="{{ (tenant.ai_agent_data.fishaudio_voice_id | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.fishaudio_voice_id else '' }}"
                             data-aifishmodel="{{ (tenant.ai_agent_data.fishaudio_model | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.fishaudio_model else 's1' }}"
                             data-aifishspeed="{{ tenant.ai_agent_data.fishaudio_speed if tenant.ai_agent_data else '1.0' }}"
+                            data-aifishtemp="{{ tenant.ai_agent_data.fishaudio_temperature if tenant.ai_agent_data else '0.7' }}"
+                            data-aifishtopp="{{ tenant.ai_agent_data.fishaudio_top_p if tenant.ai_agent_data else '0.7' }}"
+                            data-aifishnormloud="{{ tenant.ai_agent_data.fishaudio_normalize_loudness if tenant.ai_agent_data else 'True' }}"
                             data-aigroqkey="{{ (tenant.ai_agent_data.groq_api_key | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.groq_api_key else '' }}"
                             data-aidebounce="{{ tenant.ai_agent_data.debounce_seconds if tenant.ai_agent_data else '1.5' }}"
                             data-aiqualenabled="{{ tenant.ai_agent_data.qualification_enabled if tenant.ai_agent_data else 'False' }}"
@@ -1475,6 +1478,44 @@
                                         <span>2.0x (rápido)</span>
                                     </div>
                                 </div>
+
+                                <div>
+                                    <label class="flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1.5">
+                                        <span>Temperature (consistência)</span>
+                                        <span id="fish_temp_display" class="text-brand-red font-mono text-xs normal-case">0.70</span>
+                                    </label>
+                                    <input type="range" id="ai_fishaudio_temperature" name="fishaudio_temperature"
+                                        min="0" max="1" step="0.05" value="0.7"
+                                        class="w-full accent-brand-red cursor-pointer"
+                                        oninput="document.getElementById('fish_temp_display').textContent = parseFloat(this.value).toFixed(2)">
+                                    <div class="flex justify-between text-[9px] text-gray-600 mt-0.5 font-mono">
+                                        <span>Estável</span>
+                                        <span>Expressivo</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1.5">
+                                        <span>Top-P (diversidade)</span>
+                                        <span id="fish_topp_display" class="text-brand-red font-mono text-xs normal-case">0.70</span>
+                                    </label>
+                                    <input type="range" id="ai_fishaudio_top_p" name="fishaudio_top_p"
+                                        min="0" max="1" step="0.05" value="0.7"
+                                        class="w-full accent-brand-red cursor-pointer"
+                                        oninput="document.getElementById('fish_topp_display').textContent = parseFloat(this.value).toFixed(2)">
+                                    <div class="flex justify-between text-[9px] text-gray-600 mt-0.5 font-mono">
+                                        <span>Previsível</span>
+                                        <span>Variado</span>
+                                    </div>
+                                </div>
+
+                                <label class="flex items-center justify-between gap-3 cursor-pointer pt-1">
+                                    <span class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Normalizar volume</span>
+                                    <input type="checkbox" id="ai_fishaudio_normalize_loudness" name="fishaudio_normalize_loudness"
+                                        value="true" checked
+                                        class="w-4 h-4 accent-brand-red cursor-pointer">
+                                </label>
+                                <p class="text-[9px] text-gray-600 -mt-2 font-mono">Iguala o volume entre frases — recomendado ON.</p>
                             </div>
                         </div>
                         <!-- /BLOCO FISH AUDIO -->

@@ -38,6 +38,9 @@ async def save_agent_settings(
     fishaudio_voice_id: Optional[str] = Form(None),
     fishaudio_model: str = Form("s1"),
     fishaudio_speed: float = Form(1.0),
+    fishaudio_temperature: float = Form(0.7),
+    fishaudio_top_p: float = Form(0.7),
+    fishaudio_normalize_loudness: bool = Form(True),
     groq_api_key: Optional[str] = Form(None),
     is_active: bool = Form(False),
     debounce_seconds: float = Form(1.5),
@@ -70,6 +73,9 @@ async def save_agent_settings(
             fishaudio_voice_id=fishaudio_voice_id,
             fishaudio_model=fishaudio_model,
             fishaudio_speed=fishaudio_speed,
+            fishaudio_temperature=fishaudio_temperature,
+            fishaudio_top_p=fishaudio_top_p,
+            fishaudio_normalize_loudness=fishaudio_normalize_loudness,
             groq_api_key=groq_api_key,
             is_active=is_active,
             debounce_seconds=debounce_seconds,
@@ -115,6 +121,9 @@ async def save_agent_settings(
         agent.fishaudio_voice_id = validated.fishaudio_voice_id
         agent.fishaudio_model = validated.fishaudio_model
         agent.fishaudio_speed = validated.fishaudio_speed
+        agent.fishaudio_temperature = validated.fishaudio_temperature
+        agent.fishaudio_top_p = validated.fishaudio_top_p
+        agent.fishaudio_normalize_loudness = validated.fishaudio_normalize_loudness
         agent.groq_api_key = validated.groq_api_key
         agent.is_active = validated.is_active
         agent.debounce_seconds = validated.debounce_seconds
@@ -216,6 +225,9 @@ async def get_agent_by_channel(location_id: str, channel: str = "whatsapp"):
                 "fishaudio_voice_id": agent.fishaudio_voice_id,
                 "fishaudio_model": agent.fishaudio_model or "s1",
                 "fishaudio_speed": float(agent.fishaudio_speed) if agent.fishaudio_speed is not None else 1.0,
+                "fishaudio_temperature": float(agent.fishaudio_temperature) if agent.fishaudio_temperature is not None else 0.7,
+                "fishaudio_top_p": float(agent.fishaudio_top_p) if agent.fishaudio_top_p is not None else 0.7,
+                "fishaudio_normalize_loudness": bool(agent.fishaudio_normalize_loudness) if agent.fishaudio_normalize_loudness is not None else True,
                 "groq_api_key": agent.groq_api_key,
                 "is_active": agent.is_active,
                 "debounce_seconds": float(agent.debounce_seconds) if agent.debounce_seconds is not None else 1.5,

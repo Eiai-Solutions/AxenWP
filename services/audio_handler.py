@@ -182,6 +182,9 @@ async def synthesize_speech_fishaudio(
     voice_id: str,
     model: str = "s1",
     speed: float = 1.0,
+    temperature: float = 0.7,
+    top_p: float = 0.7,
+    normalize_loudness: bool = True,
     location_id: Optional[str] = None,
 ) -> Optional[str]:
     """
@@ -190,9 +193,15 @@ async def synthesize_speech_fishaudio(
 
     Fish Audio API: POST https://api.fish.audio/v1/tts
     Header `model: s1|s2-pro` define a engine.
+
+    Parâmetros de qualidade:
+    - temperature/top_p baixos (~0.5) → voz mais consistente entre runs
+    - normalize_loudness → equaliza volume entre frases
     """
     try:
         clamped_speed = max(0.5, min(float(speed or 1.0), 2.0))
+        clamped_temp = max(0.0, min(float(temperature if temperature is not None else 0.7), 1.0))
+        clamped_top_p = max(0.0, min(float(top_p if top_p is not None else 0.7), 1.0))
         async with httpx.AsyncClient(timeout=30.0) as client:
             resp = await client.post(
                 "https://api.fish.audio/v1/tts",
@@ -205,7 +214,12 @@ async def synthesize_speech_fishaudio(
                     "text": text,
                     "reference_id": voice_id,
                     "format": "opus",
-                    "prosody": {"speed": clamped_speed},
+                    "temperature": clamped_temp,
+                    "top_p": clamped_top_p,
+                    "prosody": {
+                        "speed": clamped_speed,
+                        "normalize_loudness": bool(normalize_loudness),
+                    },
                 },
             )
 
@@ -253,6 +267,9 @@ async def synthesize_for_agent(text: str, agent_config) -> Optional[str]:
             voice_id=voice_id,
             model=getattr(agent_config, "fishaudio_model", "s1") or "s1",
             speed=float(getattr(agent_config, "fishaudio_speed", 1.0) or 1.0),
+            temperature=float(getattr(agent_config, "fishaudio_temperature", 0.7) or 0.7),
+            top_p=float(getattr(agent_config, "fishaudio_top_p", 0.7) or 0.7),
+            normalize_loudness=bool(getattr(agent_config, "fishaudio_normalize_loudness", True)),
             location_id=location_id,
         )
 

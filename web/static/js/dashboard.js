@@ -400,6 +400,24 @@
             if (fishSpeedEl) fishSpeedEl.value = fishSpeedVal;
             const fishSpeedDisp = document.getElementById('fish_speed_display');
             if (fishSpeedDisp) fishSpeedDisp.textContent = fishSpeedVal.toFixed(2) + 'x';
+
+            const fishTempVal = parseFloat(btn.dataset.aifishtemp);
+            const fishTempEl = document.getElementById('ai_fishaudio_temperature');
+            const fishTempDisp = document.getElementById('fish_temp_display');
+            const tempV = isNaN(fishTempVal) ? 0.7 : fishTempVal;
+            if (fishTempEl) fishTempEl.value = tempV;
+            if (fishTempDisp) fishTempDisp.textContent = tempV.toFixed(2);
+
+            const fishTopPVal = parseFloat(btn.dataset.aifishtopp);
+            const fishTopPEl = document.getElementById('ai_fishaudio_top_p');
+            const fishTopPDisp = document.getElementById('fish_topp_display');
+            const topPV = isNaN(fishTopPVal) ? 0.7 : fishTopPVal;
+            if (fishTopPEl) fishTopPEl.value = topPV;
+            if (fishTopPDisp) fishTopPDisp.textContent = topPV.toFixed(2);
+
+            const fishNormEl = document.getElementById('ai_fishaudio_normalize_loudness');
+            if (fishNormEl) fishNormEl.checked = String(btn.dataset.aifishnormloud).toLowerCase() === 'true';
+
             _restoreFishVoicePlaceholder();
             toggleTtsProviderBlocks();
 
@@ -737,6 +755,22 @@
             if (fishSpeedEl) fishSpeedEl.value = fishSpeedVal;
             const fishSpeedDisp = document.getElementById('fish_speed_display');
             if (fishSpeedDisp) fishSpeedDisp.textContent = fishSpeedVal.toFixed(2) + 'x';
+
+            const tempV = (agent.fishaudio_temperature !== undefined && agent.fishaudio_temperature !== null) ? agent.fishaudio_temperature : 0.7;
+            const fishTempEl = document.getElementById('ai_fishaudio_temperature');
+            const fishTempDisp = document.getElementById('fish_temp_display');
+            if (fishTempEl) fishTempEl.value = tempV;
+            if (fishTempDisp) fishTempDisp.textContent = tempV.toFixed(2);
+
+            const topPV = (agent.fishaudio_top_p !== undefined && agent.fishaudio_top_p !== null) ? agent.fishaudio_top_p : 0.7;
+            const fishTopPEl = document.getElementById('ai_fishaudio_top_p');
+            const fishTopPDisp = document.getElementById('fish_topp_display');
+            if (fishTopPEl) fishTopPEl.value = topPV;
+            if (fishTopPDisp) fishTopPDisp.textContent = topPV.toFixed(2);
+
+            const fishNormEl = document.getElementById('ai_fishaudio_normalize_loudness');
+            if (fishNormEl) fishNormEl.checked = !!agent.fishaudio_normalize_loudness;
+
             _restoreFishVoicePlaceholder();
             toggleTtsProviderBlocks();
 

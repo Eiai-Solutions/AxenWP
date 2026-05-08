@@ -51,6 +51,9 @@ class AgentSettingsInput(BaseModel):
     fishaudio_voice_id: Optional[str] = None
     fishaudio_model: str = Field(default="s1", max_length=20)
     fishaudio_speed: float = Field(default=1.0, ge=0.5, le=2.0)
+    fishaudio_temperature: float = Field(default=0.7, ge=0.0, le=1.0)
+    fishaudio_top_p: float = Field(default=0.7, ge=0.0, le=1.0)
+    fishaudio_normalize_loudness: bool = True
     groq_api_key: Optional[str] = None
     is_active: bool = False
     debounce_seconds: float = Field(default=1.5, ge=0.5, le=30.0)
@@ -90,6 +93,14 @@ class AgentSettingsInput(BaseModel):
             return max(0.5, min(float(v), 2.0))
         except (TypeError, ValueError):
             return 1.0
+
+    @field_validator("fishaudio_temperature", "fishaudio_top_p", mode="before")
+    @classmethod
+    def clamp_fish_unit(cls, v):
+        try:
+            return max(0.0, min(float(v), 1.0))
+        except (TypeError, ValueError):
+            return 0.7
 
     @field_validator("tts_provider", mode="before")
     @classmethod

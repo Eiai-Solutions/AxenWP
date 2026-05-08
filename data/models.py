@@ -97,6 +97,9 @@ class AIAgent(Base):
     fishaudio_voice_id = Column(String(100), nullable=True)
     fishaudio_model = Column(String(20), default="s1", server_default="s1", nullable=False)
     fishaudio_speed = Column(Float, default=1.0, nullable=True)
+    fishaudio_temperature = Column(Float, default=0.7, nullable=True)
+    fishaudio_top_p = Column(Float, default=0.7, nullable=True)
+    fishaudio_normalize_loudness = Column(Boolean, default=True, server_default="true", nullable=False)
 
     # Groq - Transcrição de áudio (Whisper)
     groq_api_key = Column(String(255), nullable=True)
