@@ -41,11 +41,16 @@ class AgentSettingsInput(BaseModel):
     prompt: str = Field(min_length=1)
     model: str = Field(default="openai/gpt-4o", max_length=100)
     api_key: Optional[str] = None
+    tts_provider: str = Field(default="elevenlabs", max_length=20)
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_voice_id: Optional[str] = None
     elevenlabs_speed: float = Field(default=1.0, ge=0.25, le=4.0)
     elevenlabs_stability: float = Field(default=0.5, ge=0.0, le=1.0)
     elevenlabs_similarity: float = Field(default=0.75, ge=0.0, le=1.0)
+    fishaudio_api_key: Optional[str] = None
+    fishaudio_voice_id: Optional[str] = None
+    fishaudio_model: str = Field(default="s1", max_length=20)
+    fishaudio_speed: float = Field(default=1.0, ge=0.5, le=2.0)
     groq_api_key: Optional[str] = None
     is_active: bool = False
     debounce_seconds: float = Field(default=1.5, ge=0.5, le=30.0)
@@ -76,6 +81,31 @@ class AgentSettingsInput(BaseModel):
             return max(0.0, min(float(v), 1.0))
         except (TypeError, ValueError):
             return 0.5
+
+    @field_validator("fishaudio_speed", mode="before")
+    @classmethod
+    def clamp_fish_speed(cls, v):
+        # Fish Audio aceita 0.5–2.0 no prosody.speed
+        try:
+            return max(0.5, min(float(v), 2.0))
+        except (TypeError, ValueError):
+            return 1.0
+
+    @field_validator("tts_provider", mode="before")
+    @classmethod
+    def normalize_tts_provider(cls, v):
+        if not v:
+            return "elevenlabs"
+        v = str(v).strip().lower()
+        return v if v in ("elevenlabs", "fishaudio") else "elevenlabs"
+
+    @field_validator("fishaudio_model", mode="before")
+    @classmethod
+    def normalize_fish_model(cls, v):
+        if not v:
+            return "s1"
+        v = str(v).strip().lower()
+        return v if v in ("s1", "s2", "s2-pro", "speech-1.6") else "s1"
 
     @field_validator("debounce_seconds", mode="before")
     @classmethod

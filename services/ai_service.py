@@ -34,7 +34,7 @@ from utils import metrics
 from services.audio_handler import (
     contains_special_content,
     resolve_groq_key,
-    synthesize_speech,
+    synthesize_for_agent,
     transcribe_audio,
 )
 from services.chat_memory import PostgresChatMessageHistory, make_session_id
@@ -209,40 +209,38 @@ class AIEngine:
     ) -> Optional[str]:
         """Decide se gera TTS. Retorna data URL do áudio se sucesso, None caso contrário."""
         special = contains_special_content(ai_text)
-        has_el_key = bool(self.agent_config.elevenlabs_api_key)
-        has_voice_id = bool(self.agent_config.elevenlabs_voice_id)
+        provider = (getattr(self.agent_config, "tts_provider", "elevenlabs") or "elevenlabs").lower()
+        if provider == "fishaudio":
+            has_key = bool(self.agent_config.fishaudio_api_key)
+            has_voice = bool(self.agent_config.fishaudio_voice_id)
+        else:
+            has_key = bool(self.agent_config.elevenlabs_api_key)
+            has_voice = bool(self.agent_config.elevenlabs_voice_id)
 
         processing_entry["special_content_in_reply"] = special
-        processing_entry["has_elevenlabs_key"] = has_el_key
-        processing_entry["has_elevenlabs_voice"] = has_voice_id
+        processing_entry["tts_provider"] = provider
+        processing_entry["has_tts_key"] = has_key
+        processing_entry["has_tts_voice"] = has_voice
 
         logger.info(
-            f"[TTS-DECISION] is_audio={is_audio_input} | has_el_key={has_el_key} | "
-            f"has_voice_id={has_voice_id} | special_content={special}"
+            f"[TTS-DECISION] is_audio={is_audio_input} | provider={provider} | "
+            f"has_key={has_key} | has_voice={has_voice} | special_content={special}"
         )
 
-        if not is_audio_input or special or not has_el_key or not has_voice_id:
+        if not is_audio_input or special or not has_key or not has_voice:
             if is_audio_input and special:
                 logger.info(f"[TTS-DECISION] Fallback texto (conteúdo especial): {ai_text[:200]}")
             return None
 
         processing_entry["tts_attempted"] = True
         try:
-            data_url = await synthesize_speech(
-                text=ai_text,
-                api_key=self.agent_config.elevenlabs_api_key,
-                voice_id=self.agent_config.elevenlabs_voice_id,
-                speed=float(self.agent_config.elevenlabs_speed or 1.0),
-                stability=float(self.agent_config.elevenlabs_stability or 0.5),
-                similarity=float(self.agent_config.elevenlabs_similarity or 0.75),
-                location_id=self.agent_config.location_id,
-            )
+            data_url = await synthesize_for_agent(text=ai_text, agent_config=self.agent_config)
             if data_url:
                 processing_entry["tts_status"] = "ok"
                 return data_url
-            processing_entry["tts_status"] = "elevenlabs_failed"
+            processing_entry["tts_status"] = f"{provider}_failed"
         except Exception as ex:
-            logger.error(f"Exceção ElevenLabs: {ex}")
+            logger.error(f"Exceção TTS ({provider}): {ex}")
             processing_entry["tts_status"] = f"exception: {ex}"
         return None
 

@@ -1,6 +1,10 @@
 """
-Handler de áudio: STT (Groq Whisper) + TTS (ElevenLabs) + heurística de
-quando NÃO converter para fala (conteúdo especial: URLs, valores, telefones).
+Handler de áudio: STT (Groq Whisper) + TTS (ElevenLabs/Fish Audio) + heurística
+de quando NÃO converter para fala (conteúdo especial: URLs, valores, telefones).
+
+Dois provedores TTS suportados — selecionados por agent.tts_provider:
+- 'elevenlabs' (default)
+- 'fishaudio'
 """
 
 import asyncio
@@ -166,3 +170,103 @@ async def synthesize_speech(
     except Exception as e:
         logger.error(f"Exceção em ElevenLabs: {e}")
         return None
+
+
+# ─────────────────────────────────────────────────────────────────────
+# TTS — Fish Audio
+# ─────────────────────────────────────────────────────────────────────
+
+async def synthesize_speech_fishaudio(
+    text: str,
+    api_key: str,
+    voice_id: str,
+    model: str = "s1",
+    speed: float = 1.0,
+    location_id: Optional[str] = None,
+) -> Optional[str]:
+    """
+    Gera áudio via Fish Audio e retorna data URL (data:audio/ogg;base64,...).
+    None em erro. Registra uso na tabela usage_logs se location_id for passado.
+
+    Fish Audio API: POST https://api.fish.audio/v1/tts
+    Header `model: s1|s2-pro` define a engine.
+    """
+    try:
+        clamped_speed = max(0.5, min(float(speed or 1.0), 2.0))
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                "https://api.fish.audio/v1/tts",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "model": model or "s1",
+                },
+                json={
+                    "text": text,
+                    "reference_id": voice_id,
+                    "format": "opus",
+                    "prosody": {"speed": clamped_speed},
+                },
+            )
+
+        if resp.status_code != 200:
+            logger.error(f"Fish Audio erro: {resp.status_code} {resp.text[:200]}")
+            return None
+
+        b64 = base64.b64encode(resp.content).decode("utf-8")
+        if location_id:
+            try:
+                await asyncio.to_thread(
+                    save_usage_log,
+                    location_id=location_id,
+                    service="fishaudio",
+                    characters=len(text),
+                )
+            except Exception as e_log:
+                logger.warning(f"Falha usage log Fish Audio: {e_log}")
+        return f"data:audio/ogg;base64,{b64}"
+    except Exception as e:
+        logger.error(f"Exceção em Fish Audio: {e}")
+        return None
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Dispatcher — escolhe provider via agent_config
+# ─────────────────────────────────────────────────────────────────────
+
+async def synthesize_for_agent(text: str, agent_config) -> Optional[str]:
+    """
+    Roteia para o provider TTS configurado no agente.
+    Retorna data URL do áudio ou None se desligado/falha.
+    """
+    provider = (getattr(agent_config, "tts_provider", "elevenlabs") or "elevenlabs").lower()
+    location_id = getattr(agent_config, "location_id", None)
+
+    if provider == "fishaudio":
+        api_key = getattr(agent_config, "fishaudio_api_key", None)
+        voice_id = getattr(agent_config, "fishaudio_voice_id", None)
+        if not api_key or not voice_id:
+            return None
+        return await synthesize_speech_fishaudio(
+            text=text,
+            api_key=api_key,
+            voice_id=voice_id,
+            model=getattr(agent_config, "fishaudio_model", "s1") or "s1",
+            speed=float(getattr(agent_config, "fishaudio_speed", 1.0) or 1.0),
+            location_id=location_id,
+        )
+
+    # default → elevenlabs
+    api_key = getattr(agent_config, "elevenlabs_api_key", None)
+    voice_id = getattr(agent_config, "elevenlabs_voice_id", None)
+    if not api_key or not voice_id:
+        return None
+    return await synthesize_speech(
+        text=text,
+        api_key=api_key,
+        voice_id=voice_id,
+        speed=float(getattr(agent_config, "elevenlabs_speed", 1.0) or 1.0),
+        stability=float(getattr(agent_config, "elevenlabs_stability", 0.5) or 0.5),
+        similarity=float(getattr(agent_config, "elevenlabs_similarity", 0.75) or 0.75),
+        location_id=location_id,
+    )

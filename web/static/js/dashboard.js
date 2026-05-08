@@ -385,6 +385,24 @@
             document.getElementById('ai_elevenlabs_voice_id').dataset.preselected = elevenlabsVoiceId || '';
             _restoreVoicePlaceholder();
 
+            // TTS provider + Fish Audio
+            const ttsProvider = btn.dataset.aittsprovider || 'elevenlabs';
+            const ttsProviderEl = document.getElementById('ai_tts_provider');
+            if (ttsProviderEl) ttsProviderEl.value = ttsProvider;
+            const fishKeyEl = document.getElementById('ai_fishaudio_api_key');
+            if (fishKeyEl) fishKeyEl.value = btn.dataset.aifishkey || '';
+            const fishVoiceEl = document.getElementById('ai_fishaudio_voice_id');
+            if (fishVoiceEl) fishVoiceEl.dataset.preselected = btn.dataset.aifishvoice || '';
+            const fishModelEl = document.getElementById('ai_fishaudio_model');
+            if (fishModelEl) fishModelEl.value = btn.dataset.aifishmodel || 's1';
+            const fishSpeedVal = parseFloat(btn.dataset.aifishspeed) || 1.0;
+            const fishSpeedEl = document.getElementById('ai_fishaudio_speed');
+            if (fishSpeedEl) fishSpeedEl.value = fishSpeedVal;
+            const fishSpeedDisp = document.getElementById('fish_speed_display');
+            if (fishSpeedDisp) fishSpeedDisp.textContent = fishSpeedVal.toFixed(2) + 'x';
+            _restoreFishVoicePlaceholder();
+            toggleTtsProviderBlocks();
+
             // Qualification tab
             const qualAtivard = String(btn.dataset.aiqualenabled).toLowerCase() === 'true';
             document.getElementById('ai_qual_enabled').checked = qualAtivard;
@@ -703,6 +721,24 @@
             document.getElementById('el_stability_display').textContent = (stabilityVal * 100).toFixed(0) + '%';
             document.getElementById('ai_elevenlabs_similarity').value = similarityVal;
             document.getElementById('el_similarity_display').textContent = (similarityVal * 100).toFixed(0) + '%';
+
+            // Fish Audio
+            const provider = agent.tts_provider || 'elevenlabs';
+            const ttsProviderEl = document.getElementById('ai_tts_provider');
+            if (ttsProviderEl) ttsProviderEl.value = provider;
+            const fishKeyEl = document.getElementById('ai_fishaudio_api_key');
+            if (fishKeyEl) fishKeyEl.value = agent.fishaudio_api_key || '';
+            const fishVoiceEl = document.getElementById('ai_fishaudio_voice_id');
+            if (fishVoiceEl) fishVoiceEl.dataset.preselected = agent.fishaudio_voice_id || '';
+            const fishModelEl = document.getElementById('ai_fishaudio_model');
+            if (fishModelEl) fishModelEl.value = agent.fishaudio_model || 's1';
+            const fishSpeedVal = agent.fishaudio_speed || 1.0;
+            const fishSpeedEl = document.getElementById('ai_fishaudio_speed');
+            if (fishSpeedEl) fishSpeedEl.value = fishSpeedVal;
+            const fishSpeedDisp = document.getElementById('fish_speed_display');
+            if (fishSpeedDisp) fishSpeedDisp.textContent = fishSpeedVal.toFixed(2) + 'x';
+            _restoreFishVoicePlaceholder();
+            toggleTtsProviderBlocks();
 
             const debounceVal = agent.debounce_seconds || 1.5;
             document.getElementById('ai_debounce_seconds').value = debounceVal;
@@ -2213,6 +2249,85 @@
                 btn.disabled = false;
                 btn.innerHTML = 'Buscar Vozes';
             }
+        }
+
+        function _restoreFishVoicePlaceholder() {
+            const sel = document.getElementById('ai_fishaudio_voice_id');
+            if (!sel) return;
+            const preselected = sel.dataset.preselected || '';
+            sel.innerHTML = '';
+            if (preselected) {
+                const opt = document.createElement('option');
+                opt.value = preselected;
+                opt.textContent = 'Voz salva (clique "Buscar Vozes" para ver nome)';
+                opt.selected = true;
+                sel.appendChild(opt);
+                const optDefault = document.createElement('option');
+                optDefault.value = '';
+                optDefault.textContent = '-- Trocar voz: Busque vozes primeiro --';
+                sel.appendChild(optDefault);
+            } else {
+                const optDefault = document.createElement('option');
+                optDefault.value = '';
+                optDefault.textContent = '-- Busque as Vozes Primeiro --';
+                sel.appendChild(optDefault);
+            }
+        }
+
+        async function fetchFishAudioVoices() {
+            const apiKey = document.getElementById('ai_fishaudio_api_key').value;
+            const btn = document.getElementById('btn_fetch_fish_voices');
+            const selectInfo = document.getElementById('fish_voices_status_info');
+            const voiceSelect = document.getElementById('ai_fishaudio_voice_id');
+            const preselected = voiceSelect.dataset.preselected;
+
+            if (!apiKey) {
+                alert("Informe a API Key do Fish Audio primeiro.");
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-pulse">Loading...</span>';
+            selectInfo.innerText = "Buscando vozes...";
+
+            try {
+                const response = await fetch(`/admin/agents/fishaudio/voices?api_key=${encodeURIComponent(apiKey)}`);
+                const data = await response.json();
+
+                if (response.ok && data.success) {
+                    voiceSelect.innerHTML = '<option value="">-- Selecione a Voz --</option>';
+                    data.voices.forEach(v => {
+                        const opt = document.createElement('option');
+                        opt.value = v.voice_id;
+                        const langs = (v.languages || []).join(',') || '?';
+                        const stateTag = v.state && v.state !== 'trained' ? ` [${v.state}]` : '';
+                        opt.innerText = `${v.name} (${langs})${stateTag}`;
+                        if (v.voice_id === preselected) opt.selected = true;
+                        voiceSelect.appendChild(opt);
+                    });
+                    selectInfo.innerText = `${data.voices.length} vozes carregadas.`;
+                    selectInfo.classList.replace('text-gray-400', 'text-green-400');
+                } else {
+                    selectInfo.innerText = data.detail || "Erro ao carregar vozes.";
+                    selectInfo.classList.replace('text-gray-400', 'text-red-400');
+                }
+            } catch (err) {
+                selectInfo.innerText = "Erro de conexão.";
+                selectInfo.classList.replace('text-gray-400', 'text-red-400');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Buscar Vozes';
+            }
+        }
+
+        function toggleTtsProviderBlocks() {
+            const sel = document.getElementById('ai_tts_provider');
+            if (!sel) return;
+            const provider = sel.value || 'elevenlabs';
+            const elBlock = document.getElementById('tts_block_elevenlabs');
+            const fishBlock = document.getElementById('tts_block_fishaudio');
+            if (elBlock) elBlock.classList.toggle('hidden', provider !== 'elevenlabs');
+            if (fishBlock) fishBlock.classList.toggle('hidden', provider !== 'fishaudio');
         }
 
         // Move Voice and Knowledge tab content into collapsibles inside Config tab

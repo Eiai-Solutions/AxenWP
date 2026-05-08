@@ -28,11 +28,16 @@ async def save_agent_settings(
     prompt: str = Form(...),
     model: str = Form("openai/gpt-4o"),
     api_key: Optional[str] = Form(None),
+    tts_provider: str = Form("elevenlabs"),
     elevenlabs_api_key: Optional[str] = Form(None),
     elevenlabs_voice_id: Optional[str] = Form(None),
     elevenlabs_speed: float = Form(1.0),
     elevenlabs_stability: float = Form(0.5),
     elevenlabs_similarity: float = Form(0.75),
+    fishaudio_api_key: Optional[str] = Form(None),
+    fishaudio_voice_id: Optional[str] = Form(None),
+    fishaudio_model: str = Form("s1"),
+    fishaudio_speed: float = Form(1.0),
     groq_api_key: Optional[str] = Form(None),
     is_active: bool = Form(False),
     debounce_seconds: float = Form(1.5),
@@ -55,11 +60,16 @@ async def save_agent_settings(
             prompt=prompt,
             model=model,
             api_key=api_key,
+            tts_provider=tts_provider,
             elevenlabs_api_key=elevenlabs_api_key,
             elevenlabs_voice_id=elevenlabs_voice_id,
             elevenlabs_speed=elevenlabs_speed,
             elevenlabs_stability=elevenlabs_stability,
             elevenlabs_similarity=elevenlabs_similarity,
+            fishaudio_api_key=fishaudio_api_key,
+            fishaudio_voice_id=fishaudio_voice_id,
+            fishaudio_model=fishaudio_model,
+            fishaudio_speed=fishaudio_speed,
             groq_api_key=groq_api_key,
             is_active=is_active,
             debounce_seconds=debounce_seconds,
@@ -95,11 +105,16 @@ async def save_agent_settings(
         agent.prompt = validated.prompt
         agent.model = validated.model
         agent.api_key = validated.api_key
+        agent.tts_provider = validated.tts_provider
         agent.elevenlabs_api_key = validated.elevenlabs_api_key
         agent.elevenlabs_voice_id = validated.elevenlabs_voice_id
         agent.elevenlabs_speed = validated.elevenlabs_speed
         agent.elevenlabs_stability = validated.elevenlabs_stability
         agent.elevenlabs_similarity = validated.elevenlabs_similarity
+        agent.fishaudio_api_key = validated.fishaudio_api_key
+        agent.fishaudio_voice_id = validated.fishaudio_voice_id
+        agent.fishaudio_model = validated.fishaudio_model
+        agent.fishaudio_speed = validated.fishaudio_speed
         agent.groq_api_key = validated.groq_api_key
         agent.is_active = validated.is_active
         agent.debounce_seconds = validated.debounce_seconds
@@ -191,11 +206,16 @@ async def get_agent_by_channel(location_id: str, channel: str = "whatsapp"):
                 "prompt": agent.prompt,
                 "model": agent.model,
                 "api_key": agent.api_key,
+                "tts_provider": agent.tts_provider or "elevenlabs",
                 "elevenlabs_api_key": agent.elevenlabs_api_key,
                 "elevenlabs_voice_id": agent.elevenlabs_voice_id,
                 "elevenlabs_speed": float(agent.elevenlabs_speed) if agent.elevenlabs_speed is not None else 1.0,
                 "elevenlabs_stability": float(agent.elevenlabs_stability) if agent.elevenlabs_stability is not None else 0.5,
                 "elevenlabs_similarity": float(agent.elevenlabs_similarity) if agent.elevenlabs_similarity is not None else 0.75,
+                "fishaudio_api_key": agent.fishaudio_api_key,
+                "fishaudio_voice_id": agent.fishaudio_voice_id,
+                "fishaudio_model": agent.fishaudio_model or "s1",
+                "fishaudio_speed": float(agent.fishaudio_speed) if agent.fishaudio_speed is not None else 1.0,
                 "groq_api_key": agent.groq_api_key,
                 "is_active": agent.is_active,
                 "debounce_seconds": float(agent.debounce_seconds) if agent.debounce_seconds is not None else 1.5,
@@ -328,8 +348,12 @@ async def get_inherit_keys(location_id: str):
             "api_key": wa.api_key or "",
             "model": wa.model or "openai/gpt-4o",
             "groq_api_key": wa.groq_api_key or "",
+            "tts_provider": wa.tts_provider or "elevenlabs",
             "elevenlabs_api_key": wa.elevenlabs_api_key or "",
             "elevenlabs_voice_id": wa.elevenlabs_voice_id or "",
+            "fishaudio_api_key": wa.fishaudio_api_key or "",
+            "fishaudio_voice_id": wa.fishaudio_voice_id or "",
+            "fishaudio_model": wa.fishaudio_model or "s1",
         }
     finally:
         db.close()
@@ -588,6 +612,47 @@ async def get_elevenlabs_voices(api_key: str):
     except Exception as e:
         logger.error(f"Erro ao buscar vozes na ElevenLabs: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao consultar serviço de voz.")
+
+
+@router.get("/fishaudio/voices")
+async def get_fishaudio_voices(api_key: str):
+    """
+    Lista as vozes (modelos) da conta Fish Audio.
+    Por padrão retorna só as do usuário (self=true) — vozes treinadas/cloned.
+    """
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API Key do Fish Audio é obrigatória.")
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(
+                "https://api.fish.audio/model",
+                headers={"Authorization": f"Bearer {api_key}"},
+                params={"self": "true", "page_size": 100},
+            )
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Fish Audio retornou {response.status_code}: {response.text[:200]}",
+                )
+            data = response.json()
+            voices = [
+                {
+                    "voice_id": item.get("_id"),
+                    "name": item.get("title") or "Sem título",
+                    "languages": item.get("languages") or [],
+                    "state": item.get("state"),
+                }
+                for item in data.get("items", [])
+                if item.get("_id")
+            ]
+            return {"success": True, "voices": voices, "total": data.get("total", len(voices))}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao buscar vozes no Fish Audio: {e}")
+        raise HTTPException(status_code=500, detail="Erro interno ao consultar Fish Audio.")
 
 
 # ── Helpers para chamadas OpenRouter ──
@@ -1225,8 +1290,12 @@ async def save_form_data(location_id: str, request: Request):
                 api_key=(wa_agent.api_key if wa_agent else None),
                 model=(wa_agent.model if wa_agent else "openai/gpt-4o"),
                 groq_api_key=(wa_agent.groq_api_key if wa_agent else None),
+                tts_provider=(wa_agent.tts_provider if wa_agent else "elevenlabs"),
                 elevenlabs_api_key=(wa_agent.elevenlabs_api_key if wa_agent else None),
                 elevenlabs_voice_id=(wa_agent.elevenlabs_voice_id if wa_agent else None),
+                fishaudio_api_key=(wa_agent.fishaudio_api_key if wa_agent else None),
+                fishaudio_voice_id=(wa_agent.fishaudio_voice_id if wa_agent else None),
+                fishaudio_model=(wa_agent.fishaudio_model if wa_agent else "s1"),
                 debounce_seconds=(wa_agent.debounce_seconds if wa_agent else 1.5),
             )
             db.add(agent)

@@ -80,6 +80,9 @@ class AIAgent(Base):
     # OpenRouter
     api_key = Column(String(255), nullable=True)
 
+    # TTS — provedor escolhido para geração de voz ('elevenlabs' | 'fishaudio')
+    tts_provider = Column(String(20), default="elevenlabs", server_default="elevenlabs", nullable=False)
+
     # ElevenLabs - Fase 3 Voz
     elevenlabs_api_key = Column(String(255), nullable=True)
     elevenlabs_voice_id = Column(String(100), nullable=True)
@@ -88,6 +91,12 @@ class AIAgent(Base):
     elevenlabs_speed = Column(Float, default=1.0, nullable=True)
     elevenlabs_stability = Column(Float, default=0.5, nullable=True)
     elevenlabs_similarity = Column(Float, default=0.75, nullable=True)
+
+    # Fish Audio (alternativo ao ElevenLabs)
+    fishaudio_api_key = Column(String(255), nullable=True)
+    fishaudio_voice_id = Column(String(100), nullable=True)
+    fishaudio_model = Column(String(20), default="s1", server_default="s1", nullable=False)
+    fishaudio_speed = Column(Float, default=1.0, nullable=True)
 
     # Groq - Transcrição de áudio (Whisper)
     groq_api_key = Column(String(255), nullable=True)
