@@ -157,6 +157,31 @@ class TokenManager:
         finally:
             db.close()
 
+    def create_lite_tenant(self, company_name: str) -> Tenant:
+        """Cria um tenant 'lite' — só onboarding, sem CRM nem Z-API.
+
+        Já gera o form_token para o link público /form/{token} ser entregue
+        imediatamente. Canais (Z-API, Telegram) e CRM são adicionados depois
+        pelo admin.
+        """
+        location_id = f"ob_{uuid.uuid4().hex[:12]}"
+        db = SessionLocal()
+        try:
+            tenant = Tenant(
+                location_id=location_id,
+                company_name=company_name,
+                mode="lite",
+                form_token=uuid.uuid4().hex,
+                is_active=True,
+            )
+            db.add(tenant)
+            db.commit()
+            db.refresh(tenant)
+            logger.info(f"Tenant lite '{company_name}' ({location_id}) criado.")
+            return tenant
+        finally:
+            db.close()
+
     def delete_tenant(self, location_id: str) -> bool:
         """Deleta um tenant e todos os dados relacionados (cascade)."""
         db = SessionLocal()

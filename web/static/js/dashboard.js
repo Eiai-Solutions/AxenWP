@@ -168,6 +168,37 @@
             document.getElementById('crmSection').classList.toggle('hidden');
         }
 
+        function toggleOnboardingSection() {
+            document.getElementById('onboardingSection').classList.toggle('hidden');
+        }
+
+        function openOnboardingSuccessModal(url, company) {
+            const linkInput = document.getElementById('onboardingSuccessLink');
+            const companyLabel = document.getElementById('onboardingSuccessCompany');
+            const feedback = document.getElementById('onboardingCopyFeedback');
+            if (linkInput) linkInput.value = url || '';
+            if (companyLabel) companyLabel.textContent = company || '';
+            if (feedback) feedback.innerHTML = '&nbsp;';
+            document.getElementById('onboardingSuccessModal').classList.remove('hidden');
+        }
+
+        function closeOnboardingSuccessModal() {
+            document.getElementById('onboardingSuccessModal').classList.add('hidden');
+        }
+
+        async function copyOnboardingLink() {
+            const linkInput = document.getElementById('onboardingSuccessLink');
+            const feedback = document.getElementById('onboardingCopyFeedback');
+            if (!linkInput || !linkInput.value) return;
+            try {
+                await navigator.clipboard.writeText(linkInput.value);
+                if (feedback) feedback.textContent = 'Link copiado.';
+            } catch (e) {
+                linkInput.select();
+                if (feedback) feedback.textContent = 'Selecione e copie manualmente.';
+            }
+        }
+
         function switchCrmTab(tab) {
             const oauthTab = document.getElementById('crmTabOauth');
             const pitTab = document.getElementById('crmTabPit');
@@ -2377,5 +2408,17 @@
             if (knowledgeTab && knowledgeMount) {
                 while (knowledgeTab.firstChild) knowledgeMount.appendChild(knowledgeTab.firstChild);
                 knowledgeTab.remove();
+            }
+
+            // Abre o modal de sucesso do onboarding se a URL trouxer o link recém-gerado
+            const params = new URLSearchParams(window.location.search);
+            const obLink = params.get('onboarding_link');
+            const obCompany = params.get('onboarding_company');
+            if (obLink) {
+                openOnboardingSuccessModal(obLink, obCompany || '');
+                params.delete('onboarding_link');
+                params.delete('onboarding_company');
+                const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+                window.history.replaceState({}, '', clean);
             }
         });

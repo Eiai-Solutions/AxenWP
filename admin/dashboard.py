@@ -694,3 +694,35 @@ async def onboard_whatsapp_only(
         logger.error(f"Erro ao criar tenant WhatsApp-only: {e}")
         return RedirectResponse(url=f"/admin/dashboard?err=Erro ao criar instância: {str(e)}", status_code=303)
 
+
+@router.post("/onboard-lite")
+async def onboard_lite(
+    request: Request,
+    company_name: str = Form(...),
+    authenticated: bool = Depends(verify_admin)
+):
+    """Cria um tenant 'lite' — só onboarding, gera link público pro cliente preencher."""
+    if not authenticated:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    name = company_name.strip()
+    if not name:
+        return RedirectResponse(url="/admin/dashboard?err=Informe o nome da empresa.", status_code=303)
+
+    try:
+        tenant = token_manager.create_lite_tenant(company_name=name)
+        base_url = str(request.base_url).rstrip("/")
+        form_url = f"{base_url}/form/{tenant.form_token}"
+        from urllib.parse import quote
+        return RedirectResponse(
+            url=(
+                f"/admin/dashboard?msg=Instância '{tenant.company_name}' criada. Compartilhe o link com o cliente."
+                f"&onboarding_link={quote(form_url)}"
+                f"&onboarding_company={quote(tenant.company_name)}"
+            ),
+            status_code=303
+        )
+    except Exception as e:
+        logger.error(f"Erro ao criar tenant lite: {e}")
+        return RedirectResponse(url=f"/admin/dashboard?err=Erro ao criar instância: {str(e)}", status_code=303)
+
