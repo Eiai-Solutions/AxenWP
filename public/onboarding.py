@@ -72,16 +72,11 @@ async def submit_onboarding_form(
     products_services: str = Form(""),
     differentials: str = Form(""),
     faq: str = Form(""),
-    agent_name: str = Form(""),
     tone: str = Form(""),
     business_hours: str = Form(""),
     contact_info: str = Form(""),
     agent_goal: str = Form(""),
-    restrictions: str = Form(""),
     extra_info: str = Form(""),
-    qualification_questions: str = Form(""),
-    agent_type: str = Form("inbound"),
-    tone_register: str = Form(""),
 ):
     """Recebe os dados do formulário e gera o prompt via IA Mestre."""
     # Rate limit aplicado em main.py via decorator do limiter; também validamos
@@ -106,6 +101,11 @@ async def submit_onboarding_form(
         model = settings.admin_openrouter_model or "openai/gpt-4o"
         headers = _openrouter_headers(settings.admin_openrouter_key)
 
+        # Campos preenchidos pelo cliente no formulário público.
+        # Os 5 abaixo (agent_type, agent_name, tone_register, restrictions,
+        # qualification_questions) são definidos pelo operador no editor
+        # do agente — aqui ficam com defaults seguros pra IA Mestre operar
+        # em modo "auto".
         form_answers = {
             "company_name": company_name,
             "industry": industry,
@@ -116,16 +116,16 @@ async def submit_onboarding_form(
             "products_services": products_services,
             "differentials": differentials,
             "faq": faq,
-            "agent_name": agent_name,
             "tone": tone,
             "business_hours": business_hours,
             "contact_info": contact_info,
             "agent_goal": agent_goal,
-            "restrictions": restrictions,
             "extra_info": extra_info,
-            "qualification_questions": qualification_questions,
-            "agent_type": agent_type,
-            "tone_register": tone_register or None,
+            "agent_name": "",
+            "agent_type": "inbound",
+            "tone_register": None,
+            "restrictions": "",
+            "qualification_questions": "",
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
