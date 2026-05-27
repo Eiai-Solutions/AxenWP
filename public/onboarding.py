@@ -152,7 +152,7 @@ async def submit_onboarding_form(
         if not agent:
             agent = AIAgent(
                 location_id=tenant.location_id,
-                name=agent_name or "Agente Inteligente",
+                name="Agente Inteligente",
                 prompt=generated_prompt,
                 form_data=form_answers,
             )
@@ -160,8 +160,6 @@ async def submit_onboarding_form(
         else:
             agent.prompt = generated_prompt
             agent.form_data = form_answers
-            if agent_name:
-                agent.name = agent_name
 
         db.commit()
         logger.info(f"Prompt gerado via formulário para tenant {tenant.location_id} ({tenant.company_name})")
