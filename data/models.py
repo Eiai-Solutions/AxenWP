@@ -263,3 +263,28 @@ class AgentPromptHistory(Base):
     form_data_snapshot = Column(JSON, nullable=True)
     note = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class OnboardingSubmission(Base):
+    """
+    Submissões cruas do formulário público de onboarding.
+
+    Gravadas IMEDIATAMENTE no submit, antes de qualquer geração de prompt ou
+    criação de agente — garante que os dados do cliente nunca se percam mesmo
+    que a IA Mestre falhe. O operador depois revê e decide criar (ou não) o
+    agente a partir destes dados.
+    """
+    __tablename__ = "onboarding_submissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_location_id = Column(
+        String,
+        ForeignKey("tenants.location_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    form_data = Column(JSON, nullable=False)
+    # 'pending' = aguardando decisão do operador; 'processed' = agente já gerado
+    status = Column(String(20), default="pending", server_default="pending", nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    processed_at = Column(DateTime, nullable=True)

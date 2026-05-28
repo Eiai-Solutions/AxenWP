@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 import json
 
 from data.database import get_db, SessionLocal
-from data.models import Tenant, AIAgent, SystemSettings, ChatHistory, QualifiedLead
+from data.models import Tenant, AIAgent, SystemSettings, ChatHistory, QualifiedLead, OnboardingSubmission
 from auth.token_manager import token_manager
 from services.ghl_service import ghl_service
 from datetime import datetime, timezone
@@ -1373,6 +1373,155 @@ async def save_form_data(location_id: str, request: Request):
         }
     except Exception as e:
         logger.error(f"Erro ao salvar form_data: {e}", exc_info=True)
+        db.rollback()
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Onboarding submissions (formulário público) → criar agente sob demanda
+# ─────────────────────────────────────────────────────────────────────
+
+@router.get("/onboarding/submissions")
+async def list_onboarding_submissions(request: Request, location_id: Optional[str] = None):
+    """Lista submissões do formulário público (filtra por tenant se passado)."""
+    from admin.dashboard import verify_admin
+    if not verify_admin(request.cookies.get("admin_session")):
+        return {"success": False, "error": "Não autenticado."}
+
+    db = SessionLocal()
+    try:
+        q = db.query(OnboardingSubmission)
+        if location_id:
+            q = q.filter(OnboardingSubmission.tenant_location_id == location_id)
+        rows = q.order_by(OnboardingSubmission.created_at.desc()).limit(100).all()
+        return {
+            "success": True,
+            "submissions": [
+                {
+                    "id": r.id,
+                    "tenant_location_id": r.tenant_location_id,
+                    "status": r.status,
+                    "form_data": r.form_data,
+                    "created_at": str(r.created_at) if r.created_at else None,
+                    "processed_at": str(r.processed_at) if r.processed_at else None,
+                }
+                for r in rows
+            ],
+        }
+    finally:
+        db.close()
+
+
+@router.post("/onboarding/submissions/{submission_id}/create-agent")
+async def create_agent_from_submission(submission_id: int, request: Request):
+    """
+    Cria (ou atualiza) o agente WhatsApp do tenant a partir de uma submissão
+    de onboarding, rodando a IA Mestre para gerar o prompt. Marca a submissão
+    como 'processed'. Se a IA Mestre falhar, a submissão continua 'pending' e
+    o dado permanece intacto.
+    """
+    from admin.dashboard import verify_admin
+    if not verify_admin(request.cookies.get("admin_session")):
+        return {"success": False, "error": "Não autenticado."}
+
+    db = SessionLocal()
+    try:
+        submission = (
+            db.query(OnboardingSubmission)
+            .filter(OnboardingSubmission.id == submission_id)
+            .first()
+        )
+        if not submission:
+            return {"success": False, "error": "Submissão não encontrada."}
+
+        location_id = submission.tenant_location_id
+        tenant = db.query(Tenant).filter(Tenant.location_id == location_id).first()
+        if not tenant:
+            return {"success": False, "error": "Tenant não encontrado."}
+
+        settings = db.query(SystemSettings).first()
+        if not settings or not settings.admin_openrouter_key:
+            return {"success": False, "error": "IA Mestre não configurada (System Settings)."}
+
+        # Merge: respostas do cliente + defaults operacionais que a IA Mestre espera.
+        form_data = dict(submission.form_data or {})
+        form_data.setdefault("agent_name", "")
+        form_data.setdefault("agent_type", "inbound")
+        form_data.setdefault("tone_register", None)
+        form_data.setdefault("restrictions", "")
+        form_data.setdefault("qualification_questions", "")
+
+        from utils.master_prompt import build_messages
+        api_key = settings.admin_openrouter_key
+        model = settings.admin_openrouter_model or "openai/gpt-4o"
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=_openrouter_headers(api_key, "AxenWP Prompt Generator"),
+                json={
+                    "model": model,
+                    "max_tokens": 6000,
+                    "messages": build_messages(form_data),
+                },
+            )
+            if resp.status_code != 200:
+                logger.error(
+                    f"Erro OpenRouter ao gerar agente da submissão {submission_id}: "
+                    f"{resp.status_code} — {resp.text}"
+                )
+                # Submissão permanece 'pending' — dado preservado.
+                return {"success": False, "error": "Erro ao gerar prompt com IA Mestre."}
+            generated_prompt = resp.json()["choices"][0]["message"]["content"]
+
+        agent = (
+            db.query(AIAgent)
+            .filter(AIAgent.location_id == location_id, AIAgent.channel == "whatsapp")
+            .first()
+        )
+        if not agent:
+            agent = AIAgent(
+                location_id=location_id,
+                channel="whatsapp",
+                name=form_data.get("agent_name") or "Agente Inteligente",
+                prompt=generated_prompt,
+                form_data=form_data,
+            )
+            db.add(agent)
+        else:
+            agent.prompt = generated_prompt
+            agent.form_data = form_data
+            if form_data.get("agent_name"):
+                agent.name = form_data["agent_name"]
+
+        submission.status = "processed"
+        submission.processed_at = datetime.now(timezone.utc)
+        db.commit()
+        db.refresh(agent)
+
+        try:
+            from services.prompt_history import snapshot_prompt
+            snapshot_prompt(
+                location_id=location_id,
+                channel=agent.channel or "whatsapp",
+                prompt=agent.prompt,
+                source="form",
+                agent_id=agent.id,
+                form_data_snapshot=form_data,
+            )
+        except Exception as e_snap:
+            logger.warning(f"Falha snapshot prompt (create-from-onboarding): {e_snap}")
+
+        logger.info(
+            f"Agente gerado da submissão {submission_id} para tenant {location_id} "
+            f"({tenant.company_name})"
+        )
+        return {"success": True, "agent_id": agent.id, "location_id": location_id}
+
+    except Exception as e:
+        logger.error(f"Erro ao criar agente da submissão {submission_id}: {e}", exc_info=True)
         db.rollback()
         return {"success": False, "error": str(e)}
     finally:

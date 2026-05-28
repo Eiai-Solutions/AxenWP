@@ -199,6 +199,112 @@
             }
         }
 
+        // ── Onboarding review (dados preenchidos + gerar agente) ──
+        const ONBOARDING_FIELD_LABELS = {
+            company_name: 'Nome da empresa',
+            industry: 'Segmento / Indústria',
+            company_description: 'Descrição da empresa',
+            target_audience: 'Público-alvo',
+            website: 'Website',
+            instagram: 'Instagram',
+            products_services: 'Produtos / Serviços',
+            differentials: 'Diferenciais',
+            faq: 'FAQ',
+            tone: 'Tom de voz',
+            business_hours: 'Horário de atendimento',
+            contact_info: 'Contato',
+            agent_goal: 'Objetivo do agente',
+            extra_info: 'Informações extras',
+        };
+
+        function closeOnboardingReviewModal() {
+            document.getElementById('onboardingReviewModal').classList.add('hidden');
+        }
+
+        async function openOnboardingModal(locationId, company) {
+            const modal = document.getElementById('onboardingReviewModal');
+            const body = document.getElementById('onboardingReviewBody');
+            document.getElementById('onboardingReviewCompany').textContent = company || locationId;
+            body.innerHTML = '<p class="text-xs text-gray-500 font-mono">Carregando...</p>';
+            modal.classList.remove('hidden');
+
+            try {
+                const resp = await fetch(`/admin/agents/onboarding/submissions?location_id=${encodeURIComponent(locationId)}`);
+                const data = await resp.json();
+                if (!data.success) {
+                    body.innerHTML = `<p class="text-xs text-red-400 font-mono">${_escapeHtml(data.error || 'Erro ao carregar.')}</p>`;
+                    return;
+                }
+                const subs = data.submissions || [];
+                if (subs.length === 0) {
+                    body.innerHTML = '<p class="text-xs text-gray-500 font-mono">Nenhuma submissão encontrada.</p>';
+                    return;
+                }
+                body.innerHTML = subs.map(s => _renderSubmissionCard(s)).join('');
+            } catch (e) {
+                body.innerHTML = '<p class="text-xs text-red-400 font-mono">Erro de conexão.</p>';
+            }
+        }
+
+        function _renderSubmissionCard(s) {
+            const fd = s.form_data || {};
+            const rows = Object.keys(ONBOARDING_FIELD_LABELS)
+                .filter(k => fd[k] && String(fd[k]).trim())
+                .map(k => `
+                    <div class="border-b border-gray-800/60 py-2">
+                        <p class="text-[9px] text-gray-500 font-mono uppercase tracking-widest">${_escapeHtml(ONBOARDING_FIELD_LABELS[k])}</p>
+                        <p class="text-xs text-gray-200 font-mono whitespace-pre-wrap">${_escapeHtml(String(fd[k]))}</p>
+                    </div>`).join('');
+
+            const isProcessed = s.status === 'processed';
+            const statusBadge = isProcessed
+                ? '<span class="text-[9px] font-mono uppercase tracking-widest text-gray-400">Agente já gerado</span>'
+                : '<span class="text-[9px] font-mono uppercase tracking-widest text-green-400">Pendente</span>';
+
+            const actionBtn = isProcessed
+                ? `<button disabled class="px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest text-gray-600 bg-gray-800 cursor-not-allowed">Processado</button>`
+                : `<button onclick="createAgentFromSubmission(${s.id}, this)"
+                        class="px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white bg-green-600 hover:bg-green-500 transition-colors shadow-lg">
+                        Gerar Agente
+                    </button>`;
+
+            return `
+                <div class="bg-black/30 border border-gray-800 rounded-xl p-4" data-submission="${s.id}">
+                    <div class="flex justify-between items-center mb-3">
+                        <span class="text-[10px] text-gray-500 font-mono">#${s.id} · ${_escapeHtml(s.created_at || '')}</span>
+                        ${statusBadge}
+                    </div>
+                    <div class="max-h-72 overflow-y-auto pr-1">${rows || '<p class="text-xs text-gray-600 font-mono">Formulário vazio.</p>'}</div>
+                    <div class="flex justify-end mt-4">${actionBtn}</div>
+                    <p class="onboarding-action-feedback text-[10px] font-mono text-right mt-2 h-4"></p>
+                </div>`;
+        }
+
+        async function createAgentFromSubmission(submissionId, btn) {
+            const card = btn.closest('[data-submission]');
+            const feedback = card ? card.querySelector('.onboarding-action-feedback') : null;
+            btn.disabled = true;
+            const original = btn.textContent;
+            btn.innerHTML = '<span class="animate-pulse">Gerando...</span>';
+            if (feedback) { feedback.textContent = ''; feedback.classList.remove('text-red-400', 'text-green-400'); }
+            try {
+                const resp = await fetch(`/admin/agents/onboarding/submissions/${submissionId}/create-agent`, { method: 'POST' });
+                const data = await resp.json();
+                if (data.success) {
+                    if (feedback) { feedback.textContent = 'Agente gerado! Recarregando...'; feedback.classList.add('text-green-400'); }
+                    setTimeout(() => window.location.reload(), 1200);
+                } else {
+                    btn.disabled = false;
+                    btn.textContent = original;
+                    if (feedback) { feedback.textContent = data.error || 'Erro ao gerar.'; feedback.classList.add('text-red-400'); }
+                }
+            } catch (e) {
+                btn.disabled = false;
+                btn.textContent = original;
+                if (feedback) { feedback.textContent = 'Erro de conexão.'; feedback.classList.add('text-red-400'); }
+            }
+        }
+
         function switchCrmTab(tab) {
             const oauthTab = document.getElementById('crmTabOauth');
             const pitTab = document.getElementById('crmTabPit');

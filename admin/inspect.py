@@ -23,6 +23,7 @@ from data.models import (
     AIAgent,
     AgentPromptHistory,
     ChatHistory,
+    OnboardingSubmission,
     QualifiedLead,
     SystemSettings,
     Tenant,
@@ -539,6 +540,44 @@ async def inspect_zapi_webhook_url(
         "matches": bool(current_url and current_url.rstrip("/") == expected.rstrip("/")),
         "raw_response": current,
     }
+
+
+@router.get("/onboarding")
+@limiter.limit("60/minute")
+async def inspect_onboarding(
+    request: Request,
+    location_id: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    x_inspect_token: Optional[str] = Header(None),
+):
+    """Submissões do formulário público (filtra por tenant se passado)."""
+    gated = _gate(x_inspect_token)
+    if gated:
+        return gated
+
+    db = SessionLocal()
+    try:
+        q = db.query(OnboardingSubmission)
+        if location_id:
+            q = q.filter(OnboardingSubmission.tenant_location_id == location_id)
+        rows = q.order_by(OnboardingSubmission.created_at.desc()).limit(limit).all()
+        return {
+            "success": True,
+            "count": len(rows),
+            "submissions": [
+                {
+                    "id": r.id,
+                    "tenant_location_id": r.tenant_location_id,
+                    "status": r.status,
+                    "form_data": r.form_data,
+                    "created_at": str(r.created_at) if r.created_at else None,
+                    "processed_at": str(r.processed_at) if r.processed_at else None,
+                }
+                for r in rows
+            ],
+        }
+    finally:
+        db.close()
 
 
 @router.get("/usage")

@@ -94,9 +94,11 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
     
     # Busca os Agentes de IA e System Settings
     from data.database import SessionLocal
-    from data.models import AIAgent, SystemSettings
+    from data.models import AIAgent, SystemSettings, OnboardingSubmission
+    from sqlalchemy import func as _func
     db = SessionLocal()
     agent_map = {}
+    pending_onboarding_map = {}
     system_settings = None
     try:
         # Filtra agentes do canal WhatsApp para a linha principal da tabela.
@@ -104,7 +106,22 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
         agents = db.query(AIAgent).filter(AIAgent.channel == "whatsapp").all()
         for a in agents:
             agent_map[a.location_id] = a
-            
+
+        # Contagem de submissões de onboarding pendentes por tenant (badge no card)
+        try:
+            pend_rows = (
+                db.query(
+                    OnboardingSubmission.tenant_location_id,
+                    _func.count(OnboardingSubmission.id),
+                )
+                .filter(OnboardingSubmission.status == "pending")
+                .group_by(OnboardingSubmission.tenant_location_id)
+                .all()
+            )
+            pending_onboarding_map = {loc: cnt for loc, cnt in pend_rows}
+        except Exception as e_pend:
+            logger.warning(f"Falha ao contar onboarding pendente: {e_pend}")
+
         settings = db.query(SystemSettings).first()
         if settings:
             system_settings = {
@@ -142,8 +159,9 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
             "pit_token": t.pit_token,
             "telegram_bot_token": t.telegram_bot_token,
             "telegram_bot_username": t.telegram_bot_username,
+            "pending_onboarding": int(pending_onboarding_map.get(t.location_id, 0)),
         }
-        
+
         agent = agent_map.get(t.location_id)
         if agent:
             t_dict["ai_agent_data"] = {

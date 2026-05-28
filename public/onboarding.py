@@ -1,35 +1,27 @@
 """
 Rotas públicas do formulário de onboarding para clientes.
-O cliente preenche informações da empresa e a IA Mestre gera o prompt do agente.
+
+O cliente preenche informações da empresa e os dados são gravados na hora em
+onboarding_submissions. A geração do prompt e a criação do agente são decisões
+SEPARADAS, feitas pelo operador depois no dashboard — assim os dados do cliente
+nunca se perdem mesmo que a IA Mestre esteja fora do ar.
 """
 
 import logging
-import uuid
-from typing import Optional
+from datetime import datetime, timezone
 
-import httpx
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from data.database import SessionLocal
-from data.models import Tenant, AIAgent, SystemSettings
-from auth.token_manager import token_manager
-from utils.master_prompt import build_messages
+from data.models import Tenant, OnboardingSubmission
 from utils.validators import is_valid_form_token
 from utils.limiter import limiter
 
 router = APIRouter(prefix="/form", tags=["public_form"])
 logger = logging.getLogger(__name__)
 templates = Jinja2Templates(directory="web/templates")
-
-
-def _openrouter_headers(api_key: str) -> dict:
-    return {
-        "Authorization": f"Bearer {api_key}",
-        "HTTP-Referer": "https://axenwp.com",
-        "X-Title": "AxenWP Prompt Generator",
-    }
 
 
 @router.get("/{form_token}", response_class=HTMLResponse)
@@ -78,9 +70,13 @@ async def submit_onboarding_form(
     agent_goal: str = Form(""),
     extra_info: str = Form(""),
 ):
-    """Recebe os dados do formulário e gera o prompt via IA Mestre."""
-    # Rate limit aplicado em main.py via decorator do limiter; também validamos
-    # o formato do token aqui para falhar cedo em payloads aleatórios.
+    """
+    Grava as respostas do formulário IMEDIATAMENTE em onboarding_submissions.
+
+    Não chama a IA Mestre nem cria agente — isso é decisão posterior do operador.
+    Assim, mesmo sem OpenRouter configurado ou se a geração falhar, os dados do
+    cliente ficam salvos e nunca se perdem.
+    """
     if not is_valid_form_token(form_token):
         return JSONResponse({"success": False, "error": "Token inválido."}, status_code=400)
 
@@ -90,22 +86,9 @@ async def submit_onboarding_form(
         if not tenant:
             return JSONResponse({"success": False, "error": "Link invalido."}, status_code=404)
 
-        # Buscar configs da IA Mestre (admin)
-        settings = db.query(SystemSettings).first()
-        if not settings or not settings.admin_openrouter_key:
-            return JSONResponse({
-                "success": False,
-                "error": "Sistema nao configurado. Contacte o administrador."
-            })
-
-        model = settings.admin_openrouter_model or "openai/gpt-4o"
-        headers = _openrouter_headers(settings.admin_openrouter_key)
-
-        # Campos preenchidos pelo cliente no formulário público.
-        # Os 5 abaixo (agent_type, agent_name, tone_register, restrictions,
-        # qualification_questions) são definidos pelo operador no editor
-        # do agente — aqui ficam com defaults seguros pra IA Mestre operar
-        # em modo "auto".
+        # Apenas os campos preenchidos pelo cliente. Campos definidos pelo
+        # operador (agent_name, agent_type, tone_register, restrictions,
+        # qualification_questions) entram só na hora de gerar o agente.
         form_answers = {
             "company_name": company_name,
             "industry": industry,
@@ -121,66 +104,25 @@ async def submit_onboarding_form(
             "contact_info": contact_info,
             "agent_goal": agent_goal,
             "extra_info": extra_info,
-            "agent_name": "",
-            "agent_type": "inbound",
-            "tone_register": None,
-            "restrictions": "",
-            "qualification_questions": "",
         }
 
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=headers,
-                json={
-                    "model": model,
-                    "max_tokens": 6000,
-                    "messages": build_messages(form_answers),
-                }
-            )
-
-            if resp.status_code != 200:
-                logger.error(f"Erro OpenRouter ao gerar prompt: {resp.status_code} — {resp.text}")
-                return JSONResponse({
-                    "success": False,
-                    "error": "Erro ao gerar prompt. Tente novamente."
-                })
-
-            generated_prompt = resp.json()["choices"][0]["message"]["content"]
-
-        agent = db.query(AIAgent).filter(AIAgent.location_id == tenant.location_id).first()
-        if not agent:
-            agent = AIAgent(
-                location_id=tenant.location_id,
-                name="Agente Inteligente",
-                prompt=generated_prompt,
-                form_data=form_answers,
-            )
-            db.add(agent)
-        else:
-            agent.prompt = generated_prompt
-            agent.form_data = form_answers
-
+        submission = OnboardingSubmission(
+            tenant_location_id=tenant.location_id,
+            form_data=form_answers,
+            status="pending",
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(submission)
         db.commit()
-        logger.info(f"Prompt gerado via formulário para tenant {tenant.location_id} ({tenant.company_name})")
-
-        try:
-            from services.prompt_history import snapshot_prompt
-            snapshot_prompt(
-                location_id=tenant.location_id,
-                channel=agent.channel or "whatsapp",
-                prompt=agent.prompt,
-                source="form",
-                agent_id=agent.id,
-                form_data_snapshot=form_answers,
-            )
-        except Exception as e_snap:
-            logger.warning(f"Falha snapshot prompt (form): {e_snap}")
+        logger.info(
+            f"Onboarding salvo: submission #{submission.id} para tenant "
+            f"{tenant.location_id} ({tenant.company_name})"
+        )
 
         return JSONResponse({"success": True})
 
     except Exception as e:
-        logger.error(f"Erro ao processar formulário de onboarding: {e}", exc_info=True)
+        logger.error(f"Erro ao salvar formulário de onboarding: {e}", exc_info=True)
         db.rollback()
         return JSONResponse({"success": False, "error": "Erro interno. Tente novamente."})
     finally:
