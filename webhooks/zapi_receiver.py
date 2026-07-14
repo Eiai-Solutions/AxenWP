@@ -15,6 +15,7 @@ from utils.validators import is_valid_location_id
 from utils.limiter import limiter
 from utils import metrics
 from auth.token_manager import token_manager
+from channels.whatsapp.zapi import ZAPIChannel
 from services.ghl_service import ghl_service
 from services.zapi_service import zapi_service
 
@@ -252,11 +253,12 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
         logger.info(f"Z-API Inbound abortado: Automação desativada para {location_id}.")
         return
 
-    phone = payload.get("phone", "")
-    message_type = payload.get("type", "")
-    is_group = payload.get("isGroup", False)
-    from_me = payload.get("fromMe", False)
-    msg_id = payload.get("messageId") or payload.get("ids", [None])[0] if payload.get("ids") else payload.get("messageId")
+    pm = ZAPIChannel().parse_inbound(location_id, payload)
+    phone = pm.sender_id
+    message_type = pm.message_type
+    is_group = pm.is_group
+    from_me = pm.from_me
+    msg_id = pm.provider_message_id
 
     logger.debug(
         f"Z-API webhook raw: location={location_id} type={message_type} "
@@ -294,57 +296,11 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
     if any(k in payload_keys for k in ("audio", "voice", "image", "document", "video")):
         logger.info(f"Z-API payload contém mídia. Chaves de mídia: {payload_keys}")
 
-    content_message = "Mensagem recebida do WhatsApp"
-    attachments = []
-    is_audio = False
-    audio_url = None
-
-    # Parse do tipo de mensagem (Z-API possui várias estruturas)
-    if "text" in payload and isinstance(payload["text"], dict):
-        content_message = payload["text"].get("message", "")
-    elif "image" in payload and isinstance(payload["image"], dict):
-        content_message = payload["image"].get("caption", "📸 Imagem recebida")
-        if "imageUrl" in payload["image"]:
-            attachments.append(payload["image"]["imageUrl"])
-    elif "audio" in payload and isinstance(payload["audio"], dict):
-        content_message = "🎙️ Áudio recebido"
-        is_audio = True
-        # Z-API às vezes envia 'audioUrl', outras vezes 'url' ou 'mediaUrl'
-        audio_url = (
-            payload["audio"].get("audioUrl")
-            or payload["audio"].get("url")
-            or payload["audio"].get("mediaUrl")
-        )
-        if audio_url:
-            attachments.append(audio_url)
-        else:
-            logger.warning(
-                f"Áudio recebido mas sem URL detectada. Chaves disponíveis em payload.audio: "
-                f"{list(payload['audio'].keys())}"
-            )
-    elif "voice" in payload and isinstance(payload["voice"], dict):
-        # Algumas integrações Z-API usam a chave 'voice' em vez de 'audio'
-        content_message = "🎙️ Áudio recebido"
-        is_audio = True
-        audio_url = (
-            payload["voice"].get("audioUrl")
-            or payload["voice"].get("url")
-            or payload["voice"].get("mediaUrl")
-        )
-        if audio_url:
-            attachments.append(audio_url)
-        else:
-            logger.warning(
-                f"Voice recebida mas sem URL. Chaves: {list(payload['voice'].keys())}"
-            )
-    elif "document" in payload and isinstance(payload["document"], dict):
-        content_message = payload["document"].get("fileName", "📄 Documento recebido")
-        if "documentUrl" in payload["document"]:
-            attachments.append(payload["document"]["documentUrl"])
-    
-    # Se não conseguimos extrair texto decente mas a Z-API enviou string direto
-    if not content_message and isinstance(payload.get("text"), str):
-        content_message = payload["text"]
+    # Conteúdo já normalizado pelo ZAPIChannel.parse_inbound (mesma lógica de antes).
+    content_message = pm.text
+    attachments = pm.attachments
+    is_audio = pm.is_audio
+    audio_url = pm.audio_url
 
     is_whatsapp_only = getattr(tenant, "mode", "ghl") == "whatsapp_only"
     contact_id = None
