@@ -17,7 +17,7 @@ import asyncio
 from collections import deque
 from typing import Optional
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from data.database import SessionLocal
@@ -37,6 +37,7 @@ from services.audio_handler import (
     synthesize_for_agent,
     transcribe_audio,
 )
+from services.agent_engine import AgentContext, LangChainAgentEngine
 from services.chat_memory import PostgresChatMessageHistory, make_session_id
 from services.prompt_builder import build_system_prompt
 from services.qualification_engine import (
@@ -94,6 +95,12 @@ class AIEngine:
                 )
             except Exception as e:
                 logger.error(f"Erro ao instanciar LLM OpenRouter: {e}")
+
+        # Motor de agente (porta AgentEngine). Flag por-agente `agent_engine`
+        # seleciona a implementação; no PR#1 só existe 'langchain' (default).
+        # 'claude' (tool-use) entra no PR#2 e cai aqui em LangChain até lá.
+        self.engine_name = (getattr(agent_data, "agent_engine", None) or "langchain").lower()
+        self.engine = LangChainAgentEngine(self.llm) if self.llm is not None else None
 
     # ── Etapas internas ──
 
@@ -294,16 +301,27 @@ class AIEngine:
             is_audio_input=is_audio,
         )
 
-        messages_for_llm: list[BaseMessage] = [
-            SystemMessage(content=system_prompt),
-            *past_messages,
-            HumanMessage(content=actual_message),
+        # Histórico neutro (engine-agnóstico) para a porta AgentEngine.
+        history = [
+            {"role": "assistant" if isinstance(m, AIMessage) else "user", "content": m.content}
+            for m in past_messages
         ]
+        ctx = AgentContext(
+            location_id=self.agent_config.location_id,
+            session_id=session_id,
+            user_phone=user_phone,
+            system_prompt=system_prompt,
+            history=history,
+            incoming_text=actual_message,
+            channel=getattr(self.agent_config, "channel", "whatsapp"),
+            is_audio_input=is_audio,
+            agent_config=self.agent_config,
+        )
 
-        # 5. Chama LLM.
+        # 5. Chama o motor de agente (porta).
         try:
-            response = await self.llm.ainvoke(messages_for_llm)
-            ai_text = response.content
+            turn = await self.engine.run(ctx)
+            ai_text = turn.text
             metrics.inc("axenwp_ai_calls_total", labels={"model": self.agent_config.model})
         except Exception as e:
             logger.error(f"Erro na chamada do LLM: {e}")
@@ -314,7 +332,7 @@ class AIEngine:
         ai_text = await self._apply_response_guardrails(ai_text, system_prompt)
 
         # 7. Log de uso OpenRouter.
-        await self._log_openrouter_usage(response)
+        await self._log_openrouter_usage(turn.raw)
 
         # 8. Qualificação (extrai marcador + gera resumo se completo).
         qualified_data = None
