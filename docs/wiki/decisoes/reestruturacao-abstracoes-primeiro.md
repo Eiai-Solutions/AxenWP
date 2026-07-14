@@ -195,4 +195,15 @@ Os seams + extração do pipeline **sobem para a frente** (bônus: já matam a d
 - **Schema:** `data/models.py` (`Tenant:18, AIAgent:65, MessageMapping:180, SystemSettings:231, UsageLog:195`), `alembic/versions/022_*`, `023_*`.
 - **Wiring:** `main.py` (`:86,:94-99,:104-114,:152-161`), `requirements.txt` (+anthropic), `Dockerfile:29` (single-worker até Redis).
 
+## Estado de implementação (branch `feat/pr1-abstracoes-portas`)
+
+PR #1 em andamento — abstrações-primeiro, cada passo com golden verde:
+
+- ✅ **Porta `AgentEngine`** (`services/agent_engine/`) + `LangChainAgentEngine` (paridade). `AIEngine.generate_response` chama `self.engine.run(ctx)`; seleção por `getattr(agent, "agent_engine", "langchain")` (sem coluna). Caracterizado em `tests/test_agent_engine.py`. Commit `2091bf2`.
+- ✅ **Contratos `ChannelAdapter`** (`channels/base.py`) + **`ZAPIChannel.parse_inbound`** (`channels/whatsapp/zapi.py`) — normalização do inbound Z-API extraída verbatim; `process_inbound_message` consome `ParsedMessage`. 17 golden tests em `tests/test_channel_zapi.py`. Commit `af37549`.
+- ⏳ **Pendente no PR #1:** métodos de envio do `ZAPIChannel` (wrap `zapi_service`), pipeline compartilhado `channels/pipeline.py` (mover `_run_ai_response`/debounce/dedup, separar o mirror-GHL do send), rota universal `POST /webhook/whatsapp/{location_id}`, delegação da rota legada e wiring em `main.py`. É a fatia mais crítica (caminho de envio/debounce) — fazer caracterização-primeiro.
+- **Nota:** deploy segue single-worker até o Redis (WS3); flag `agent_engine`/`whatsapp_provider` ainda por `getattr` (colunas entram no PR #2, coordenando numeração de migration com a Fase 0).
+
+Suíte: 111 testes verdes (era 90). ⚠️ Ambiente: o `.venv` estava incompleto — `pytest`, `slowapi`, `alembic` foram instalados para rodar a suíte (Python 3.14).
+
 Relacionado: [[sintese/visao-geral]] · [[decisoes/whatsapp-waha]] · [[decisoes/agente-claude-agent-sdk]] · [[decisoes/produto-saas-fase0]]

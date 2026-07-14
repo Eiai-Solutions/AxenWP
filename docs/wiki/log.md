@@ -7,3 +7,8 @@
 - `decisoes/whatsapp-waha.md` — decisão de trocar Z-API por WAHA (vs Evolution/Baileys), grounded em pesquisa 2026.
 - `decisoes/agente-claude-agent-sdk.md` — decisão de trocar LangChain single-turn por Claude Agent SDK (tool-use).
 - `decisoes/reestruturacao-abstracoes-primeiro.md` — plano-mãe: ChannelAdapter + AgentEngine, strangler, sprints, 1º/2º PR, 17 decisões abertas.
+
+## [2026-07-14] update | PR #1 em andamento — portas AgentEngine + ChannelAdapter
+- Aterrissou porta AgentEngine + LangChainAgentEngine (commit 2091bf2) e contratos ChannelAdapter + ZAPIChannel.parse_inbound (commit af37549), branch feat/pr1-abstracoes-portas.
+- 111 testes verdes (era 90). Adicionada seção "Estado de implementação" em decisoes/reestruturacao-abstracoes-primeiro.
+- Pendente PR #1: send methods + pipeline compartilhado + rota universal (fatia crítica).
