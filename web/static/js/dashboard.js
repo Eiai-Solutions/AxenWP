@@ -133,6 +133,8 @@
                 openPitModal(d.companyName, d.locationId, d.pitToken);
             } else if (action === 'telegram') {
                 openTelegramModal(d.companyName, d.locationId, d.telegramBotToken, d.telegramBotUsername);
+            } else if (action === 'waha') {
+                openWahaModal(d.locationId, d.companyName);
             } else if (action === 'form') {
                 generateFormLink(d.locationId);
             } else if (action === 'delete') {
@@ -1923,6 +1925,162 @@
             document.getElementById('qrModal').classList.add('hidden');
             // Refresh to update the UI connectivity status
             setTimeout(() => window.location.reload(), 500);
+        }
+
+        // ── Conexão WhatsApp via WAHA (gestão de sessão pelo painel) ──
+        let _wahaLoc = null;
+        let _wahaPoll = null;
+
+        function _wahaSpinner(msg) {
+            return `<div class="animate-pulse w-full py-10 flex items-center justify-center"><span class="text-xs text-emerald-400 font-mono uppercase tracking-widest">${msg}</span></div>`;
+        }
+        function _wahaError(msg) {
+            return `<div class="text-xs text-red-400 font-mono py-8">${msg}</div>`;
+        }
+        const _WAHA_BADGE = {
+            WORKING: 'text-emerald-300 bg-emerald-500/15',
+            SCAN_QR_CODE: 'text-amber-300 bg-amber-500/15',
+            STARTING: 'text-sky-300 bg-sky-500/15',
+            STOPPED: 'text-gray-400 bg-gray-600/20',
+            FAILED: 'text-red-300 bg-red-500/15',
+        };
+        function _setWahaBadge(status) {
+            const b = document.getElementById('waha_status_badge');
+            b.className = 'ml-2 px-2 py-0.5 rounded text-[10px] normal-case tracking-normal ' + (_WAHA_BADGE[status] || 'status-badge');
+            b.innerText = status || '—';
+        }
+
+        function openWahaModal(locationId, companyName) {
+            _wahaLoc = locationId;
+            document.getElementById('waha_company_name').innerText = companyName || locationId;
+            _setWahaBadge('');
+            document.getElementById('waha_content').innerHTML = _wahaSpinner('Carregando status…');
+            document.getElementById('wahaModal').classList.remove('hidden');
+            refreshWahaStatus();
+        }
+        function closeWahaModal() {
+            stopWahaPolling();
+            document.getElementById('wahaModal').classList.add('hidden');
+        }
+        function stopWahaPolling() {
+            if (_wahaPoll) { clearInterval(_wahaPoll); _wahaPoll = null; }
+        }
+        function startWahaPolling() {
+            stopWahaPolling();
+            _wahaPoll = setInterval(async () => {
+                try {
+                    const r = await fetch(`/admin/waha/tenant/${_wahaLoc}/status`);
+                    const d = await r.json();
+                    if (d.status === 'SCAN_QR_CODE') { _setWahaBadge('SCAN_QR_CODE'); showWahaQr(); }
+                    else { renderWahaContent(d); }
+                } catch (e) { /* silencioso, tenta de novo */ }
+            }, 3000);
+        }
+
+        async function refreshWahaStatus() {
+            if (!_wahaLoc) return;
+            try {
+                const r = await fetch(`/admin/waha/tenant/${_wahaLoc}/status`);
+                renderWahaContent(await r.json());
+            } catch (e) {
+                document.getElementById('waha_content').innerHTML = _wahaError('Erro ao consultar status.');
+            }
+        }
+
+        function renderWahaContent(d) {
+            const c = document.getElementById('waha_content');
+            if (d.error) { c.innerHTML = _wahaError(d.error); return; }
+            if (d.configured === false) {
+                _setWahaBadge('');
+                c.innerHTML = `<div class="py-6 text-center">
+                    <p class="text-xs text-gray-400 font-mono mb-4">Servidor WAHA não configurado.</p>
+                    <button onclick="closeWahaModal(); openSystemModal();" title="Abrir Configurações Globais" class="btn-brand px-5 py-2 rounded-lg text-white font-bold text-xs uppercase tracking-widest font-mono">Configurar WAHA</button>
+                </div>`;
+                return;
+            }
+            _setWahaBadge(d.status);
+            if (d.status === 'WORKING') {
+                stopWahaPolling();
+                const me = d.me ? (typeof d.me === 'string' ? d.me : JSON.stringify(d.me)) : '';
+                c.innerHTML = `<div class="py-4 text-center w-full">
+                    <div class="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center mx-auto mb-3">
+                        <svg class="w-7 h-7 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    </div>
+                    <p class="text-sm font-bold text-white mb-1">Conectado</p>
+                    <p class="text-[11px] text-gray-500 font-mono mb-6 break-all">${me}</p>
+                    <div class="flex gap-2">
+                        <button onclick="wahaSessionAction('restart')" title="Reiniciar a sessão do WhatsApp" class="flex-1 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest text-sky-300 bg-sky-500/10 border border-sky-500/30 hover:bg-sky-500/20 transition-colors font-mono">Reiniciar</button>
+                        <button onclick="wahaSessionAction('disconnect')" title="Desconectar e remover a sessão deste número" class="flex-1 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest text-red-300 bg-red-500/10 border border-red-500/30 hover:bg-red-500/20 transition-colors font-mono">Desconectar</button>
+                    </div>
+                </div>`;
+                return;
+            }
+            if (d.status === 'STARTING') {
+                c.innerHTML = _wahaSpinner('Iniciando sessão…');
+                startWahaPolling();
+                return;
+            }
+            if (d.status === 'SCAN_QR_CODE') {
+                c.innerHTML = `<div class="w-full">
+                    <div id="waha_qr_box" class="mb-4 flex items-center justify-center">${_wahaSpinner('Gerando QR…')}</div>
+                    <p class="text-[10px] text-gray-500 font-mono leading-relaxed px-2 mb-4">No WhatsApp do número → <span class="text-white">Aparelhos conectados</span> → <span class="text-white">Conectar um aparelho</span> → escaneie.</p>
+                    <button onclick="wahaSessionAction('disconnect')" title="Cancelar a conexão" class="px-4 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-gray-800 hover:bg-gray-700 transition-colors font-mono">Cancelar</button>
+                </div>`;
+                showWahaQr();
+                startWahaPolling();
+                return;
+            }
+            // STOPPED / UNKNOWN / FAILED / sessão ainda não criada
+            const failed = d.status === 'FAILED';
+            c.innerHTML = `<div class="py-6 text-center">
+                <p class="text-xs ${failed ? 'text-red-400' : 'text-gray-400'} font-mono mb-5">${failed ? 'Sessão falhou. Reconecte.' : 'Nenhum número conectado a esta instância.'}</p>
+                <button onclick="connectWaha(this)" title="Criar a sessão e gerar o QR code" class="btn-brand px-6 py-2.5 rounded-lg text-white font-bold text-sm uppercase tracking-widest font-mono">${failed ? 'Reconectar' : 'Conectar número'}</button>
+            </div>`;
+        }
+
+        async function connectWaha(btn) {
+            if (btn) { btn.disabled = true; btn.innerText = 'Conectando…'; }
+            document.getElementById('waha_content').innerHTML = _wahaSpinner('Criando sessão…');
+            try {
+                const r = await fetch(`/admin/waha/tenant/${_wahaLoc}/connect`, { method: 'POST' });
+                const d = await r.json();
+                if (d.error) { document.getElementById('waha_content').innerHTML = _wahaError(d.error); return; }
+                setTimeout(refreshWahaStatus, 900);
+            } catch (e) {
+                document.getElementById('waha_content').innerHTML = _wahaError('Falha ao conectar.');
+            }
+        }
+
+        function showWahaQr() {
+            const box = document.getElementById('waha_qr_box');
+            if (!box) return;
+            const img = new Image();
+            img.className = 'mx-auto rounded-xl w-56 h-56 border-2 border-emerald-500/40 bg-white p-1';
+            img.alt = 'QR code para conectar o WhatsApp';
+            img.onload = () => { box.innerHTML = ''; box.appendChild(img); };
+            img.onerror = () => { if (!box.querySelector('img')) box.innerHTML = _wahaSpinner('Aguardando QR…'); };
+            img.src = `/admin/waha/tenant/${_wahaLoc}/qr?t=${Date.now()}`;
+        }
+
+        async function wahaSessionAction(action) {
+            if (action === 'disconnect' && !confirm('Desconectar este número? A sessão será removida do WAHA.')) return;
+            stopWahaPolling();
+            document.getElementById('waha_content').innerHTML = _wahaSpinner('Processando…');
+            try {
+                await fetch(`/admin/waha/tenant/${_wahaLoc}/${action}`, { method: 'POST' });
+            } catch (e) { /* ignore */ }
+            setTimeout(refreshWahaStatus, 1200);
+        }
+
+        async function testWahaConnection(btn) {
+            const out = document.getElementById('waha_test_result');
+            out.innerText = 'testando…'; out.className = 'ml-2 text-[10px] font-mono text-gray-400';
+            try {
+                const r = await fetch('/admin/waha/settings/test', { method: 'POST' });
+                const d = await r.json();
+                if (d.ok) { out.innerText = `OK — ${d.sessions_count} sessão(ões)`; out.className = 'ml-2 text-[10px] font-mono text-emerald-400'; }
+                else { out.innerText = d.error || 'falhou'; out.className = 'ml-2 text-[10px] font-mono text-red-400'; }
+            } catch (e) { out.innerText = 'erro de rede'; out.className = 'ml-2 text-[10px] font-mono text-red-400'; }
         }
 
         function switchAITab(tabName, btn) {

@@ -380,6 +380,40 @@
                         </p>
                     </div>
 
+                    <!-- Servidor WAHA (WhatsApp não-oficial compartilhado) -->
+                    <div class="group border-t border-gray-800 pt-4">
+                        <label
+                            class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest flex justify-between items-center">
+                            <span>Servidor WAHA — URL</span>
+                            <span class="text-emerald-400 normal-case font-normal">WhatsApp compartilhado</span>
+                        </label>
+                        <input type="text" name="admin_waha_url"
+                            value="{{ system_settings.admin_waha_url if system_settings and system_settings.admin_waha_url else '' }}"
+                            placeholder="https://axenwp-waha.xxxxx.easypanel.host"
+                            title="URL HTTPS da sua instância WAHA (uma para todos os clientes)"
+                            class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
+                    </div>
+
+                    <div class="group">
+                        <label
+                            class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest mt-4 flex justify-between items-center">
+                            <span>Servidor WAHA — API Key</span>
+                            {% if system_settings and system_settings.admin_waha_api_key %}
+                            <span class="text-emerald-400/70 normal-case font-normal">configurada ✓ — deixe em branco p/ manter</span>
+                            {% endif %}
+                        </label>
+                        <input type="password" name="admin_waha_api_key" value=""
+                            placeholder="{% if system_settings and system_settings.admin_waha_api_key %}•••••••• (mantém a atual){% else %}WAHA_API_KEY do EasyPanel{% endif %}"
+                            title="A variável WAHA_API_KEY gerada no serviço WAHA do EasyPanel"
+                            class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
+                        <button type="button" onclick="testWahaConnection(this)"
+                            title="Salve primeiro; testa se o AxenWP alcança o servidor WAHA"
+                            class="mt-2 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition-colors font-mono">
+                            Testar conexão
+                        </button>
+                        <span id="waha_test_result" class="ml-2 text-[10px] font-mono"></span>
+                    </div>
+
                     <div class="group">
                         <label
                             class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest mt-4">OpenRouter
@@ -899,8 +933,24 @@
                     </div>
                 </button>
 
+                <!-- Conectar WhatsApp (WAHA) -->
+                <button onclick="instanceAction('waha')"
+                    title="Conectar um número de WhatsApp via WAHA (QR code)"
+                    class="flex items-center gap-4 p-4 bg-black/40 border border-gray-800 hover:border-emerald-500/50 rounded-xl transition-all group text-left">
+                    <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
+                        <svg class="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.71.306 1.263.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                        </svg>
+                    </div>
+                    <div class="flex-1">
+                        <p class="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors">Conectar WhatsApp</p>
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Número via WAHA — escanear QR</p>
+                    </div>
+                </button>
+
                 <!-- Telegram Bot -->
                 <button onclick="instanceAction('telegram')"
+                    title="Conectar um bot do Telegram (token do BotFather)"
                     class="flex items-center gap-4 p-4 bg-black/40 border border-gray-800 hover:border-sky-500/50 rounded-xl transition-all group text-left">
                     <div class="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center flex-shrink-0">
                         <svg class="w-5 h-5 text-sky-400" fill="currentColor" viewBox="0 0 24 24">
@@ -1181,6 +1231,31 @@
                         Pronto / Fechar
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Conectar WhatsApp (WAHA) -->
+    <div id="wahaModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-md" onclick="closeWahaModal()"></div>
+
+        <div class="relative w-full max-w-sm bg-gray-900 border border-gray-800 rounded-3xl shadow-[0_0_80px_rgba(16,185,129,0.15)] overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-emerald-700"></div>
+
+            <div class="p-8 text-center">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight">WhatsApp</h3>
+                    <button onclick="closeWahaModal()" title="Fechar" class="text-gray-500 hover:text-white transition-colors">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 font-mono mb-6 uppercase tracking-widest text-left">
+                    <span id="waha_company_name" class="text-emerald-400"></span>
+                    <span id="waha_status_badge" class="status-badge ml-2 px-2 py-0.5 rounded text-[10px] normal-case tracking-normal"></span>
+                </p>
+
+                <!-- Conteúdo dinâmico por status -->
+                <div id="waha_content" class="min-h-[14rem] flex flex-col items-center justify-center"></div>
             </div>
         </div>
     </div>

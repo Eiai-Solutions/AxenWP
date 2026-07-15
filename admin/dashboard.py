@@ -128,12 +128,16 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
                 "admin_openrouter_key": settings.admin_openrouter_key,
                 "admin_openrouter_model": settings.admin_openrouter_model,
                 "admin_groq_api_key": settings.admin_groq_api_key,
+                "admin_waha_url": settings.admin_waha_url,
+                "admin_waha_api_key": settings.admin_waha_api_key,
             }
         else:
             system_settings = {
                 "admin_openrouter_key": "",
                 "admin_openrouter_model": "openai/gpt-4o",
                 "admin_groq_api_key": "",
+                "admin_waha_url": "",
+                "admin_waha_api_key": "",
             }
     except Exception as e:
         logger.error(f"Erro ao buscar AI Agents/Settings: {e}")
@@ -317,6 +321,8 @@ async def save_system_settings(
     admin_openrouter_key: str = Form(""),
     admin_openrouter_model: str = Form("openai/gpt-4o"),
     admin_groq_api_key: str = Form(""),
+    admin_waha_url: str = Form(""),
+    admin_waha_api_key: str = Form(""),
     authenticated: bool = Depends(verify_admin)
 ):
     """Salva configurações globais do Admin."""
@@ -335,6 +341,10 @@ async def save_system_settings(
         settings.admin_openrouter_key = admin_openrouter_key.strip()
         settings.admin_openrouter_model = admin_openrouter_model.strip()
         settings.admin_groq_api_key = admin_groq_api_key.strip()
+        settings.admin_waha_url = admin_waha_url.strip().rstrip("/") or None
+        # Só sobrescreve a API key do WAHA se veio preenchida (permite editar a URL sem reenviar a key).
+        if admin_waha_api_key.strip():
+            settings.admin_waha_api_key = admin_waha_api_key.strip()
 
         db.commit()
         return RedirectResponse(url="/admin/dashboard?msg=Configurações globais salvas com sucesso.", status_code=303)
