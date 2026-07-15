@@ -74,18 +74,91 @@ class WAHAService:
 
     # ── Sessão / webhook ──
 
-    async def get_session(self, base_url, api_key, session) -> dict | None:
+    async def _get(self, base_url, api_key, path) -> httpx.Response | None:
         try:
-            resp = await self.client.get(
+            return await self.client.get(
+                f"{base_url.rstrip('/')}{path}", headers=self._headers(api_key)
+            )
+        except Exception as e:
+            logger.error(f"WAHA GET {path} exception: {e}")
+            return None
+
+    async def list_sessions(self, base_url, api_key) -> list | None:
+        resp = await self._get(base_url, api_key, "/api/sessions?all=true")
+        if resp is not None and resp.status_code == 200:
+            data = resp.json()
+            return data if isinstance(data, list) else None
+        return None
+
+    async def get_session(self, base_url, api_key, session) -> dict | None:
+        resp = await self._get(base_url, api_key, f"/api/sessions/{session}")
+        if resp is not None and resp.status_code == 200:
+            return resp.json()
+        return None
+
+    async def create_session(self, base_url, api_key, session, webhook_url=None,
+                             events=None, hmac_key=None, start=True) -> dict | None:
+        """Cria (e inicia) uma sessão. Webhook configurado por-sessão apontando
+        para o location_id do tenant. Se já existir, cai no start()."""
+        config: dict = {}
+        if webhook_url:
+            webhook: dict = {"url": webhook_url, "events": events or ["message", "session.status"]}
+            if hmac_key:
+                webhook["hmac"] = {"key": hmac_key}
+            config["webhooks"] = [webhook]
+        body = {"name": session, "start": start}
+        if config:
+            body["config"] = config
+        resp = await self._post(base_url, api_key, "/api/sessions", body)
+        if resp is not None:
+            return resp
+        # Já existe (422/409) -> garante que está iniciada e atualiza o webhook.
+        if config:
+            await self.set_session_webhook(base_url, api_key, session,
+                                           webhook_url, events or ["message", "session.status"], hmac_key)
+        await self.start_session(base_url, api_key, session)
+        return await self.get_session(base_url, api_key, session)
+
+    async def _session_action(self, base_url, api_key, session, action) -> bool:
+        resp = await self._post(base_url, api_key, f"/api/sessions/{session}/{action}", {})
+        return resp is not None
+
+    async def start_session(self, base_url, api_key, session) -> bool:
+        return await self._session_action(base_url, api_key, session, "start")
+
+    async def stop_session(self, base_url, api_key, session) -> bool:
+        return await self._session_action(base_url, api_key, session, "stop")
+
+    async def logout_session(self, base_url, api_key, session) -> bool:
+        return await self._session_action(base_url, api_key, session, "logout")
+
+    async def restart_session(self, base_url, api_key, session) -> bool:
+        return await self._session_action(base_url, api_key, session, "restart")
+
+    async def delete_session(self, base_url, api_key, session) -> bool:
+        try:
+            resp = await self.client.delete(
                 f"{base_url.rstrip('/')}/api/sessions/{session}",
                 headers=self._headers(api_key),
             )
-            if resp.status_code == 200:
-                return resp.json()
-            return None
+            return resp.status_code in (200, 201, 204)
         except Exception as e:
-            logger.error(f"WAHA get_session exception: {e}")
-            return None
+            logger.error(f"WAHA delete_session exception: {e}")
+            return False
+
+    async def get_qr(self, base_url, api_key, session) -> tuple[bytes, str] | None:
+        """Retorna (bytes_da_imagem, content_type) do QR code, para o painel exibir."""
+        resp = await self._get(base_url, api_key, f"/api/{session}/auth/qr?format=image")
+        if resp is not None and resp.status_code == 200:
+            return resp.content, resp.headers.get("content-type", "image/png")
+        return None
+
+    async def get_me(self, base_url, api_key, session) -> dict | None:
+        """Info do número conectado (após WORKING)."""
+        resp = await self._get(base_url, api_key, f"/api/sessions/{session}/me")
+        if resp is not None and resp.status_code == 200:
+            return resp.json()
+        return None
 
     async def set_session_webhook(self, base_url, api_key, session, webhook_url, events, hmac_key=None) -> bool:
         """Configura o webhook da sessão (PUT /api/sessions/{session}).

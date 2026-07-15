@@ -249,6 +249,9 @@ class SystemSettings(Base):
     admin_openrouter_model = Column(String(100), default="openai/gpt-4o")
     # Groq é gratuito no plano free — chave global compartilhada por todos os agentes
     admin_groq_api_key = Column(String(512), nullable=True)
+    # WAHA compartilhado (um servidor, N sessões). Config global; cada tenant vira uma sessão.
+    admin_waha_url = Column(String(512), nullable=True)
+    admin_waha_api_key = Column(String(512), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
