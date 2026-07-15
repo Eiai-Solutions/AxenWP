@@ -25,8 +25,20 @@ O produto vai usar **infra própria de WhatsApp não-oficial** no lugar da Z-API
 - **Risco de ban permanece** (protocolo não-oficial, contra ToS; detecção subiu em 2025–2026). Mitigação: 1 número por tenant, warmup, pacing humano (o debounce já ajuda).
 - WAHA **re-echoa `fromMe`** → dedup por `provider_message_id` é obrigatório (diferente da Z-API que já filtra). Áudio outbound: WAHA exige base64 em `file.data` (Z-API aceita data-url).
 
+## Engine escolhido: GOWS (2026-07)
+Entre NOWEB/GOWS/WEBJS, escolhido **GOWS** (Go/whatsmeow, WebSocket): baixa latência (browserless) + robustez, é a direção estratégica da WAHA. NOWEB descartado por regressão de crash (2025.11.1). WEBJS fica como **fallback de estabilidade/anti-ban** se GOWS der problema. Como o `WAHAChannel.parse_inbound` é engine-aware (`Tenant.waha_engine`), trocar engine é flip de config.
+
+## Deploy: template one-click do EasyPanel
+O EasyPanel tem template oficial do WAHA (Modelos → WAHA). Env-chave: `WHATSAPP_DEFAULT_ENGINE=GOWS`, `WAHA_API_KEY`, `WHATSAPP_HOOK_HMAC_KEY` (assina os webhooks — encaixa no WS1), volume em `/app/.sessions` (persistir sessão). Webhook configurado **por-sessão** (não global), apontando para `/webhook/whatsapp/{location_id}`.
+
+## API REST usada (verificada na doc WAHA)
+- Envio: `POST /api/sendText` `{session, chatId:"phone@c.us", text}` · `POST /api/sendImage` `{...file:{mimetype,url}}` · `POST /api/sendVoice` `{...file:{mimetype:"audio/ogg; codecs=opus", data:"<base64>"}, convert:false}`.
+- Webhook `message`: `{event, session, payload:{id, from:"..@c.us", fromMe, body, hasMedia, media:{url,mimetype}, notifyName}}`. Cuidado: `hasMedia:true` com `media:null` (mídia não baixada) é possível.
+
+## Estado de implementação
+✅ Provedor WAHA landed (flag OFF): `services/waha_service.py`, `channels/whatsapp/waha.py`, `channels/registry.py`, migration 022 (`Tenant.whatsapp_provider`+`waha_*`). Commit `996284a`. ⏳ Falta: rota universal `/webhook/whatsapp/{location_id}` + pipeline compartilhado (liga o inbound) + teste ao vivo (precisa do servidor WAHA no ar).
+
 ## Decisões abertas
-- Engine inicial (NOWEB vs GOWS vs WEBJS) — default NOWEB no canário.
 - Topologia: WAHA compartilhado multi-sessão (`session=location_id`) vs instância por tenant — default compartilhado.
 - WAHA emite `message.ack`/status equivalente ao `onMessageStatus` da Z-API? Validar no canário.
 
