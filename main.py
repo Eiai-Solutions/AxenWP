@@ -21,6 +21,7 @@ from auth.token_manager import token_manager
 from services.ghl_service import ghl_service
 from services.zapi_service import zapi_service
 from services.telegram_service import telegram_service
+from services.waha_service import waha_service
 
 # Importa as rotas
 from auth.oauth import router as oauth_router
@@ -103,6 +104,7 @@ async def lifespan(app: FastAPI):
     await ghl_service.startup()
     await zapi_service.startup()
     await telegram_service.startup()
+    await waha_service.startup()
 
     await refresh_tokens_job()
     cleanup_old_chat_history()
@@ -113,6 +115,7 @@ async def lifespan(app: FastAPI):
     await ghl_service.shutdown()
     await zapi_service.shutdown()
     await telegram_service.shutdown()
+    await waha_service.shutdown()
     scheduler.shutdown()
 
 # =============================================================================

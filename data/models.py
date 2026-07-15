@@ -15,10 +15,19 @@ class Tenant(Base):
     refresh_token = Column(String)
     token_expires_at = Column(String)
     
+    # Provedor de WhatsApp: "zapi" (default) ou "waha" (self-host). Selecionado por tenant.
+    whatsapp_provider = Column(String, default="zapi", server_default="zapi", nullable=False)
+
     # Z-API configs
     zapi_instance_id = Column(String, nullable=True)
     zapi_token = Column(String, nullable=True)
     zapi_client_token = Column(String, nullable=True)
+
+    # WAHA configs (WhatsApp HTTP API self-host)
+    waha_base_url = Column(String, nullable=True)
+    waha_session = Column(String, nullable=True)
+    waha_engine = Column(String, nullable=True)      # "GOWS" | "NOWEB" | "WEBJS"
+    waha_api_key = Column(String, nullable=True)      # cifrar em repouso no WS1
 
     # Telegram configs
     telegram_bot_token = Column(String, nullable=True)
