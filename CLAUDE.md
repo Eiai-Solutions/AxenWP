@@ -176,3 +176,20 @@ docker-compose up -d
 - **Snapshot de prompt** sempre que `agent.prompt` é escrito: `services/prompt_history.snapshot_prompt()`.
 - **Diagnostics**: novos endpoints de debug devem ir em `admin/diagnostics.py` (gated), não em `seed_joorney.py`.
 - **Validators na borda**: qualquer endpoint público novo passa por `is_valid_location_id`/`is_valid_form_token` antes de tocar o banco.
+
+## Design DNA — "Corrente" (painel admin)
+
+Identidade visual do painel (escolhida 2026-07). **Sempre siga este DNA ao mexer em UI** — não re-rolar. Registro: **produto/painel = clareza + contenção** (cards contidos, hairline, motion mínimo, densidade legível).
+
+- **Direção estética:** editorial-confiante, "livro-razão de operação" — papel creme + tinta quase-preta + hairlines + algarismos tabulares. Lê como um broadsheet financeiro que comanda os agentes de WhatsApp. Claro (não dark).
+- **Tipografia:** display **Fraunces** (serif editorial de alto contraste, 600, optical-sizing) para títulos/wordmark/numerais grandes · UI/tabela **Hanken Grotesk** (400–700) · dados/IDs/plaquetas **IBM Plex Mono** (400/500, tabular). **Banidas:** Inter, Roboto, Space Grotesk, Outfit.
+- **Cor:** o **vermelho Axen #D8371B** é a ÚNICA cor viva (marca, nav ativo, agente no ar, botão primário `#BE2C13` p/ AA, toggle ativo, keyline). `brand-hue ~28deg vermilion` OKLCH(0.58 0.20 28). Status semânticos dessaturados: musgo **#4F7A47** (+tint #E9EFE1) = conectado/no ar · ocre **#B0741C** (+tint #F6ECD8) = QR/pendente · ponto oco neutro = inativo.
+- **Paleta:** bg papel **#F4EEE3** · surface **#FDFBF6** · ink **#1B1714** · muted **#63594B** · faint **#8B806E** · hairline **#E5DCCB** (forte #D6CAB4).
+- **Forma:** radius contido — cards/tabela 11px, botões/chips 9px, plaquetas ID 6px, status pill 999px. **Bordas sempre hairline 1px** (a régua separa, não a sombra).
+- **Elevação:** flat-and-bordered; sombra só no foco (modal com scrim escuro). Nada de glass/blur pesado.
+- **Densidade:** cabeçalho arejado, tabela densa-legível (linhas ~56px, tabular-nums, labels caps com tracking).
+- **Motion:** mínimo. Único gesto vivo: pulso vermelho no ponto do agente que responde agora. transform/opacity só; respeita reduced-motion.
+- **Detalhe-assinatura — "a corrente":** keyline vermelho de 2px marca sempre o elemento vivo/ativo (nav atual, card selecionado, borda do agente no ar), ecoando o raio do Axen; reforçado por Location IDs em plaquetas mono.
+- **Tooltips:** todo controle interativo tem `title="..."` (stack é Tailwind CDN + JS vanilla, sem shadcn).
+
+Mockup de referência da direção: gerado na sessão de redesign; telas Instâncias + modal Nova Instância.
