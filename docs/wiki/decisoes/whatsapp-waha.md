@@ -35,8 +35,16 @@ O EasyPanel tem template oficial do WAHA (Modelos → WAHA). Env-chave: `WHATSAP
 - Envio: `POST /api/sendText` `{session, chatId:"phone@c.us", text}` · `POST /api/sendImage` `{...file:{mimetype,url}}` · `POST /api/sendVoice` `{...file:{mimetype:"audio/ogg; codecs=opus", data:"<base64>"}, convert:false}`.
 - Webhook `message`: `{event, session, payload:{id, from:"..@c.us", fromMe, body, hasMedia, media:{url,mimetype}, notifyName}}`. Cuidado: `hasMedia:true` com `media:null` (mídia não baixada) é possível.
 
+## Gestão de conexão pelo painel (o painel do WAHA fica invisível)
+Decisão: criar/conectar/desconectar número é função do **painel do AxenWP**, não do dashboard do WAHA. Modelo: **WAHA compartilhado** (config global em `SystemSettings.admin_waha_url`/`admin_waha_api_key`), **1 sessão por tenant** (`session = location_id`), `whatsapp_provider='waha'` marcado no connect. Fluxo: connect → cria sessão + registra webhook por-sessão (`/webhook/whatsapp/{location_id}`) → status `SCAN_QR_CODE` → painel exibe QR (proxy `/admin/waha/tenant/{loc}/qr`) → escaneia → `WORKING`. `WHATSAPP_HOOK_HMAC_KEY` do WAHA assina os webhooks (encaixa no WS1).
+
+## Deploy (feito)
+WAHA no ar via template EasyPanel: `devlikeapro/waha:latest-2026.6.1`, engine **GOWS**, `https://axenwp-waha.i9tdn7.easypanel.host`. Falta conectar a sessão de teste e setar `WAHA_API_KEY` no painel.
+
 ## Estado de implementação
-✅ Provedor WAHA landed (flag OFF): `services/waha_service.py`, `channels/whatsapp/waha.py`, `channels/registry.py`, migration 022 (`Tenant.whatsapp_provider`+`waha_*`). Commit `996284a`. ⏳ Falta: rota universal `/webhook/whatsapp/{location_id}` + pipeline compartilhado (liga o inbound) + teste ao vivo (precisa do servidor WAHA no ar).
+✅ Provedor WAHA (flag OFF): `services/waha_service.py`, `channels/whatsapp/waha.py`, `channels/registry.py`, migration 022. Commit `996284a`.
+✅ Gestão de sessão + UI no painel: `admin/waha.py` (endpoints), `SystemSettings.admin_waha_*` (migration 023), UI em `dashboard.html`/`dashboard.js` (systemModal + card "Conectar WhatsApp" + wahaModal com QR/polling). Commits `d28642f`, `3c7f2af`. Verificado ao vivo no browser.
+⏳ Falta: rota universal `/webhook/whatsapp/{location_id}` + pipeline compartilhado (liga o inbound→IA→resposta) + teste ao vivo com número conectado.
 
 ## Decisões abertas
 - Topologia: WAHA compartilhado multi-sessão (`session=location_id`) vs instância por tenant — default compartilhado.
