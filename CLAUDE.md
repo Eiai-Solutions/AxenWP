@@ -181,10 +181,10 @@ docker-compose up -d
 
 Identidade visual do painel (escolhida 2026-07). **Sempre siga este DNA ao mexer em UI** — não re-rolar. Registro: **produto/painel = clareza + contenção** (cards contidos, hairline, motion mínimo, densidade legível).
 
-- **Direção estética:** editorial-confiante, "livro-razão de operação" — papel creme + tinta quase-preta + hairlines + algarismos tabulares. Lê como um broadsheet financeiro que comanda os agentes de WhatsApp. Claro (não dark).
+- **Direção estética:** editorial-confiante, "livro-razão de operação" — grafite/tinta quente + off-white + hairlines + algarismos tabulares. Lê como um broadsheet financeiro que comanda os agentes de WhatsApp. **Escuro-quente** (variante ativa, escolhida pelo Luiz por ergonomia de control-room; a mesma estrutura editorial existe em variante clara/creme se um dia quiser inverter — é só trocar os tokens).
 - **Tipografia:** display **Fraunces** (serif editorial de alto contraste, 600, optical-sizing) para títulos/wordmark/numerais grandes · UI/tabela **Hanken Grotesk** (400–700) · dados/IDs/plaquetas **IBM Plex Mono** (400/500, tabular). **Banidas:** Inter, Roboto, Space Grotesk, Outfit.
 - **Cor:** o **vermelho Axen #D8371B** é a ÚNICA cor viva (marca, nav ativo, agente no ar, botão primário `#BE2C13` p/ AA, toggle ativo, keyline). `brand-hue ~28deg vermilion` OKLCH(0.58 0.20 28). Status semânticos dessaturados: musgo **#4F7A47** (+tint #E9EFE1) = conectado/no ar · ocre **#B0741C** (+tint #F6ECD8) = QR/pendente · ponto oco neutro = inativo.
-- **Paleta:** bg papel **#F4EEE3** · surface **#FDFBF6** · ink **#1B1714** · muted **#63594B** · faint **#8B806E** · hairline **#E5DCCB** (forte #D6CAB4).
+- **Paleta (dark ativa):** bg **#14110E** · surface **#1C1815** (tile elevado #211C17) · tinta/texto **#ECE4D6** · muted **#A99E8C** · faint **#746A5B** · hairline **#2E2820** (forte #3C352B). Toggle inativo #3C352B, knob claro #ECE4D6. (Variante clara: bg #F4EEE3 · surface #FDFBF6 · ink #1B1714.)
 - **Forma:** radius contido — cards/tabela 11px, botões/chips 9px, plaquetas ID 6px, status pill 999px. **Bordas sempre hairline 1px** (a régua separa, não a sombra).
 - **Elevação:** flat-and-bordered; sombra só no foco (modal com scrim escuro). Nada de glass/blur pesado.
 - **Densidade:** cabeçalho arejado, tabela densa-legível (linhas ~56px, tabular-nums, labels caps com tracking).
