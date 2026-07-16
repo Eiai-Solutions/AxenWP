@@ -26,46 +26,47 @@
                         mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
                     },
                     colors: {
-                        white: '#1B1714',   // remap: text-white -> tinta (ink)
+                        // Corrente ESCURA (warm): grafite/tinta escura + tinta clara quente.
+                        white: '#ECE4D6',   // remap: text-white -> off-white quente (texto primário)
                         gray: {
-                            400: '#63594B',  // muted (texto secundário)
-                            500: '#8B806E',  // faint
-                            600: '#8B806E',
-                            700: '#D6CAB4',  // hairline forte
-                            800: '#E5DCCB',  // hairline
-                            850: '#EFE7D8',
-                            900: '#FDFBF6',  // surface (quase-branco)
-                            950: '#F4EEE3',  // paper
+                            400: '#A99E8C',  // muted (texto secundário)
+                            500: '#746A5B',  // faint
+                            600: '#746A5B',
+                            700: '#3C352B',  // hairline forte
+                            800: '#2E2820',  // hairline
+                            850: '#262019',
+                            900: '#1C1815',  // surface (grafite quente)
+                            950: '#14110E',  // paper (fundo near-black quente)
                         },
                         brand: {
-                            red: '#D8371B',      // vermelho Axen (vermilion)
-                            darkred: '#BE2C13',  // botão primário (AA c/ branco)
-                            black: '#F4EEE3',
-                            surface: '#FDFBF6',
+                            red: '#D8371B',      // vermelho Axen (única cor viva)
+                            darkred: '#B02C12',  // sombra do gradiente/keyline
+                            black: '#14110E',
+                            surface: '#1C1815',
                         },
-                        // Verde neon -> moss (status "conectado/no ar" do DNA, dessaturado p/ o creme)
-                        green: { 400: '#4F7A47', 500: '#4F7A47', 600: '#3F6339' },
-                        paper: '#F4EEE3',
-                        surface: '#FDFBF6',
-                        ink: '#1B1714',
-                        muted: '#63594B',
-                        faint: '#8B806E',
-                        hair: '#E5DCCB',
-                        moss: '#4F7A47',
-                        ocre: '#B0741C',
+                        // Verde -> moss, um pouco mais claro para legibilidade no escuro
+                        green: { 400: '#6DA45C', 500: '#6DA45C', 600: '#588A49' },
+                        paper: '#14110E',
+                        surface: '#1C1815',
+                        ink: '#ECE4D6',
+                        muted: '#A99E8C',
+                        faint: '#746A5B',
+                        hair: '#2E2820',
+                        moss: '#6DA45C',
+                        ocre: '#CE9433',
                     }
                 }
             }
         }
     </script>
-    <script src="/static/js/dashboard.js?v=corrente-1" defer></script>
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=corrente-1">
+    <script src="/static/js/dashboard.js?v=corrente-2" defer></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=corrente-2">
 </head>
 
 <body class="font-sans min-h-screen antialiased selection:bg-brand-red selection:text-[#FDFBF6]">
 
     <!-- Top Navigation -->
-    <nav class="border-b border-gray-800 bg-[#FDFBF6]/90 backdrop-blur-xl sticky top-0 z-40">
+    <nav class="border-b border-gray-800 bg-[#14110E]/85 backdrop-blur-xl sticky top-0 z-40">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between items-center h-16">
                 <div class="flex items-center gap-3">
@@ -292,12 +293,12 @@
                                         <input type="hidden" name="is_active"
                                             value="{{ 'false' if tenant.is_active else 'true' }}">
                                         <button type="submit"
-                                            class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-brand-red focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors {{ 'bg-brand-red shadow-[0_4px_12px_-5px_rgba(216,55,27,0.55)]' if tenant.is_active else 'bg-[#CDBFA8]' }}"
+                                            class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-brand-red focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors {{ 'bg-brand-red shadow-[0_4px_12px_-5px_rgba(216,55,27,0.55)]' if tenant.is_active else 'bg-[#3C352B]' }}"
                                             data-corrente-toggle role="switch" aria-checked="{{ 'true' if tenant.is_active else 'false' }}"
                                             title="{{ 'Desativar' if tenant.is_active else 'Ativar' }} Automation">
                                             <span class="sr-only">Alternar automacao</span>
                                             <span aria-hidden="true"
-                                                class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-[#FDFBF6] shadow ring-0 transition duration-200 ease-in-out {{ 'translate-x-4' if tenant.is_active else '-translate-x-0' }}">
+                                                class="pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-[#ECE4D6] shadow ring-0 transition duration-200 ease-in-out {{ 'translate-x-4' if tenant.is_active else '-translate-x-0' }}">
                                             </span>
                                         </button>
                                     </form>
@@ -501,7 +502,7 @@
                     </button>
                 </div>
 
-                <div class="mb-8 bg-[#FBF6EC] border border-brand-red/20 rounded-xl p-5 relative overflow-hidden group">
+                <div class="mb-8 bg-[#211C17] border border-brand-red/20 rounded-xl p-5 relative overflow-hidden group">
                     <div
                         class="absolute inset-0 bg-brand-red/5 mix-blend-overlay opacity-0 group-hover:opacity-100 transition-opacity">
                     </div>
@@ -700,7 +701,7 @@
                         class="w-full text-left p-4 rounded-xl border border-gray-800 hover:border-brand-red/40 hover:bg-brand-red/[0.03] transition-all group">
                         <div class="flex items-center gap-3">
                             <span class="plate text-[11px] text-gray-500 w-5 text-center">02</span>
-                            <div class="w-10 h-10 rounded-lg bg-[#F4EEE3] border border-gray-800 flex items-center justify-center">
+                            <div class="w-10 h-10 rounded-lg bg-[#211C17] border border-gray-800 flex items-center justify-center">
                                 <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
@@ -720,7 +721,7 @@
                         class="w-full text-left p-4 rounded-xl border border-gray-800 hover:border-brand-red/40 hover:bg-brand-red/[0.03] transition-all group">
                         <div class="flex items-center gap-3">
                             <span class="plate text-[11px] text-gray-500 w-5 text-center">03</span>
-                            <div class="w-10 h-10 rounded-lg bg-[#F4EEE3] border border-gray-800 flex items-center justify-center">
+                            <div class="w-10 h-10 rounded-lg bg-[#211C17] border border-gray-800 flex items-center justify-center">
                                 <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -905,7 +906,7 @@
             <div class="grid grid-cols-1 gap-3">
                 <!-- Agent AI -->
                 <button onclick="instanceAction('agent')"
-                    class="flex items-center gap-4 p-4 bg-[#FBF6EC] border border-gray-800 hover:border-brand-red/50 rounded-xl transition-all group text-left">
+                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-brand-red/50 rounded-xl transition-all group text-left">
                     <div class="w-10 h-10 rounded-lg bg-brand-red/10 border border-brand-red/30 flex items-center justify-center flex-shrink-0">
                         <svg class="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
@@ -919,7 +920,7 @@
 
                 <!-- Configure Z-API -->
                 <button onclick="instanceAction('zapi')"
-                    class="flex items-center gap-4 p-4 bg-[#FBF6EC] border border-gray-800 hover:border-green-500/50 rounded-xl transition-all group text-left">
+                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-green-500/50 rounded-xl transition-all group text-left">
                     <div class="w-10 h-10 rounded-lg bg-green-500/10 border border-green-500/30 flex items-center justify-center flex-shrink-0">
                         <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
@@ -933,7 +934,7 @@
 
                 <!-- Reconnect CRM -->
                 <button id="instance_card_reconnect" onclick="instanceAction('reconnect')"
-                    class="flex items-center gap-4 p-4 bg-[#FBF6EC] border border-gray-800 hover:border-yellow-500/50 rounded-xl transition-all group text-left">
+                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-yellow-500/50 rounded-xl transition-all group text-left">
                     <div class="w-10 h-10 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center flex-shrink-0">
                         <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
@@ -947,7 +948,7 @@
 
                 <!-- PIT Token -->
                 <button onclick="instanceAction('pit')"
-                    class="flex items-center gap-4 p-4 bg-[#FBF6EC] border border-gray-800 hover:border-amber-500/50 rounded-xl transition-all group text-left">
+                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-amber-500/50 rounded-xl transition-all group text-left">
                     <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
                         <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
@@ -962,7 +963,7 @@
                 <!-- Conectar WhatsApp (WAHA) -->
                 <button onclick="instanceAction('waha')"
                     title="Conectar um número de WhatsApp via WAHA (QR code)"
-                    class="flex items-center gap-4 p-4 bg-[#FBF6EC] border border-gray-800 hover:border-emerald-500/50 rounded-xl transition-all group text-left">
+                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-emerald-500/50 rounded-xl transition-all group text-left">
                     <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
                         <svg class="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.71.306 1.263.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
@@ -977,7 +978,7 @@
                 <!-- Telegram Bot -->
                 <button onclick="instanceAction('telegram')"
                     title="Conectar um bot do Telegram (token do BotFather)"
-                    class="flex items-center gap-4 p-4 bg-[#FBF6EC] border border-gray-800 hover:border-sky-500/50 rounded-xl transition-all group text-left">
+                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-sky-500/50 rounded-xl transition-all group text-left">
                     <div class="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center flex-shrink-0">
                         <svg class="w-5 h-5 text-sky-400" fill="currentColor" viewBox="0 0 24 24">
                             <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/>
@@ -991,7 +992,7 @@
 
                 <!-- Form Link -->
                 <button onclick="instanceAction('form')"
-                    class="flex items-center gap-4 p-4 bg-[#FBF6EC] border border-gray-800 hover:border-purple-500/50 rounded-xl transition-all group text-left">
+                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-purple-500/50 rounded-xl transition-all group text-left">
                     <div class="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
                         <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -1005,7 +1006,7 @@
 
                 <!-- Delete -->
                 <button onclick="instanceAction('delete')"
-                    class="flex items-center gap-4 p-4 bg-[#FBF6EC] border border-gray-800 hover:border-red-600/50 rounded-xl transition-all group text-left mt-2">
+                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-red-600/50 rounded-xl transition-all group text-left mt-2">
                     <div class="w-10 h-10 rounded-lg bg-red-900/20 border border-red-900/30 flex items-center justify-center flex-shrink-0">
                         <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
@@ -1220,7 +1221,7 @@
                         <button onclick="closePromptHistoryDetail()" class="text-[10px] font-bold uppercase tracking-widest text-gray-400 hover:text-white border border-gray-700 hover:border-gray-500 rounded px-2 py-1 transition-colors">← Voltar</button>
                         <p class="text-[10px] text-gray-500 font-mono uppercase" id="prompt_history_detail_meta"></p>
                     </div>
-                    <pre id="prompt_history_detail_content" class="text-xs text-gray-300 font-mono leading-relaxed whitespace-pre-wrap bg-[#FBF6EC] border border-gray-800 rounded-lg p-4 max-h-[55vh] overflow-y-auto"></pre>
+                    <pre id="prompt_history_detail_content" class="text-xs text-gray-300 font-mono leading-relaxed whitespace-pre-wrap bg-[#211C17] border border-gray-800 rounded-lg p-4 max-h-[55vh] overflow-y-auto"></pre>
                     <button id="prompt_history_restore_btn" onclick="restorePromptVersion()"
                         class="mt-4 w-full px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-brand-red hover:bg-brand-darkred transition-colors">
                         Restaurar esta versão
@@ -1326,7 +1327,7 @@
                     <input type="hidden" id="ai_channel" name="channel" value="whatsapp">
 
                     <!-- Seletor de canal (multi-agente por canal) -->
-                    <div class="mb-4 flex items-center justify-between bg-[#FBF6EC] border border-gray-800 rounded-xl p-3">
+                    <div class="mb-4 flex items-center justify-between bg-[#211C17] border border-gray-800 rounded-xl p-3">
                         <div class="flex items-center gap-2 overflow-x-auto scrollbar-none">
                             <span class="text-[9px] font-bold text-gray-500 uppercase tracking-widest font-mono mr-2">Canal:</span>
                             <div id="channel_tabs_container" class="flex items-center gap-1.5"></div>
@@ -1382,7 +1383,7 @@
                     <!-- TAB: SETTINGS -->
                     <div id="ai_tab_settings" class="ai-tab-content space-y-6">
                         <div
-                            class="flex items-center justify-between bg-[#FBF6EC] border border-gray-800 p-4 rounded-xl">
+                            class="flex items-center justify-between bg-[#211C17] border border-gray-800 p-4 rounded-xl">
                             <div>
                                 <p class="text-sm font-bold text-white uppercase tracking-wide">Ativar Motor Cognitivo
                                 </p>
@@ -1498,7 +1499,7 @@
                     <!-- TAB: VOICE -->
                     <div id="ai_tab_voice" class="ai-tab-content space-y-6 hidden">
 
-                        <div class="bg-[#FBF6EC] border border-gray-800 p-4 rounded-xl">
+                        <div class="bg-[#211C17] border border-gray-800 p-4 rounded-xl">
                             <p class="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
                                 <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor"
                                     viewBox="0 0 24 24">
@@ -1583,7 +1584,7 @@
                         </div>
 
                         <!-- Configuracoes de Voz Sliders -->
-                        <div class="bg-[#FBF6EC] border border-gray-800 p-4 rounded-xl space-y-4 mt-2">
+                        <div class="bg-[#211C17] border border-gray-800 p-4 rounded-xl space-y-4 mt-2">
                             <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Configuracoes de Voz</p>
 
                             <div>
@@ -1668,7 +1669,7 @@
                                 </p>
                             </div>
 
-                            <div class="bg-[#FBF6EC] border border-gray-800 p-4 rounded-xl space-y-4 mt-2">
+                            <div class="bg-[#211C17] border border-gray-800 p-4 rounded-xl space-y-4 mt-2">
                                 <p class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Configurações de Voz</p>
 
                                 <div class="group">
@@ -1759,7 +1760,7 @@
 
                     <!-- TAB: TESTER (CHEST) -->
                     <div id="ai_tab_tester" class="ai-tab-content space-y-4 hidden">
-                        <div class="bg-[#FBF6EC] border border-gray-800 rounded-xl flex flex-col h-[400px]">
+                        <div class="bg-[#211C17] border border-gray-800 rounded-xl flex flex-col h-[400px]">
                             <!-- Chat Header -->
                             <div class="p-4 border-b border-gray-800 flex justify-between items-center gap-2">
                                 <span class="text-[10px] font-bold text-brand-red uppercase tracking-widest font-mono shrink-0">Simulador de Chat</span>
@@ -1799,7 +1800,7 @@
                         </div>
 
                         <!-- Otimização do Prompt — IA Mestre considera form, prompt atual e histórico -->
-                        <div class="mt-4 bg-[#FBF6EC] border border-gray-800 rounded-xl p-4 space-y-3">
+                        <div class="mt-4 bg-[#211C17] border border-gray-800 rounded-xl p-4 space-y-3">
                             <div class="flex items-center justify-between">
                                 <h4 class="text-white text-xs font-bold uppercase tracking-widest flex items-center gap-2">
                                     <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
@@ -1879,26 +1880,26 @@
                         <div id="costs_data" class="hidden space-y-4">
                             <!-- Summary cards -->
                             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                <div class="bg-[#FBF6EC] border border-gray-800 rounded-xl p-4 text-center">
+                                <div class="bg-[#211C17] border border-gray-800 rounded-xl p-4 text-center">
                                     <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total de Chamadas</p>
                                     <p id="costs_total_calls" class="text-2xl font-display font-extrabold text-white">0</p>
                                 </div>
-                                <div class="bg-[#FBF6EC] border border-gray-800 rounded-xl p-4 text-center">
+                                <div class="bg-[#211C17] border border-gray-800 rounded-xl p-4 text-center">
                                     <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Custo Total</p>
                                     <p id="costs_total_cost" class="text-2xl font-display font-extrabold text-brand-red">$0.00</p>
                                 </div>
-                                <div class="bg-[#FBF6EC] border border-gray-800 rounded-xl p-4 text-center">
+                                <div class="bg-[#211C17] border border-gray-800 rounded-xl p-4 text-center">
                                     <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total de Tokens</p>
                                     <p id="costs_total_tokens" class="text-2xl font-display font-extrabold text-white">0</p>
                                 </div>
-                                <div class="bg-[#FBF6EC] border border-gray-800 rounded-xl p-4 text-center">
+                                <div class="bg-[#211C17] border border-gray-800 rounded-xl p-4 text-center">
                                     <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Caracteres TTS</p>
                                     <p id="costs_total_chars" class="text-2xl font-display font-extrabold text-white">0</p>
                                 </div>
                             </div>
 
                             <!-- Per-service breakdown -->
-                            <div class="bg-[#FBF6EC] border border-gray-800 rounded-xl overflow-hidden">
+                            <div class="bg-[#211C17] border border-gray-800 rounded-xl overflow-hidden">
                                 <div class="px-4 py-3 border-b border-gray-800">
                                     <p class="text-[10px] text-gray-400 uppercase tracking-widest font-mono font-bold">Detalhamento por Servico</p>
                                 </div>
@@ -1919,7 +1920,7 @@
                             </div>
 
                             <!-- Daily breakdown -->
-                            <div class="bg-[#FBF6EC] border border-gray-800 rounded-xl overflow-hidden">
+                            <div class="bg-[#211C17] border border-gray-800 rounded-xl overflow-hidden">
                                 <div class="px-4 py-3 border-b border-gray-800">
                                     <p class="text-[10px] text-gray-400 uppercase tracking-widest font-mono font-bold">Atividade Diaria</p>
                                 </div>
@@ -1934,7 +1935,7 @@
                     <!-- TAB: QUALIFICATION -->
                     <div id="ai_tab_qualification" class="ai-tab-content space-y-6 hidden">
                         <!-- Ativar toggle -->
-                        <div class="flex items-center justify-between bg-[#FBF6EC] border border-gray-800 p-4 rounded-xl">
+                        <div class="flex items-center justify-between bg-[#211C17] border border-gray-800 p-4 rounded-xl">
                             <div>
                                 <p class="text-sm font-bold text-white uppercase tracking-wide">Criar Negocio Automaticamente</p>
                                 <p class="text-xs text-gray-500 mt-1">Quando ativado, o agente IA criara automaticamente um negocio no GHL apos coletar todos os campos obrigatorios do lead.</p>

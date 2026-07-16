@@ -1,50 +1,51 @@
-/* Design DNA "Corrente" — editorial claro, vermelho Axen como única cor viva.
-   Ver bloco "## Design DNA" no CLAUDE.md. */
+/* Design DNA "Corrente" — variante ESCURA (warm): grafite/tinta + off-white quente,
+   vermelho Axen como única cor viva. Ver bloco "## Design DNA" no CLAUDE.md. */
 
 :root {
-    --paper: #F4EEE3;
-    --surface: #FDFBF6;
-    --ink: #1B1714;
-    --muted: #63594B;
-    --faint: #8B806E;
-    --hair: #E5DCCB;
-    --hair-strong: #D6CAB4;
+    --paper: #14110E;
+    --surface: #1C1815;
+    --elevated: #221D18;
+    --ink: #ECE4D6;
+    --muted: #A99E8C;
+    --faint: #746A5B;
+    --hair: #2E2820;
+    --hair-strong: #3C352B;
     --brand: #D8371B;
-    --brand-btn: #BE2C13;
-    --brand-deep: #95260F;
-    --brand-tint: #F8E7DF;
-    --moss: #4F7A47;
-    --ocre: #B0741C;
+    --brand-btn: #D8371B;
+    --brand-deep: #B02C12;
+    --brand-tint: rgba(216, 55, 27, 0.12);
+    --moss: #6DA45C;
+    --ocre: #CE9433;
 }
 
 body {
     background-color: var(--paper);
     background-image:
-        radial-gradient(120% 70% at 50% -10%, rgba(216, 55, 27, 0.035), transparent 55%),
-        radial-gradient(90% 60% at 100% 0%, rgba(0, 0, 0, 0.015), transparent 50%);
+        radial-gradient(120% 70% at 50% -12%, rgba(216, 55, 27, 0.07), transparent 55%),
+        radial-gradient(90% 60% at 100% 0%, rgba(0, 0, 0, 0.35), transparent 55%);
     background-attachment: fixed;
     color: var(--ink);
     font-feature-settings: "ss01" 1;
 }
 
-/* Painel/superfície contida: hairline separa, sombra só no foco. */
+/* Painel/superfície contida: hairline separa; sombra dá profundidade no escuro. */
 .glass-panel {
     background: var(--surface);
     border: 1px solid var(--hair);
-    box-shadow: 0 1px 2px rgba(27, 23, 20, 0.04), 0 12px 28px -18px rgba(27, 23, 20, 0.18);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 20px 44px -26px rgba(0, 0, 0, 0.65);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
 
 .table-row-hover:hover {
-    background: rgba(216, 55, 27, 0.035);
+    background: rgba(216, 55, 27, 0.06);
 }
 
-/* Botão primário: vermelho Axen sólido, texto claro (AA). */
+/* Botão primário: vermelho Axen, texto claro. */
 .btn-brand {
     background: var(--brand-btn);
     color: #FDFBF6 !important;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.15) inset, 0 6px 16px -8px rgba(149, 38, 15, 0.5);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.12) inset, 0 8px 20px -10px rgba(216, 55, 27, 0.55);
     transition: background 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
 }
 
@@ -55,9 +56,9 @@ body {
 
 .btn-brand svg { color: #FDFBF6 !important; }
 
-/* Inputs claros com foco vermelho. */
+/* Inputs escuros com foco vermelho. */
 .input-dark {
-    background: var(--surface);
+    background: #16130F;
     border: 1px solid var(--hair-strong);
     color: var(--ink);
     transition: border-color 0.18s ease, box-shadow 0.18s ease;
@@ -67,18 +68,18 @@ body {
 
 .input-dark:focus {
     border-color: var(--brand);
-    box-shadow: 0 0 0 3px rgba(216, 55, 27, 0.14);
+    box-shadow: 0 0 0 3px rgba(216, 55, 27, 0.2);
     outline: none;
 }
 
 /* Chip de status neutro. */
 .status-badge {
-    background: rgba(27, 23, 20, 0.04);
+    background: rgba(236, 228, 214, 0.05);
     border: 1px solid var(--hair);
     color: var(--muted);
 }
 
-.glow-text { text-shadow: none; }
+.glow-text { text-shadow: 0 0 24px rgba(216, 55, 27, 0.35); }
 
 /* Detalhe-assinatura "a corrente": keyline vermelho de 2px no elemento vivo/ativo. */
 .corrente {
@@ -94,5 +95,5 @@ body {
 
 .tnum { font-variant-numeric: tabular-nums; }
 
-/* Logo Axen: quadrado vermelho com raio claro (o ink remap não deve escurecer o ícone). */
+/* Logo Axen: quadrado vermelho com raio claro. */
 .axen-mark svg { color: #FDFBF6 !important; }
