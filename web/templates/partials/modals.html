@@ -811,14 +811,37 @@
                 <p class="text-sm text-gray-300">Conecte ao GoHighLevel para enviar leads qualificados como oportunidades no CRM. <strong class="text-white">As mensagens continuam direto pelo WhatsApp.</strong></p>
             </div>
 
-            <div class="space-y-4">
+            <!-- App do Marketplace é config de ADMIN, uma vez, para todos os clientes —
+                 igual ao servidor WAHA. Aqui a instância só autoriza. Os campos abaixo
+                 existem só para o caso raro de usar outra client key do mesmo app. -->
+            {% if ghl_app_configured %}
+            <div id="connect_crm_app_ok" class="flex items-center gap-2 px-4 py-3 rounded-xl border bg-green-500/10 border-green-500/25 mb-4">
+                <span class="w-2 h-2 rounded-full bg-green-500"></span>
+                <span class="text-sm font-bold text-white">App do Marketplace configurado</span>
+                <span class="plate text-[10px] text-gray-400 font-mono ml-auto">{{ ghl_app_hint }}</span>
+            </div>
+            {% else %}
+            <div class="flex items-center gap-2 px-4 py-3 rounded-xl border bg-brand-red/10 border-brand-red/30 mb-4">
+                <span class="w-2 h-2 rounded-full bg-brand-red"></span>
+                <span class="text-sm font-bold text-white">Nenhum app configurado</span>
+                <span class="text-[10px] text-gray-400 font-mono uppercase tracking-widest ml-auto">informe a chave abaixo</span>
+            </div>
+            {% endif %}
+
+            <button type="button" onclick="toggleCrmAdvanced()" id="connect_crm_adv_toggle"
+                title="Usar outra client key do mesmo app (raro)"
+                class="text-[10px] font-mono uppercase tracking-widest text-gray-500 hover:text-gray-300 transition-colors mb-3">
+                Usar outra chave do app (avancado)
+            </button>
+
+            <div id="connect_crm_adv" class="space-y-4 {% if ghl_app_configured %}hidden{% endif %}">
                 <div>
                     <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-1.5">OAuth Client ID</label>
-                    <input type="text" id="connect_crm_ci" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" placeholder="Cole o Client ID do GHL Marketplace">
+                    <input type="text" id="connect_crm_ci" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" placeholder="{% if ghl_app_configured %}Em branco = usa o app do admin{% else %}Cole o Client ID do app{% endif %}">
                 </div>
                 <div>
                     <label class="block text-[10px] font-bold text-gray-400 uppercase tracking-widest font-mono mb-1.5">OAuth Client Secret</label>
-                    <input type="password" id="connect_crm_cs" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" placeholder="Cole o Client Secret">
+                    <input type="password" id="connect_crm_cs" class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" placeholder="{% if ghl_app_configured %}Em branco = usa o app do admin{% else %}Cole o Client Secret{% endif %}">
                 </div>
             </div>
 

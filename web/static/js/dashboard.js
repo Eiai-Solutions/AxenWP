@@ -356,13 +356,25 @@
             document.getElementById('connectCRMModal').classList.add('hidden');
         }
 
+        function toggleCrmAdvanced() {
+            document.getElementById('connect_crm_adv').classList.toggle('hidden');
+        }
+
         function submitConnectCRM() {
             const company = document.getElementById('connect_crm_company_hidden').value;
             const existingId = document.getElementById('connect_crm_existing_id').value;
             const ci = document.getElementById('connect_crm_ci').value.trim();
             const cs = document.getElementById('connect_crm_cs').value.trim();
-            if (!ci) { alert('Informe o Client ID do GHL.'); return; }
-            let url = `/oauth/install?company=${encodeURIComponent(company)}&ci=${encodeURIComponent(ci)}&cs=${encodeURIComponent(cs)}&ui_redirect=1`;
+            // Credencial do app é do ADMIN, uma vez, para todos. Só exigimos aqui
+            // quando não há app configurado no servidor — em branco, o backend cai
+            // no settings.ghl_client_id (auth/oauth.py:43).
+            const appConfigurado = !!document.getElementById('connect_crm_app_ok');
+            if (!ci && !appConfigurado) {
+                alert('Nenhum app do Marketplace configurado no servidor. Informe o Client ID, ou configure GHL_CLIENT_ID no ambiente.');
+                return;
+            }
+            let url = `/oauth/install?company=${encodeURIComponent(company)}&ui_redirect=1`;
+            if (ci) url += `&ci=${encodeURIComponent(ci)}&cs=${encodeURIComponent(cs)}`;
             if (existingId) url += `&existing=${encodeURIComponent(existingId)}`;
             window.location.href = url;
         }

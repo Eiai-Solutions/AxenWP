@@ -26,6 +26,21 @@ templates = Jinja2Templates(directory="web/templates")
 _WEAK_PASSWORDS = {"admin123", "admin", "password", "123456", ""}
 
 
+def _mask_app_id(client_id: str) -> str:
+    """
+    Identifica o app sem expor a chave inteira.
+
+    O client id do GHL vem como "<appId>-<sufixoDaChave>": mostramos o começo do
+    appId e o sufixo, que é justamente o que distingue uma client key da outra
+    quando o mesmo app tem várias.
+    """
+    if not client_id:
+        return ""
+    app_id, _, suffix = client_id.partition("-")
+    head = app_id[:8] if app_id else client_id[:8]
+    return f"{head}…-{suffix}" if suffix else f"{head}…"
+
+
 def _get_admin_password() -> str:
     """Retorna a senha admin configurada. Falha se nao definida em producao."""
     pw = app_settings.admin_password
@@ -216,14 +231,20 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
                 
         tenants_list.append(t_dict)
 
+    # O app do Marketplace é um só, do admin, para todos os clientes: se está
+    # configurado no ambiente, a instância não precisa pedir client id/secret.
+    ghl_client_id = (app_settings.ghl_client_id or "").strip()
+
     return templates.TemplateResponse(
-        "dashboard.html", 
+        "dashboard.html",
         {
-            "request": request, 
-            "tenants": tenants_list, 
+            "request": request,
+            "tenants": tenants_list,
             "message": msg,
             "error_msg": err,
-            "system_settings": system_settings
+            "system_settings": system_settings,
+            "ghl_app_configured": bool(ghl_client_id),
+            "ghl_app_hint": _mask_app_id(ghl_client_id),
         }
     )
 
