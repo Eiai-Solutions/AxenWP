@@ -101,9 +101,20 @@ def _debounce_seconds(location_id: str) -> float:
 
 # ── CRM: contato e espelho ──
 
-async def resolve_contact_id(location_id: str, sender_id: str, sender_name: str) -> Optional[str]:
-    """Acha (ou cria) o contato no CRM. Cache local primeiro — vale sobretudo para @lid."""
+async def resolve_contact_id(
+    location_id: str, sender_id: str, sender_name: str, sender_lid: Optional[str] = None
+) -> Optional[str]:
+    """
+    Acha (ou cria) o contato no CRM. Cache local primeiro — vale sobretudo para @lid.
+
+    A pessoa tem até duas identidades (telefone e @lid) e pode chegar por
+    qualquer uma delas. Procuramos pelas duas antes de criar, e gravamos as duas
+    juntas depois — senão a mesma pessoa vira dois contatos assim que o WhatsApp
+    deixar de mandar o número.
+    """
     contact_id = token_manager.get_mapped_contact_id(location_id, sender_id)
+    if not contact_id and sender_lid:
+        contact_id = token_manager.get_mapped_contact_id(location_id, sender_lid)
     if contact_id:
         return contact_id
 
@@ -120,7 +131,11 @@ async def resolve_contact_id(location_id: str, sender_id: str, sender_name: str)
             contact_id = novo["id"]
 
     if contact_id:
-        token_manager.save_contact_mapping(location_id, sender_id, contact_id)
+        # Se a identidade recebida JÁ é o @lid (não resolvemos o número), gravamos
+        # ela também na coluna lid: assim a linha fica auto-descritiva e o dia em
+        # que o telefone aparecer, a busca por lid reencontra este mesmo contato.
+        lid_conhecido = sender_lid or (sender_id if "@lid" in sender_id else None)
+        token_manager.save_contact_mapping(location_id, sender_id, contact_id, lid=lid_conhecido)
     return contact_id
 
 
@@ -156,7 +171,13 @@ async def mirror_inbound(tenant, pm: ParsedMessage, contact_id: str) -> Optional
     if _contato_foi_deletado(resp):
         logger.warning(f"Contato {contact_id} deletado no CRM. Limpando cache e recriando...")
         token_manager.delete_contact_mapping(location_id, pm.sender_id)
-        novo_id = await resolve_contact_id(location_id, pm.sender_id, pm.sender_name)
+        if pm.sender_lid:
+            # A linha do @lid aponta para o mesmo contato morto; se sobrevivesse,
+            # a próxima mensagem reusaria o id inexistente em loop.
+            token_manager.delete_contact_mapping(location_id, pm.sender_lid)
+        novo_id = await resolve_contact_id(
+            location_id, pm.sender_id, pm.sender_name, sender_lid=pm.sender_lid
+        )
         if not novo_id:
             return None
         contact_id = novo_id
@@ -343,7 +364,9 @@ async def handle_inbound(adapter, tenant, pm: ParsedMessage) -> None:
 
     contact_id = None
     if getattr(tenant, "mode", "ghl") != "whatsapp_only":
-        contact_id = await resolve_contact_id(pm.location_id, pm.sender_id, pm.sender_name)
+        contact_id = await resolve_contact_id(
+            pm.location_id, pm.sender_id, pm.sender_name, sender_lid=pm.sender_lid
+        )
         if not contact_id:
             # Sem contato não há CRM nenhum para consultar (nem o gate da IA);
             # aqui parar é a única saída honesta.

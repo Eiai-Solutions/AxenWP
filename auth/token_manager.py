@@ -399,20 +399,58 @@ class TokenManager:
 
     # --- CONTACT MAPPING FUNCS ---
     def get_mapped_contact_id(self, location_id: str, phone_or_lid: str) -> Optional[str]:
-        """Tenta achar um ID de contato do GHL associado a um telefone_ou_lid no banco local."""
+        """
+        Contato do GHL por QUALQUER uma das identidades da pessoa.
+
+        A mesma pessoa chega ora como telefone, ora como @lid (o WhatsApp nem
+        sempre entrega o número). Procurar só pela chave recebida faria nascer um
+        contato duplicado toda vez que ela aparecesse pela outra ponta.
+        """
         from data.models import ContactMapping
         db = SessionLocal()
         try:
             mapping = db.query(ContactMapping).filter_by(
-                location_id=location_id, 
+                location_id=location_id,
                 phone_or_lid=phone_or_lid
             ).first()
+            if not mapping:
+                mapping = db.query(ContactMapping).filter_by(
+                    location_id=location_id, lid=phone_or_lid
+                ).first()
             return mapping.ghl_contact_id if mapping else None
         finally:
             db.close()
 
-    def save_contact_mapping(self, location_id: str, phone_or_lid: str, ghl_contact_id: str):
-        """Salva a associação entre o numero do WhatsApp (@lid) e o ID real do GHL."""
+    def get_phone_by_lid(self, location_id: str, lid: str) -> Optional[str]:
+        """
+        Telefone já conhecido de um @lid, se algum dia resolvemos essa pessoa.
+
+        É a última camada de resolução de identidade: quando o payload não traz o
+        número e o servidor do provedor não responde, ainda conseguimos responder
+        a quem já conversou com a gente antes.
+        """
+        from data.models import ContactMapping
+        db = SessionLocal()
+        try:
+            mapping = db.query(ContactMapping).filter_by(
+                location_id=location_id, lid=lid
+            ).first()
+            if mapping and mapping.phone_or_lid and "@" not in mapping.phone_or_lid:
+                return mapping.phone_or_lid
+            return None
+        finally:
+            db.close()
+
+    def save_contact_mapping(
+        self, location_id: str, phone_or_lid: str, ghl_contact_id: str, lid: Optional[str] = None
+    ):
+        """
+        Associa a identidade do WhatsApp ao contato do GHL.
+
+        Quando as duas identidades são conhecidas (telefone resolvido a partir de
+        um @lid), gravamos ambas na MESMA linha — é isso que impede a duplicata
+        quando a pessoa reaparece pela outra identidade.
+        """
         from data.models import ContactMapping
         db = SessionLocal()
         try:
@@ -423,11 +461,15 @@ class TokenManager:
                     id=mapping_id,
                     location_id=location_id,
                     phone_or_lid=phone_or_lid,
-                    ghl_contact_id=ghl_contact_id
+                    ghl_contact_id=ghl_contact_id,
+                    lid=lid,
                 )
                 db.add(mapping)
             else:
                 mapping.ghl_contact_id = ghl_contact_id
+                # Só preenche; nunca apaga um lid já conhecido com None.
+                if lid:
+                    mapping.lid = lid
             db.commit()
         except Exception as e:
             logger.error(f"Erro ao salvar mapping de contato DB: {e}")
@@ -435,12 +477,22 @@ class TokenManager:
             db.close()
 
     def delete_contact_mapping(self, location_id: str, phone_or_lid: str):
-        """Remove o mapeamento em caso de contato deletado no GHL."""
+        """
+        Remove o mapeamento (contato deletado no GHL).
+
+        Apaga por telefone E por lid: deixar a linha alias sobreviver apontando
+        para um contato morto faria a próxima mensagem reusar um contact_id que
+        não existe mais, em loop e sem auto-cura.
+        """
         from data.models import ContactMapping
         db = SessionLocal()
         try:
-            mapping_id = f"{location_id}_{phone_or_lid}"
-            db.query(ContactMapping).filter_by(id=mapping_id).delete()
+            db.query(ContactMapping).filter_by(
+                id=f"{location_id}_{phone_or_lid}"
+            ).delete()
+            db.query(ContactMapping).filter_by(
+                location_id=location_id, lid=phone_or_lid
+            ).delete()
             db.commit()
         except Exception as e:
             logger.error(f"Erro ao deletar mapping de contato DB: {e}")

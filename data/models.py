@@ -183,6 +183,11 @@ class ContactMapping(Base):
     location_id = Column(String, index=True)
     phone_or_lid = Column(String, index=True) # O identificador que a Z-API nos manda (ex: 5511999999999 ou 12345678@lid)
     ghl_contact_id = Column(String, index=True) # O ID real do contato no GHL
+    # A MESMA pessoa chega ora como telefone, ora como @lid (o WhatsApp nem sempre
+    # entrega o número). Guardar as duas identidades na mesma linha é o que evita
+    # criar um contato duplicado quando ela aparece pela outra ponta — e permite
+    # recuperar o telefone a partir do @lid para conseguir responder.
+    lid = Column(String, index=True, nullable=True)
     created_at = Column(String, default=lambda: datetime.now(timezone.utc).isoformat())
 
 

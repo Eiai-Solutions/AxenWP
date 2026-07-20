@@ -115,14 +115,22 @@ async def process_waha_message(location_id: str, payload: dict) -> None:
     # o lookup no WAHA — e apenas para mensagem que vai ser processada de fato,
     # nunca para eco nosso ou grupo, que o pipeline descartaria em seguida.
     if "@lid" in pm.sender_id and not pm.from_me and not pm.is_group:
+        lid = pm.sender_id
         base, key, session = _channel._cfg(tenant)
-        fone = await waha_service.resolve_lid(base, key, session, pm.sender_id)
+        fone = await waha_service.resolve_lid(base, key, session, lid)
+        if not fone:
+            # Última camada: se essa pessoa já conversou com a gente, o telefone
+            # dela está no nosso próprio banco, vinculado a este @lid.
+            fone = token_manager.get_phone_by_lid(location_id, lid)
+            if fone:
+                logger.info(f"[WAHA] LID {lid} resolvido pelo mapeamento local -> {fone}")
         if fone:
-            pm = replace(pm, sender_id=fone, sender_lid=pm.sender_id)
+            pm = replace(pm, sender_id=fone, sender_lid=lid)
         else:
-            logger.warning(
-                f"[WAHA] LID {pm.sender_id} não resolvido — contato entrará sem telefone."
-            )
+            # Sem telefone o contato ainda entra, identificado pelo @lid: o
+            # mapeamento guarda as duas identidades, então quando o número
+            # aparecer numa próxima mensagem ele reencontra o mesmo contato.
+            logger.warning(f"[WAHA] LID {lid} não resolvido — contato seguirá sem telefone.")
 
     logger.info(
         f"[WAHA] inbound location={location_id} de={pm.sender_id} "
