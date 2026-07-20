@@ -65,7 +65,7 @@
             // Store data for sub-actions
             window._instanceSettingsData = { locationId, companyName, mode, clientId, zapiInstanceId, zapiToken, zapiClientToken, pitToken, telegramBotToken, telegramBotUsername };
 
-            renderCanaisStatus(locationId, telegramBotToken, telegramBotUsername);
+            renderCanaisStatus(locationId, telegramBotToken, telegramBotUsername, zapiInstanceId);
 
             // Status da conexão com o CRM — PIT e OAuth são caminhos alternativos.
             const crmStatus = document.getElementById('crm_status');
@@ -155,11 +155,13 @@
         });
 
         // Faixa de status reutilizável (mesma linguagem visual do status do CRM).
+        // state: 'ok' (verde, funcionando) · 'bad' (vermelho, configurado mas com
+        // problema) · 'off' (neutro, nada configurado ainda).
         function _statusRow(state, title, right) {
             const box = state === 'ok' ? 'bg-green-500/10 border-green-500/25'
-                : state === 'warn' ? 'bg-ocre/10 border-ocre/30'
+                : state === 'bad' ? 'bg-brand-red/10 border-brand-red/30'
                     : 'bg-[#211C17] border-gray-800';
-            const dot = state === 'ok' ? 'bg-green-500' : state === 'warn' ? 'bg-ocre' : 'bg-gray-700';
+            const dot = state === 'ok' ? 'bg-green-500' : state === 'bad' ? 'bg-brand-red' : 'bg-gray-700';
             const txt = state === 'off' ? 'text-gray-400' : 'text-white';
             return '<div class="flex items-center gap-2 px-4 py-3 rounded-xl border ' + box + '">'
                 + '<span class="w-2 h-2 rounded-full ' + dot + '"></span>'
@@ -170,37 +172,51 @@
 
         // Status dos canais. O provedor real vem do card (zapi|waha); no WAHA a sessão
         // é consultada ao vivo, porque o estado vive no servidor WAHA e não no banco.
-        function renderCanaisStatus(locationId, telegramBotToken, telegramBotUsername) {
+        function renderCanaisStatus(locationId, telegramBotToken, telegramBotUsername, zapiInstanceId) {
             const box = document.getElementById('canais_status');
             if (!box) return;
             const card = document.querySelector('[data-location="' + locationId + '"]');
             const provider = (card && card.dataset.provider) || 'zapi';
             const waStatus = (card && card.dataset.wastatus) || '';
 
+            // Só entram canais que EXISTEM. Canal ausente não vira linha de ruído.
             const tg = telegramBotToken
-                ? _statusRow('ok', 'Telegram conectado', telegramBotUsername ? '@' + telegramBotUsername : '')
-                : _statusRow('off', 'Telegram nao conectado', '');
+                ? [_statusRow('ok', 'Telegram conectado', telegramBotUsername ? '@' + telegramBotUsername : '')]
+                : [];
 
-            let wa;
-            if (provider === 'waha') wa = _statusRow('off', 'WhatsApp — verificando…', 'via WAHA');
-            else if (waStatus === 'CONNECTED') wa = _statusRow('ok', 'WhatsApp conectado', 'via Z-API');
-            else if (waStatus === 'DISCONNECTED') wa = _statusRow('warn', 'WhatsApp desconectado', 'via Z-API');
-            else wa = _statusRow('off', 'WhatsApp nao configurado', '');
-            box.innerHTML = wa + tg;
+            const paint = function (whatsappRow) {
+                const rows = (whatsappRow ? [whatsappRow] : []).concat(tg);
+                box.innerHTML = rows.length
+                    ? rows.join('')
+                    : _statusRow('off', 'Nenhum canal configurado ainda', '');
+            };
 
-            if (provider !== 'waha') return;
-            fetch('/admin/waha/tenant/' + locationId + '/status')
-                .then(r => r.json())
-                .then(d => {
-                    let row;
-                    if (d.error || d.configured === false) row = _statusRow('off', 'Servidor WAHA nao configurado', 'config. admin');
-                    else if (d.status === 'WORKING') row = _statusRow('ok', 'WhatsApp conectado', 'via WAHA' + (d.me ? ' · ' + d.me : ''));
-                    else if (d.status === 'SCAN_QR_CODE') row = _statusRow('warn', 'Aguardando leitura do QR', 'via WAHA');
-                    else if (d.status === 'STARTING') row = _statusRow('warn', 'Sessao iniciando…', 'via WAHA');
-                    else row = _statusRow('warn', 'WhatsApp desconectado', 'via WAHA · ' + (d.status || '—'));
-                    box.innerHTML = row + tg;
-                })
-                .catch(() => { /* mantem o estado otimista; nao quebra o modal */ });
+            if (provider === 'waha') {
+                paint(null);
+                fetch('/admin/waha/tenant/' + locationId + '/status')
+                    .then(function (r) { return r.json(); })
+                    .then(function (d) {
+                        // Servidor WAHA sem config = canal ainda não existe.
+                        if (d.error || d.configured === false) { paint(null); return; }
+                        if (d.status === 'WORKING') {
+                            paint(_statusRow('ok', 'WhatsApp conectado', 'via WAHA' + (d.me ? ' · ' + d.me : '')));
+                        } else if (d.status === 'SCAN_QR_CODE') {
+                            paint(_statusRow('bad', 'WhatsApp aguardando leitura do QR', 'via WAHA'));
+                        } else if (d.status === 'STARTING') {
+                            paint(_statusRow('bad', 'WhatsApp iniciando a sessao', 'via WAHA'));
+                        } else {
+                            paint(_statusRow('bad', 'WhatsApp desconectado', 'via WAHA'));
+                        }
+                    })
+                    .catch(function () { paint(null); });
+                return;
+            }
+
+            // Z-API: só é canal se houver instância configurada.
+            if (!zapiInstanceId) { paint(null); return; }
+            paint(waStatus === 'CONNECTED'
+                ? _statusRow('ok', 'WhatsApp conectado', 'via Z-API')
+                : _statusRow('bad', 'WhatsApp desconectado', 'via Z-API'));
         }
 
         // Módulos do modal de instância: Canais · CRM · Agente IA · Onboarding · Avançado.
