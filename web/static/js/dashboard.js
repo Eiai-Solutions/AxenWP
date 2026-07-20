@@ -2238,12 +2238,36 @@
             }
         }
 
+        // Cards de configuracao (System Settings) — fechados por padrao, abrem ao clicar.
+        const SETTINGS_CARDS = ['ia', 'stt', 'waha'];
+
+        function toggleSettingsCard(id) {
+            const body = document.getElementById('body-' + id);
+            if (!body) return;
+            const nowHidden = body.classList.toggle('hidden');
+            const chev = document.getElementById('chev-' + id);
+            if (chev) chev.classList.toggle('rotate-180', !nowHidden);
+        }
+
+        function collapseSettingsCards() {
+            SETTINGS_CARDS.forEach(id => {
+                const body = document.getElementById('body-' + id);
+                const chev = document.getElementById('chev-' + id);
+                if (body) body.classList.add('hidden');
+                if (chev) chev.classList.remove('rotate-180');
+            });
+            const result = document.getElementById('waha_test_result');
+            if (result) result.textContent = '';
+        }
+
         function openSystemModal() {
+            collapseSettingsCards();
             document.getElementById('systemModal').classList.remove('hidden');
         }
 
         function closeSystemModal() {
             document.getElementById('systemModal').classList.add('hidden');
+            collapseSettingsCards();
         }
 
         window.lastImprovedPrompt = null;
