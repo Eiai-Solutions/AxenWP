@@ -25,6 +25,18 @@ from utils.logger import logger
 # normal) mas PRESERVAMOS @lid (leads de anúncio) para o fluxo GHL, igual à Z-API.
 _STRIP_SUFFIX = re.compile(r"@(c\.us|s\.whatsapp\.net)$")
 
+# Só dígitos do começo de um jid, descartando device (":77") e sufixo de servidor.
+# "554797838884:77@s.whatsapp.net" -> "554797838884" · "..@lid" não casa (sem dígito de telefone).
+_JID_DIGITS = re.compile(r"^(\d{6,})")
+
+
+def _phone_from_jid(jid: str) -> Optional[str]:
+    """Telefone (só dígitos) a partir de um jid @c.us/@s.whatsapp.net, ou None se for @lid/vazio."""
+    if not jid or "@lid" in jid:
+        return None
+    m = _JID_DIGITS.match(jid)
+    return m.group(1) if m else None
+
 
 class WAHAChannel:
     channel = "whatsapp"
@@ -125,6 +137,21 @@ class WAHAChannel:
         raw_from = p.get("from") or ""
         is_group = raw_from.endswith("@g.us")
         sender_id = _STRIP_SUFFIX.sub("", raw_from)  # preserva @lid
+        sender_lid = None
+
+        # Resolução LID -> telefone SEM I/O: o motor GOWS já entrega o número real
+        # no próprio payload (Info.SenderAlt) para quem chega como @lid. Quando o
+        # `from` é @lid mas o SenderAlt traz o telefone, adotamos o telefone como
+        # identidade e guardamos o @lid original — assim o contato no CRM nasce com
+        # número (não "Lead do WhatsApp (Anúncio)" sem telefone) e a resposta do
+        # operador tem para onde ir. Se SenderAlt não vier, o receiver tenta o
+        # fallback HTTP; se esse também falhar, seguimos com @lid (comportamento antigo).
+        info = (p.get("_data") or {}).get("Info") or {}
+        if "@lid" in sender_id:
+            fone = _phone_from_jid(info.get("SenderAlt") or "")
+            if fone:
+                sender_lid = sender_id
+                sender_id = fone
 
         media = p.get("media") or {}
         mimetype = str(media.get("mimetype") or "")
@@ -153,9 +180,11 @@ class WAHAChannel:
             attachments=attachments,
             is_group=is_group,
             from_me=bool(p.get("fromMe")),
-            sender_name=p.get("notifyName") or "",
+            # notifyName costuma vir vazio no GOWS; PushName (em Info) traz o nome real.
+            sender_name=p.get("notifyName") or info.get("PushName") or "",
             message_type=payload.get("event") or "",
             event_kind="message",
+            sender_lid=sender_lid,
             raw=payload,
         )
 

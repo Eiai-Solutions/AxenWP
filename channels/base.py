@@ -31,6 +31,9 @@ class ParsedMessage:
     sender_name: str = ""
     message_type: str = ""       # tipo bruto do provedor (ex.: "ReceivedCallback")
     event_kind: str = "message"  # "message" | "status" | "ignore"
+    # @lid original, quando o sender veio como @lid e foi resolvido para telefone.
+    # Só informativo (log/rastreio); a identidade que o pipeline usa é sender_id.
+    sender_lid: Optional[str] = None
     raw: dict = field(default_factory=dict)
 
 

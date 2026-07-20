@@ -13,6 +13,7 @@ vira log/métrica, `message.ack` é reconhecido e ignorado por ora.
 import hashlib
 import hmac
 import json
+from dataclasses import replace
 
 from fastapi import APIRouter, BackgroundTasks, Path, Request
 
@@ -20,6 +21,7 @@ from auth.token_manager import token_manager
 from channels.whatsapp.waha import WAHAChannel
 from services.channel_policy import WAHA, active_whatsapp_provider
 from services.inbound_pipeline import handle_inbound
+from services.waha_service import waha_service
 from utils import metrics
 from utils.config import settings
 from utils.limiter import limiter
@@ -108,8 +110,23 @@ async def process_waha_message(location_id: str, payload: dict) -> None:
     if not pm:
         return
 
+    # Fallback de identidade: o parse já resolve @lid -> telefone quando o payload
+    # traz Info.SenderAlt (caso normal, sem I/O). Só quando não veio é que pagamos
+    # o lookup no WAHA — e apenas para mensagem que vai ser processada de fato,
+    # nunca para eco nosso ou grupo, que o pipeline descartaria em seguida.
+    if "@lid" in pm.sender_id and not pm.from_me and not pm.is_group:
+        base, key, session = _channel._cfg(tenant)
+        fone = await waha_service.resolve_lid(base, key, session, pm.sender_id)
+        if fone:
+            pm = replace(pm, sender_id=fone, sender_lid=pm.sender_id)
+        else:
+            logger.warning(
+                f"[WAHA] LID {pm.sender_id} não resolvido — contato entrará sem telefone."
+            )
+
     logger.info(
         f"[WAHA] inbound location={location_id} de={pm.sender_id} "
+        f"lid={pm.sender_lid or '-'} "
         f"audio={pm.is_audio} anexos={len(pm.attachments)} id={pm.provider_message_id}"
     )
 

@@ -6,11 +6,20 @@ Cada método recebe base_url + api_key + session porque a config é por-tenant.
 Autenticação: header `X-Api-Key`.
 """
 
+import re
 import time
+from urllib.parse import quote
 
 import httpx
 
 from utils.logger import logger
+
+# Cache lid -> telefone. O vínculo é fixo no WhatsApp, então o TTL é longo; a
+# chave inclui a sessão para não cruzar identidade entre tenants no servidor
+# compartilhado. Cap simples (FIFO) para não virar vazamento de memória.
+_LID_TTL = 24 * 60 * 60.0
+_LID_CACHE_MAX = 5000
+_lid_cache: dict = {}
 
 # ─────────────────────────────────────────────────────────────────────
 # Config GLOBAL do servidor WAHA.
@@ -137,14 +146,62 @@ class WAHAService:
 
     # ── Sessão / webhook ──
 
-    async def _get(self, base_url, api_key, path) -> httpx.Response | None:
+    async def _get(self, base_url, api_key, path, *, timeout: float | None = None) -> httpx.Response | None:
         try:
-            return await self.client.get(
-                f"{base_url.rstrip('/')}{path}", headers=self._headers(api_key)
-            )
+            kwargs = {"headers": self._headers(api_key)}
+            if timeout is not None:
+                kwargs["timeout"] = timeout
+            return await self.client.get(f"{base_url.rstrip('/')}{path}", **kwargs)
         except Exception as e:
             logger.error(f"WAHA GET {path} exception: {e}")
             return None
+
+    async def resolve_lid(self, base_url, api_key, session, lid: str) -> str | None:
+        """
+        Telefone (só dígitos) por trás de um @lid, ou None.
+
+        Fallback para quando o payload não trouxe `Info.SenderAlt` — o caminho
+        normal resolve sem I/O nenhum, no parse. O vínculo lid↔telefone é fixo no
+        WhatsApp, então cacheamos por sessão (a chave inclui a sessão: dois tenants
+        nunca compartilham resolução, mesmo dividindo o servidor WAHA).
+
+        Timeout curto de propósito: isso roda ANTES do espelho no CRM, e é melhor
+        cair no comportamento antigo (@lid) do que segurar a mensagem 30s.
+        """
+        if not (base_url and session and lid):
+            return None
+
+        chave = (base_url, session, lid)
+        agora = time.monotonic()
+        entrada = _lid_cache.get(chave)
+        if entrada and (agora - entrada[0]) < _LID_TTL:
+            return entrada[1]
+
+        resp = await self._get(
+            base_url, api_key, f"/api/{session}/lids/{quote(lid, safe='@')}", timeout=5.0
+        )
+        if resp is None or resp.status_code != 200:
+            # Positivo velho vale mais que nada: se já resolvemos esse lid antes,
+            # devolver o valor expirado mantém a identidade estável dentro da
+            # conversa. Sem isso, uma falha de rede no meio faria a mesma pessoa
+            # virar dois contatos no CRM e duas janelas de debounce.
+            if entrada and entrada[1]:
+                logger.warning(f"[WAHA] LID {lid}: lookup falhou, mantendo resolução anterior.")
+                return entrada[1]
+            return None
+
+        try:
+            pn = (resp.json() or {}).get("pn") or ""
+        except Exception:
+            return None
+
+        fone = re.match(r"^(\d{6,})", pn)
+        fone = fone.group(1) if fone else None
+        if fone:
+            if len(_lid_cache) >= _LID_CACHE_MAX:
+                _lid_cache.pop(next(iter(_lid_cache)))
+            _lid_cache[chave] = (agora, fone)
+        return fone
 
     async def list_sessions(self, base_url, api_key) -> list | None:
         resp = await self._get(base_url, api_key, "/api/sessions?all=true")

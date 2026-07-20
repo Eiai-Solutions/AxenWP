@@ -80,18 +80,30 @@ class GHLService:
             tenant.conversation_provider_id if tenant else ""
         )
 
-        # Formatar telefone no padrão internacional (com +)
+        # Formatar telefone no padrão internacional (com +).
+        # Identidade que não é telefone (@lid do WhatsApp) não pode virar "+...@lid":
+        # o CRM aceita, o contato nasce com um telefone impossível e a resposta do
+        # operador não tem para onde ir. Melhor registrar sem telefone.
         formatted_phone = phone.strip()
-        if not formatted_phone.startswith("+"):
+        if "@" in formatted_phone:
+            logger.warning(
+                f"[GHL] Identidade sem telefone ({formatted_phone}) — inbound segue sem número."
+            )
+            formatted_phone = ""
+        elif not formatted_phone.startswith("+"):
             formatted_phone = f"+{formatted_phone}"
 
         payload = {
             "type": "SMS",
             "locationId": location_id,
-            "phone": formatted_phone,
             "message": message,
             "direction": direction,
         }
+
+        # O GHL exige conversationId OU contactId; o telefone é opcional. Mandar
+        # string vazia seria pior que omitir.
+        if formatted_phone:
+            payload["phone"] = formatted_phone
 
         if contact_id:
             payload["contactId"] = contact_id
