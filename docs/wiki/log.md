@@ -25,3 +25,9 @@
 - Dois bugs silenciosos corrigidos (commit `9c4269b`): anexo com URL localhost:3000 quebrava o espelho inteiro com 422; áudio puro morria em `if not texto: return` antes do STT.
 - `media_fetch` no adapter reescreve host interno e passa X-Api-Key em header (nunca na URL — chave global do servidor compartilhado).
 - Pendência de infra registrada: entregar o arquivo em si ao CRM exige `WHATSAPP_API_KEY_EXCLUDE_PATH` ou re-hospedagem; arquivo local expira em 180s por default.
+
+## [2026-07-20] add | Proxy de mídia — CRM baixa o arquivo recebido
+- `integracoes/whatsapp-waha.md` (quirk nº2): entregar o arquivo ao CRM deixou de ser pendência. Novo `webhooks/media_proxy.py` = `GET /media/whatsapp/{location_id}/{filename}` (commit `71a7733`).
+- Escolhido proxy em vez de `WHATSAPP_API_KEY_EXCLUDE_PATH`: não reinicia o WAHA e mantém a chave global privada.
+- Provado em produção: proxy sem chave devolve Ogg/Opus 200; path traversal 404.
+- Retenção (180s default) fica como env de infra opcional para folga.

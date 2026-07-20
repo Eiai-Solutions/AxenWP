@@ -103,18 +103,32 @@ de todos os tenants. `ParsedMessage.attachments` passou a significar "URL que o
 CRM baixa sozinho"; mídia autenticada vai em `media_url`/`media_mimetype`/
 `media_filename` e alimenta só o STT.
 
-**Ainda não resolvido — entregar o arquivo em si ao CRM.** O operador vê hoje um
-rótulo (`🎤 Áudio recebido`) e, no áudio, a transcrição. Para o anexo aparecer no
-CRM é preciso uma decisão de **infra**, não de código:
+**Entregar o arquivo ao CRM — resolvido por proxy** (`webhooks/media_proxy.py`).
+O CRM baixa o anexo server-side, sem credencial, e re-hospeda no CDN dele (o
+mesmo `static-assets.internal.usercontent.site` que ele usa nos anexos de saída).
+Só precisa de uma URL que consiga buscar. Nós expomos
+`GET /media/whatsapp/{location_id}/{filename}`: recebe a chamada pública do GHL,
+busca o arquivo no WAHA **com** a chave, devolve o binário.
 
-| opção | env / ação | tradeoff |
-|---|---|---|
-| tornar `/api/files` público | `WHATSAPP_API_KEY_EXCLUDE_PATH=api/files/(.*)` | nome do arquivo é aleatório, mas fica acessível sem auth |
-| re-hospedar | baixar com a chave e subir para storage nosso | mais trabalho; resolve auth + retenção de uma vez |
+Por que proxy e não `WHATSAPP_API_KEY_EXCLUDE_PATH=api/files/(.*)`:
+- não exige reiniciar o WAHA (não derruba a sessão);
+- a chave **global** do servidor compartilhado nunca sai do nosso lado.
 
-Relacionado: o arquivo local **expira em 180s** por default
-(`WHATSAPP_FILES_LIFETIME`) e mora em `/tmp` sem volume — um restart apaga tudo.
-Setar `3600` (não `0`: o VPS divide máquina com o AxenWP e `/tmp` encheria).
+Segurança (o endpoint é público porque o GHL não manda header): `location_id` e
+`filename` com validação estrita; `filename` é basename (sem barra, sem `..`); a
+sessão do WAHA vem do **tenant**, não do input, então não dá para pedir mídia de
+outra instância nem montar path para `/api/sessions`. `WAHAChannel.public_media_url`
+monta o link a partir do basename + `PUBLIC_BASE_URL`; o pipeline o põe em
+`attachments` só quando há `media_url`.
+
+> Provado em produção: `GET` sem chave no proxy → `200` Ogg/Opus válido; `GET
+> …/sessions` → `404`.
+
+Ponto de atenção — **retenção**: o arquivo local do WAHA expira em 180s por
+default (`WHATSAPP_FILES_LIFETIME`) e mora em `/tmp` sem volume. O GHL busca em
+segundos, então o caminho feliz cabe; mas atraso/retry pode dar 404, e aí o proxy
+degrada para o rótulo textual. Para folga, setar `WHATSAPP_FILES_LIFETIME=3600`
+(não `0`: `/tmp` encheria) — é env do container WAHA, não código.
 
 ## Quirk nº 2b — áudio sem legenda era descartado (bug do pipeline, não do WAHA)
 
