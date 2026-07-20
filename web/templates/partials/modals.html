@@ -68,8 +68,11 @@
                         <label
                             class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest flex justify-between items-center">
                             <span>Servidor WAHA — URL</span>
-                            <span class="text-emerald-400 normal-case font-normal">WhatsApp compartilhado</span>
+                            <span class="text-emerald-400 normal-case font-normal">configuracao unica</span>
                         </label>
+                        <p class="text-[10px] text-gray-600 mb-1.5 normal-case tracking-normal font-sans">
+                            Um servidor WAHA atende <strong class="text-gray-400">todos os clientes</strong>. Configure aqui uma vez — depois, em cada instância, você só conecta o número pelo QR.
+                        </p>
                         <input type="text" name="admin_waha_url"
                             value="{{ system_settings.admin_waha_url if system_settings and system_settings.admin_waha_url else '' }}"
                             placeholder="https://axenwp-waha.xxxxx.easypanel.host"

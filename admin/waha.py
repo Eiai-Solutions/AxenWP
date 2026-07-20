@@ -17,7 +17,7 @@ from admin.dashboard import verify_admin
 from auth.token_manager import token_manager
 from data.database import SessionLocal
 from data.models import SystemSettings, Tenant
-from services.waha_service import waha_service
+from services.waha_service import get_global_waha_config, invalidate_global_waha_config, waha_service
 from utils.config import settings as app_settings
 from utils.logger import logger
 
@@ -33,14 +33,8 @@ def _mask(secret: Optional[str]) -> str:
 
 
 def _global_cfg() -> tuple[Optional[str], Optional[str]]:
-    db = SessionLocal()
-    try:
-        s = db.query(SystemSettings).first()
-        if not s:
-            return None, None
-        return (s.admin_waha_url or None), (s.admin_waha_api_key or None)
-    finally:
-        db.close()
+    """Config global do servidor WAHA (uma vez, para todos os tenants)."""
+    return get_global_waha_config(force=True)
 
 
 def _resolve(tenant) -> tuple[Optional[str], Optional[str], str]:
@@ -81,6 +75,7 @@ async def save_waha_settings(
         if admin_waha_api_key.strip():
             s.admin_waha_api_key = admin_waha_api_key.strip()
         db.commit()
+        invalidate_global_waha_config()
         return {"success": True}
     except Exception as e:
         db.rollback()
@@ -148,14 +143,15 @@ async def waha_connect(location_id: str, authenticated: bool = Depends(verify_ad
         events=["message", "session.status"], hmac_key=hmac_key, start=True,
     )
 
-    # Marca o tenant como WAHA e grava a config resolvida (denormaliza p/ o hot-path do envio).
+    # O tenant guarda APENAS a sua sessão (o número) + o provedor.
+    # A URL/API key do servidor WAHA sao config GLOBAL do admin (uma vez, para todos)
+    # e sao resolvidas no uso — assim trocar o servidor global vale para todo mundo,
+    # sem copias velhas espalhadas por tenant.
     db = SessionLocal()
     try:
         t = db.query(Tenant).filter(Tenant.location_id == location_id).first()
         if t:
             t.whatsapp_provider = "waha"
-            t.waha_base_url = base
-            t.waha_api_key = key
             t.waha_session = session
             db.commit()
     finally:

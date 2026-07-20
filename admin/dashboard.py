@@ -353,6 +353,12 @@ async def save_system_settings(
             settings.admin_waha_api_key = admin_waha_api_key.strip()
 
         db.commit()
+        # O servidor WAHA e resolvido com cache no envio — invalida para valer ja.
+        try:
+            from services.waha_service import invalidate_global_waha_config
+            invalidate_global_waha_config()
+        except Exception:
+            pass
         return RedirectResponse(url="/admin/dashboard?msg=Configurações globais salvas com sucesso.", status_code=303)
     except Exception as e:
         logger.error(f"Erro ao salvar SystemSettings: {e}")

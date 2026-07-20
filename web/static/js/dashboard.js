@@ -2115,8 +2115,12 @@
             if (d.configured === false) {
                 _setWahaBadge('');
                 c.innerHTML = `<div class="py-6 text-center">
-                    <p class="text-xs text-gray-400 font-mono mb-4">Servidor WAHA não configurado.</p>
-                    <button onclick="closeWahaModal(); openSystemModal();" title="Abrir Configurações Globais" class="btn-brand px-5 py-2 rounded-lg text-white font-bold text-xs uppercase tracking-widest font-mono">Configurar WAHA</button>
+                    <p class="text-sm font-bold text-white mb-2">Servidor WAHA ainda nao configurado</p>
+                    <p class="text-[11px] text-gray-400 leading-relaxed mb-5 px-2">
+                        O servidor e configurado <strong class="text-white">uma vez</strong>, em Config. Admin, e atende todos os clientes.
+                        Aqui em cada instancia voce so conecta o numero.
+                    </p>
+                    <button onclick="closeWahaModal(); openSystemModal();" title="Abrir Configuracoes Globais do admin" class="btn-brand px-5 py-2 rounded-lg text-white font-bold text-xs uppercase tracking-widest font-mono">Configurar servidor</button>
                 </div>`;
                 return;
             }

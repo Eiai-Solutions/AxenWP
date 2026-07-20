@@ -6,9 +6,49 @@ Cada método recebe base_url + api_key + session porque a config é por-tenant.
 Autenticação: header `X-Api-Key`.
 """
 
+import time
+
 import httpx
 
 from utils.logger import logger
+
+# ─────────────────────────────────────────────────────────────────────
+# Config GLOBAL do servidor WAHA.
+# O servidor WAHA é um só, configurado uma vez pelo admin (SystemSettings).
+# Cada tenant guarda apenas a SUA SESSÃO (o número). Resolvemos o servidor aqui,
+# com cache curto, para não consultar o banco no hot-path de envio.
+# ─────────────────────────────────────────────────────────────────────
+_GLOBAL_CFG_TTL = 60.0
+_global_cfg_cache: dict = {"at": 0.0, "url": None, "key": None}
+
+
+def get_global_waha_config(force: bool = False) -> tuple[str | None, str | None]:
+    now = time.time()
+    if not force and (now - _global_cfg_cache["at"]) < _GLOBAL_CFG_TTL:
+        return _global_cfg_cache["url"], _global_cfg_cache["key"]
+
+    url = key = None
+    try:
+        from data.database import SessionLocal
+        from data.models import SystemSettings
+        db = SessionLocal()
+        try:
+            s = db.query(SystemSettings).first()
+            if s:
+                url = (s.admin_waha_url or None)
+                key = (s.admin_waha_api_key or None)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Falha ao ler config global do WAHA: {e}")
+
+    _global_cfg_cache.update({"at": now, "url": url, "key": key})
+    return url, key
+
+
+def invalidate_global_waha_config() -> None:
+    """Chamar ao salvar as configurações globais para o cache não servir valor velho."""
+    _global_cfg_cache["at"] = 0.0
 
 
 class WAHAService:

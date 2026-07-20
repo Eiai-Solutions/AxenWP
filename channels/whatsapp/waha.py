@@ -17,7 +17,7 @@ import re
 from typing import Optional
 
 from channels.base import ChannelCapabilities, OutboundResult, ParsedMessage
-from services.waha_service import waha_service
+from services.waha_service import get_global_waha_config, waha_service
 from utils.config import settings
 from utils.logger import logger
 
@@ -39,11 +39,17 @@ class WAHAChannel:
     # ── Config por tenant ──
 
     def _cfg(self, tenant) -> tuple[str, str, str]:
-        return (
-            getattr(tenant, "waha_base_url", None) or "",
-            getattr(tenant, "waha_api_key", None) or "",
-            getattr(tenant, "waha_session", None) or "",
-        )
+        """Servidor vem do config GLOBAL (um WAHA para todos); o tenant guarda só a
+        sessão (o número). As colunas waha_base_url/waha_api_key ficam como override
+        opcional, para o caso raro de um tenant ter servidor dedicado."""
+        base = getattr(tenant, "waha_base_url", None) or ""
+        key = getattr(tenant, "waha_api_key", None) or ""
+        if not base or not key:
+            g_url, g_key = get_global_waha_config()
+            base = base or (g_url or "")
+            key = key or (g_key or "")
+        session = getattr(tenant, "waha_session", None) or getattr(tenant, "location_id", "") or ""
+        return base, key, session
 
     def credentials_ok(self, tenant) -> bool:
         base, key, session = self._cfg(tenant)
