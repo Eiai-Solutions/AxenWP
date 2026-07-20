@@ -29,6 +29,21 @@ _STRIP_SUFFIX = re.compile(r"@(c\.us|s\.whatsapp\.net)$")
 # "554797838884:77@s.whatsapp.net" -> "554797838884" · "..@lid" não casa (sem dígito de telefone).
 _JID_DIGITS = re.compile(r"^(\d{6,})")
 
+# Extensão que o WhatsApp entrega -> extensão que o player do GHL reconhece.
+# Só normaliza áudio; imagem/vídeo/doc já vêm com extensão que o GHL entende.
+# O proxy sabe reverter para buscar o arquivo real no WAHA (ver _WAHA_EXT_FALLBACK).
+_EXT_EXIBICAO = {"oga": "ogg"}
+_WAHA_EXT_FALLBACK = {"ogg": ["ogg", "oga"]}
+
+
+def _display_ext(filename: str) -> str:
+    """Reescreve só a extensão do basename para a que o GHL renderiza como mídia."""
+    stem, _, ext = filename.rpartition(".")
+    if not stem:
+        return filename
+    nova = _EXT_EXIBICAO.get(ext.lower())
+    return f"{stem}.{nova}" if nova else filename
+
 
 def _rotulo_de_midia(mimetype: str, filename: Optional[str] = None) -> str:
     """
@@ -94,6 +109,11 @@ class WAHAChannel:
         basename (o messageId.ext) e montamos o link do proxy público
         (`/media/whatsapp/{location_id}/{filename}`), que serve o arquivo com a
         credencial do lado de cá.
+
+        A extensão é normalizada por `_display_ext`: o GHL guarda a URL como está
+        (não re-hospeda o anexo de entrada) e decide o modo de exibição pela
+        extensão. Voz do WhatsApp chega como `.oga`, que o GHL trata como arquivo;
+        renomeando para `.ogg` — mesmo container Ogg — ele mostra o player.
         """
         if not media_url:
             return None
@@ -107,7 +127,7 @@ class WAHAChannel:
         if not filename:
             return None
         loc = getattr(tenant, "location_id", "")
-        return f"{base}/media/whatsapp/{loc}/{filename}"
+        return f"{base}/media/whatsapp/{loc}/{_display_ext(filename)}"
 
     def media_fetch(self, tenant, url: Optional[str]) -> tuple[Optional[str], dict]:
         """

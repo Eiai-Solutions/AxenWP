@@ -26,7 +26,7 @@ import httpx
 from fastapi import APIRouter, Path, Response
 
 from auth.token_manager import token_manager
-from channels.whatsapp.waha import WAHAChannel
+from channels.whatsapp.waha import WAHAChannel, _WAHA_EXT_FALLBACK
 from services.channel_policy import WAHA, active_whatsapp_provider
 from utils.logger import logger
 from utils.validators import is_valid_location_id
@@ -37,6 +37,21 @@ router = APIRouter(prefix="/media", tags=["Mídia"])
 _SAFE_FILENAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.[A-Za-z0-9]{1,8}$")
 
 _waha = WAHAChannel()
+
+
+def _waha_filenames(filename: str) -> list[str]:
+    """
+    Candidatos de nome real no WAHA para um basename público já validado.
+
+    A extensão pública pode ter sido normalizada (`.oga` vira `.ogg` para o player
+    do GHL). Aqui revertemos: para `.ogg` tentamos `.ogg` e depois `.oga`. Para
+    qualquer outra extensão, só o próprio nome.
+    """
+    stem, _, ext = filename.rpartition(".")
+    alternativas = _WAHA_EXT_FALLBACK.get(ext.lower())
+    if not alternativas:
+        return [filename]
+    return [f"{stem}.{e}" for e in alternativas]
 
 
 @router.get("/whatsapp/{location_id}/{filename}")
@@ -55,23 +70,29 @@ async def whatsapp_media(
     if not (base and session):
         return Response(status_code=404)
 
-    # A URL é montada AQUI a partir de dados do tenant + basename validado —
-    # o cliente nunca controla o path no WAHA.
-    url = f"{base.rstrip('/')}/api/files/{session}/{filename}"
+    # A extensão pública pode ter sido normalizada para o player do GHL (.oga ->
+    # .ogg); no WAHA o arquivo tem a extensão original. Tentamos os candidatos na
+    # ordem, e a URL é montada AQUI a partir de dados do tenant + basename
+    # validado — o cliente nunca controla o path no WAHA.
     headers = {"X-Api-Key": key} if key else {}
-
+    resp = None
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.get(url, headers=headers)
+            for candidato in _waha_filenames(filename):
+                url = f"{base.rstrip('/')}/api/files/{session}/{candidato}"
+                resp = await client.get(url, headers=headers)
+                if resp.status_code == 200:
+                    break
     except Exception as e:
         logger.error(f"[MEDIA] Falha ao buscar {filename} de {location_id}: {e}")
         return Response(status_code=502)
 
-    if resp.status_code != 200:
+    if resp is None or resp.status_code != 200:
         # 404 quando o arquivo já expirou no WAHA (retenção curta): o CRM cai no
         # texto descritivo, sem erro visível para o operador.
-        logger.warning(f"[MEDIA] WAHA devolveu {resp.status_code} para {filename} ({location_id}).")
-        return Response(status_code=resp.status_code if resp.status_code in (404, 410) else 502)
+        code = resp.status_code if resp is not None else 502
+        logger.warning(f"[MEDIA] WAHA devolveu {code} para {filename} ({location_id}).")
+        return Response(status_code=code if code in (404, 410) else 502)
 
     content_type = resp.headers.get("content-type", "application/octet-stream")
     return Response(

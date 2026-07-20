@@ -143,13 +143,22 @@ class TestPublicMediaUrl:
             waha_base_url="https://waha.exemplo.com", waha_api_key="SEGREDO",
         )
 
-    def test_gera_url_do_proxy(self, monkeypatch):
+    def test_gera_url_do_proxy_e_normaliza_audio(self, monkeypatch):
         from channels.whatsapp import waha as waha_mod
         monkeypatch.setattr(waha_mod.settings, "public_base_url", "https://app.exemplo.com")
         url = WAHAChannel().public_media_url(
             self._tenant(), "http://localhost:3000/api/files/s1/3EB0ABC.oga"
         )
-        assert url == "https://app.exemplo.com/media/whatsapp/loc1/3EB0ABC.oga"
+        # .oga -> .ogg para o GHL renderizar como player, não como arquivo.
+        assert url == "https://app.exemplo.com/media/whatsapp/loc1/3EB0ABC.ogg"
+
+    def test_extensao_de_imagem_nao_e_alterada(self, monkeypatch):
+        from channels.whatsapp import waha as waha_mod
+        monkeypatch.setattr(waha_mod.settings, "public_base_url", "https://app.exemplo.com")
+        url = WAHAChannel().public_media_url(
+            self._tenant(), "http://localhost:3000/api/files/s1/FOTO.jpeg"
+        )
+        assert url.endswith("/FOTO.jpeg")
 
     def test_nao_expoe_o_host_nem_a_chave_do_waha(self, monkeypatch):
         from channels.whatsapp import waha as waha_mod
@@ -222,6 +231,37 @@ class TestProxySeguranca:
         assert AC.last_headers == {"X-Api-Key": "SEGREDO"}
         # A URL montada usa a sessão do tenant, não input do cliente.
         assert AC.last_url == "https://waha.exemplo.com/api/files/loc1abcDEF23456789012/3EB0ABC.oga"
+
+    def test_ogg_publico_resolve_oga_real_no_waha(self, monkeypatch):
+        # O CRM pede .ogg (normalizado); o WAHA só tem .oga. O proxy tenta .ogg,
+        # leva 404, e cai no .oga — sem isso o player nunca carregaria.
+        from webhooks import media_proxy
+
+        t = self._tenant_waha()
+        tentativas = []
+
+        class _AC:
+            def __init__(self, *a, **k): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def get(self, url, headers=None):
+                tentativas.append(url)
+
+                class _R:
+                    status_code = 200 if url.endswith(".oga") else 404
+                    content = b"OGG" if url.endswith(".oga") else b""
+                    headers = {"content-type": "audio/ogg"}
+                return _R()
+
+        monkeypatch.setattr(media_proxy.token_manager, "get_tenant", lambda loc: t)
+        monkeypatch.setattr(media_proxy.httpx, "AsyncClient", _AC)
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        app = FastAPI(); app.include_router(media_proxy.router)
+        r = TestClient(app).get(f"/media/whatsapp/{t.location_id}/3EB0ABC.ogg")
+
+        assert r.status_code == 200 and r.content == b"OGG"
+        assert [u.split("/")[-1] for u in tentativas] == ["3EB0ABC.ogg", "3EB0ABC.oga"]
 
     def test_path_traversal_no_filename_bloqueado(self, monkeypatch):
         t = self._tenant_waha()
