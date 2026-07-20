@@ -3,6 +3,7 @@ Gerenciamento de tokens OAuth do GoHighLevel usando PostgreSQL (SQLAlchemy).
 Renova tokens automaticamente quando expiram.
 """
 
+import time
 import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Optional
@@ -18,8 +19,14 @@ from data.models import Tenant
 class TokenManager:
     """Gerencia tokens de todos os tenants armazenados no bando de dados."""
 
+    # Refresh que acabou de falhar não é retentado a cada mensagem: sem isso, um
+    # tenant com OAuth morto e PIT vivo pagaria um round-trip perdido por
+    # chamada, no caminho quente do webhook. Ao expirar a janela, tenta de novo —
+    # se o operador reinstalar o app, voltamos ao OAuth sozinhos.
+    _REFRESH_COOLDOWN_SEGUNDOS = 300.0
+
     def __init__(self):
-        pass
+        self._refresh_falhou_em: dict[str, float] = {}
 
     def get_tenant(self, location_id: str, db: Session = None) -> Optional[Tenant]:
         """Retorna o tenant pelo location_id a partir do banco de dados."""
@@ -223,29 +230,61 @@ class TokenManager:
         except (ValueError, TypeError):
             return True
 
+    def _em_cooldown(self, location_id: str) -> bool:
+        falhou_em = self._refresh_falhou_em.get(location_id)
+        if falhou_em is None:
+            return False
+        return (time.monotonic() - falhou_em) < self._REFRESH_COOLDOWN_SEGUNDOS
+
+    def _has_oauth(self, tenant) -> bool:
+        return bool(getattr(tenant, "access_token", None) or getattr(tenant, "refresh_token", None))
+
     async def get_valid_token(self, location_id: str) -> Optional[str]:
         """
-        Retorna um token válido para chamadas à API do GHL.
-        Se o tenant tem PIT (Private Integration Token), retorna direto sem refresh.
-        Se usa OAuth, faz refresh automático quando expirado.
+        Token válido para chamadas à API do GHL.
+
+        O token do APP (OAuth) tem prioridade sobre o PIT quando existe. Não é
+        preferência estética: operações ligadas a conversation provider — em
+        especial o `PUT /conversations/messages/{id}/status` — são recusadas com
+        401 `CONVERSATIONS_MSG_PROVIDER_NO_ACCESS` para qualquer token que não
+        pertença ao app dono do provider. Com o PIT na frente, todo status de
+        entrega que reportamos ao CRM falhava calado.
+
+        O PIT continua sendo o token de quem nunca instalou o app, e vira
+        fallback se o OAuth não puder ser renovado — perder o acesso inteiro
+        seria pior do que perder só o status.
         """
         tenant = self.get_tenant(location_id)
         if not tenant:
             logger.error(f"Tenant {location_id} não encontrado")
             return None
 
+        if self._has_oauth(tenant):
+            if not self.is_token_expired(tenant):
+                return tenant.access_token
+
+            if tenant.pit_token and self._em_cooldown(location_id):
+                return tenant.pit_token
+
+            logger.info(f"Token expirado para {tenant.company_name}, renovando...")
+            if await self._refresh_token(tenant.location_id):
+                self._refresh_falhou_em.pop(location_id, None)
+                return self.get_tenant(location_id).access_token
+
+            self._refresh_falhou_em[location_id] = time.monotonic()
+            if tenant.pit_token:
+                logger.warning(
+                    f"Refresh OAuth falhou para {tenant.company_name}; usando PIT como fallback "
+                    f"(status de entrega no CRM não vai subir enquanto isso durar)."
+                )
+                return tenant.pit_token
+
+            logger.error(f"Falha ao renovar token para {tenant.company_name}")
+            return None
+
         if tenant.pit_token:
             return tenant.pit_token
 
-        if not self.is_token_expired(tenant):
-            return tenant.access_token
-
-        logger.info(f"Token expirado para {tenant.company_name}, renovando...")
-        success = await self._refresh_token(tenant.location_id)
-        if success:
-            return self.get_tenant(location_id).access_token
-
-        logger.error(f"Falha ao renovar token para {tenant.company_name}")
         return None
 
     async def _refresh_token(self, location_id: str) -> bool:
@@ -307,7 +346,10 @@ class TokenManager:
         try:
             tenants = db.query(Tenant).all()
             for tenant in tenants:
-                if tenant.pit_token:
+                # Quem tem OAuth precisa de refresh mesmo tendo PIT: desde que o
+                # token do app passou a ter prioridade, deixar o OAuth expirar
+                # rebaixaria o tenant para o PIT e derrubaria o status de entrega.
+                if not self._has_oauth(tenant):
                     continue
                 if self.is_token_expired(tenant):
                     await self._refresh_token(tenant.location_id)
