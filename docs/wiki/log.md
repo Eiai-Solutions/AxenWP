@@ -19,3 +19,9 @@
 - `decisoes/identidade-do-contato.md` — telefone e `@lid` na mesma linha de `contact_mappings` (migration 024), busca por qualquer uma das duas, 4 camadas de resolução por custo crescente.
 - Origem: sessão de depuração que fechou os dois sentidos em produção (Eiai Solutions). Commits `b3236b3` (resolução de LID) e `ee6e553` (vínculo das identidades).
 - Dívidas registradas: `/webhook/ghl/outbound` sem autenticação nenhuma; `conversation_provider_id` nunca escrito por código algum.
+
+## [2026-07-20] update | Mídia inbound (áudio e arquivos) no WAHA
+- `integracoes/whatsapp-waha.md`: novos quirks nº2 (mídia interna + autenticada) e nº2b (áudio sem legenda descartado no pipeline). Renumerado o reeco para nº3.
+- Dois bugs silenciosos corrigidos (commit `9c4269b`): anexo com URL localhost:3000 quebrava o espelho inteiro com 422; áudio puro morria em `if not texto: return` antes do STT.
+- `media_fetch` no adapter reescreve host interno e passa X-Api-Key em header (nunca na URL — chave global do servidor compartilhado).
+- Pendência de infra registrada: entregar o arquivo em si ao CRM exige `WHATSAPP_API_KEY_EXCLUDE_PATH` ou re-hospedagem; arquivo local expira em 180s por default.

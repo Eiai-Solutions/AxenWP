@@ -69,7 +69,62 @@ dentro da conversa vale mais que a atualidade de um dado imutável.
 A ordem completa de resolução, por custo crescente, está em
 [[decisoes/identidade-do-contato]].
 
-## Quirk nº 2 — o WAHA reentrega as próprias mensagens
+## Quirk nº 2 — a mídia recebida é interna E autenticada
+
+A URL que o WAHA entrega no webhook é inalcançável de fora, por dois motivos
+independentes (ambos verificados no mesmo arquivo real):
+
+```json
+{"url": "http://localhost:3000/api/files/{session}/{id}.oga",
+ "mimetype": "audio/ogg; codecs=opus"}
+```
+
+1. **Host interno.** Sem `WAHA_BASE_URL` no ambiente do container, o WAHA usa o
+   default `localhost:3000`. O env atual só tem `PORT=3000`.
+2. **`/api/files` exige `X-Api-Key`.** `GET` sem chave → `401`; com chave → `200`
+   (Ogg/Opus válido). Não distinga isso de 404 testando arquivo inexistente —
+   *toda* a API do WAHA responde 401 sem chave; teste o mesmo arquivo real com e
+   sem chave.
+
+**Consequências, ambas silenciosas até 2026-07-20:**
+
+- Mandar essa URL como `attachment` para o CRM fazia o GHL recusar o **inbound
+  inteiro** com `422 "each value in attachments must be an URL address"` — a
+  mensagem se perdia, não só o anexo.
+- O STT batia em `localhost` (connection refused) ou, com host corrigido, em
+  `401`.
+
+**Como o código resolve** (`channels/whatsapp/waha.py`, `media_fetch`): reescreve
+o host interno para o servidor configurado (a partir do marcador `/api/files/`,
+então **funciona mesmo sem `WAHA_BASE_URL` setado**) e devolve a chave em
+**header**, nunca embutida na URL. A chave é global do servidor compartilhado —
+embuti-la na URL a vazaria em log e no histórico do CRM, dando acesso às sessões
+de todos os tenants. `ParsedMessage.attachments` passou a significar "URL que o
+CRM baixa sozinho"; mídia autenticada vai em `media_url`/`media_mimetype`/
+`media_filename` e alimenta só o STT.
+
+**Ainda não resolvido — entregar o arquivo em si ao CRM.** O operador vê hoje um
+rótulo (`🎤 Áudio recebido`) e, no áudio, a transcrição. Para o anexo aparecer no
+CRM é preciso uma decisão de **infra**, não de código:
+
+| opção | env / ação | tradeoff |
+|---|---|---|
+| tornar `/api/files` público | `WHATSAPP_API_KEY_EXCLUDE_PATH=api/files/(.*)` | nome do arquivo é aleatório, mas fica acessível sem auth |
+| re-hospedar | baixar com a chave e subir para storage nosso | mais trabalho; resolve auth + retenção de uma vez |
+
+Relacionado: o arquivo local **expira em 180s** por default
+(`WHATSAPP_FILES_LIFETIME`) e mora em `/tmp` sem volume — um restart apaga tudo.
+Setar `3600` (não `0`: o VPS divide máquina com o AxenWP e `/tmp` encheria).
+
+## Quirk nº 2b — áudio sem legenda era descartado (bug do pipeline, não do WAHA)
+
+`if not texto: return` no `services/inbound_pipeline.py` matava o turno antes do
+STT — `is_audio`/`audio_url` eram calculados e jogados fora. A Z-API escapava
+**por acidente**: o adapter dela injeta um texto padrão. O WAHA usava `body or
+""`, vazio na nota de voz. Corrigido rotulando a mídia sem legenda no parse e
+relaxando a guarda para aceitar turno só-áudio.
+
+## Quirk nº 3 — o WAHA reentrega as próprias mensagens
 
 `capabilities.provider_reechoes_own_msgs=True` (`channels/whatsapp/waha.py`):
 diferente da Z-API, o WAHA devolve no webhook as mensagens que nós mesmos
