@@ -28,6 +28,7 @@ from typing import Any, Dict, Optional
 from auth.token_manager import token_manager
 from channels.base import ParsedMessage
 from services.ghl_service import ghl_service
+from services.media_store import MAX_BLOB_BYTES, store_media
 from utils import metrics
 from utils.logger import logger
 
@@ -38,6 +39,10 @@ _DEBOUNCE_HARD_CAP = 2000
 _pending_tasks: Dict[str, asyncio.Task] = {}
 _message_buffers: Dict[str, list] = {}
 _debounce_config: Dict[str, float] = {}
+
+# Tasks de background (persistência de mídia) — referência forte para o GC não
+# recolher a task antes de terminar.
+_bg_tasks: set = set()
 
 # Ids de mensagens que NÓS enviamos. O WAHA reentrega as próprias mensagens
 # (capabilities.provider_reechoes_own_msgs), então sem isso o agente responderia
@@ -139,6 +144,56 @@ async def resolve_contact_id(
     return contact_id
 
 
+def _spawn(coro) -> None:
+    """Dispara uma corrotina em background sem segurar o chamador, guardando a
+    referência para o GC não matar a task no meio (padrão do asyncio)."""
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+
+
+async def _persistir_midia(adapter, tenant, pm: ParsedMessage, proxy_url: str) -> None:
+    """
+    Baixa a mídia do provedor e guarda no nosso store, com a chave = basename da
+    URL do proxy (o mesmo nome que o proxy vai receber do CRM).
+
+    Streaming com corte por tamanho: o teto (MAX_BLOB_BYTES) é checado pelo
+    Content-Length e, na falta dele, durante a leitura — para não bufferizar na
+    RAM um arquivo grande que seria descartado. Best-effort: falha aqui não
+    derruba nada; o proxy ainda serviria o arquivo ao vivo enquanto fresco.
+    """
+    try:
+        alcancavel, headers = adapter.media_fetch(tenant, pm.media_url)
+        if not alcancavel:
+            return
+        import httpx
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            async with client.stream("GET", alcancavel, headers=headers) as resp:
+                if resp.status_code != 200:
+                    logger.warning(f"[MEDIA] Download para persistir falhou ({resp.status_code}) — {proxy_url}")
+                    return
+                clen = resp.headers.get("content-length")
+                if clen and clen.isdigit() and int(clen) > MAX_BLOB_BYTES:
+                    logger.info(f"[MEDIA] {proxy_url}: {clen}B > teto; não persistido (proxy ao vivo).")
+                    return
+                content_type = (resp.headers.get("content-type") or pm.media_mimetype
+                                or "application/octet-stream").split(";")[0].strip()
+                pedacos: list[bytes] = []
+                total = 0
+                async for pedaco in resp.aiter_bytes():
+                    total += len(pedaco)
+                    if total > MAX_BLOB_BYTES:
+                        logger.info(f"[MEDIA] {proxy_url}: excedeu o teto durante o download; abortado.")
+                        return
+                    pedacos.append(pedaco)
+        if not pedacos:
+            return
+        filename = proxy_url.split("/")[-1].split("?")[0]
+        await store_media(pm.location_id, filename, content_type, b"".join(pedacos))
+    except Exception as e:
+        logger.error(f"[MEDIA] Erro ao persistir mídia de {pm.location_id}: {e}")
+
+
 def _contato_foi_deletado(resp: Any) -> bool:
     return bool(
         resp
@@ -163,6 +218,13 @@ async def mirror_inbound(adapter, tenant, pm: ParsedMessage, contact_id: str) ->
     if pm.media_url and hasattr(adapter, "public_media_url"):
         proxy = adapter.public_media_url(tenant, pm.media_url)
         if proxy:
+            # Persiste o binário enquanto o arquivo existe no WAHA — o GHL
+            # hot-linka e busca depois, quando o WAHA já apagou. Em BACKGROUND:
+            # o GHL só busca o anexo quando o operador abre a conversa (segundos a
+            # minutos depois), então não pode segurar a resposta da IA; e a janela
+            # de corrida (GHL buscar antes de persistir) é coberta pelo fallback
+            # ao vivo do proxy, que serve enquanto o arquivo está fresco no WAHA.
+            _spawn(_persistir_midia(adapter, tenant, pm, proxy))
             anexos.append(proxy)
 
     async def _enviar(cid: str):

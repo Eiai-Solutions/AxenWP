@@ -99,8 +99,10 @@ async def lifespan(app: FastAPI):
     from webhooks.zapi_receiver import cleanup_stale_debounce_entries
     from webhooks.telegram_receiver import cleanup_stale_telegram_debounce
     from services.inbound_pipeline import cleanup_stale_entries as cleanup_pipeline_entries
+    from services.media_store import cleanup_old_media
     scheduler.add_job(refresh_tokens_job, "interval", hours=12)
     scheduler.add_job(cleanup_old_chat_history, "interval", hours=24)
+    scheduler.add_job(cleanup_old_media, "interval", hours=24)
     scheduler.add_job(cleanup_stale_debounce_entries, "interval", minutes=10)
     scheduler.add_job(cleanup_stale_telegram_debounce, "interval", minutes=10)
     scheduler.add_job(cleanup_pipeline_entries, "interval", minutes=10)

@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, ForeignKey, Text, Float, UniqueConstraint
+from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, ForeignKey, Text, Float, LargeBinary, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from data.database import Base
@@ -305,3 +305,28 @@ class OnboardingSubmission(Base):
     status = Column(String(20), default="pending", server_default="pending", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     processed_at = Column(DateTime, nullable=True)
+
+
+class MediaBlob(Base):
+    """
+    Mídia recebida do WhatsApp, persistida por nós para o CRM tocar.
+
+    O WAHA apaga o arquivo local em ~180s; o GHL, ao registrar um anexo de
+    ENTRADA, guarda a nossa URL e a busca de forma preguiçosa (quando o operador
+    abre a conversa), sem re-hospedar. Sem persistência própria, o player fica
+    órfão minutos depois. Guardamos o binário aqui no momento do inbound, enquanto
+    o arquivo ainda existe no WAHA, e o proxy passa a servir daqui — durável e
+    independente da retenção do WAHA.
+
+    Chave = o nome público que o proxy recebe (`{messageId}.{ext_de_exibição}`),
+    escopado por location. Voz/imagem/doc pequenos; um teto de tamanho evita
+    encher o banco (arquivo grande cai no proxy ao vivo, que serve enquanto fresco).
+    """
+    __tablename__ = "media_blobs"
+
+    location_id = Column(String, primary_key=True)
+    filename = Column(String, primary_key=True)
+    content_type = Column(String, nullable=False, default="application/octet-stream")
+    size = Column(Integer, nullable=False, default=0)
+    data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
