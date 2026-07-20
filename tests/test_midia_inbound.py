@@ -132,3 +132,125 @@ class TestMediaFetch:
     def test_url_de_outro_host_passa_intacta(self):
         url, _ = WAHAChannel().media_fetch(self._tenant(), "https://cdn.exemplo.com/a.ogg")
         assert url == "https://cdn.exemplo.com/a.ogg"
+
+
+class TestPublicMediaUrl:
+    """A URL que o CRM consegue baixar aponta para o NOSSO proxy, não para o WAHA."""
+
+    def _tenant(self):
+        return SimpleNamespace(
+            location_id="loc1", waha_session="s1",
+            waha_base_url="https://waha.exemplo.com", waha_api_key="SEGREDO",
+        )
+
+    def test_gera_url_do_proxy(self, monkeypatch):
+        from channels.whatsapp import waha as waha_mod
+        monkeypatch.setattr(waha_mod.settings, "public_base_url", "https://app.exemplo.com")
+        url = WAHAChannel().public_media_url(
+            self._tenant(), "http://localhost:3000/api/files/s1/3EB0ABC.oga"
+        )
+        assert url == "https://app.exemplo.com/media/whatsapp/loc1/3EB0ABC.oga"
+
+    def test_nao_expoe_o_host_nem_a_chave_do_waha(self, monkeypatch):
+        from channels.whatsapp import waha as waha_mod
+        monkeypatch.setattr(waha_mod.settings, "public_base_url", "https://app.exemplo.com")
+        url = WAHAChannel().public_media_url(
+            self._tenant(), "http://localhost:3000/api/files/s1/3EB0ABC.oga"
+        )
+        assert "SEGREDO" not in url
+        assert "waha.exemplo.com" not in url
+        assert "localhost" not in url
+
+    def test_sem_public_base_url_devolve_none(self, monkeypatch):
+        from channels.whatsapp import waha as waha_mod
+        monkeypatch.setattr(waha_mod.settings, "public_base_url", "")
+        assert WAHAChannel().public_media_url(
+            self._tenant(), "http://localhost:3000/api/files/s1/x.oga"
+        ) is None
+
+    def test_url_sem_marcador_de_arquivo(self, monkeypatch):
+        from channels.whatsapp import waha as waha_mod
+        monkeypatch.setattr(waha_mod.settings, "public_base_url", "https://app.exemplo.com")
+        assert WAHAChannel().public_media_url(self._tenant(), "https://x/outro") is None
+
+    def test_none(self):
+        assert WAHAChannel().public_media_url(self._tenant(), None) is None
+
+
+class TestProxySeguranca:
+    """O endpoint é público (o GHL não manda header) — validação é a defesa."""
+
+    def _client(self, monkeypatch, tenant=None, waha_resp=None):
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+        from webhooks import media_proxy
+
+        monkeypatch.setattr(media_proxy.token_manager, "get_tenant", lambda loc: tenant)
+
+        class _Resp:
+            status_code = 200
+            content = b"OGGDATA"
+            headers = {"content-type": "audio/ogg"}
+
+        class _AC:
+            def __init__(self, *a, **k): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def get(self, url, headers=None):
+                self.__class__.last_url = url
+                self.__class__.last_headers = headers
+                return waha_resp or _Resp()
+
+        monkeypatch.setattr(media_proxy.httpx, "AsyncClient", _AC)
+        app = FastAPI()
+        app.include_router(media_proxy.router)
+        return TestClient(app), _AC
+
+    def _tenant_waha(self):
+        return SimpleNamespace(
+            location_id="loc1abcDEF23456789012", whatsapp_provider="waha",
+            waha_session="loc1abcDEF23456789012", zapi_instance_id=None, zapi_token=None,
+            waha_base_url="https://waha.exemplo.com", waha_api_key="SEGREDO",
+        )
+
+    def test_serve_o_binario_com_chave_em_header(self, monkeypatch):
+        t = self._tenant_waha()
+        client, AC = self._client(monkeypatch, tenant=t)
+        r = client.get(f"/media/whatsapp/{t.location_id}/3EB0ABC.oga")
+        assert r.status_code == 200
+        assert r.content == b"OGGDATA"
+        assert AC.last_headers == {"X-Api-Key": "SEGREDO"}
+        # A URL montada usa a sessão do tenant, não input do cliente.
+        assert AC.last_url == "https://waha.exemplo.com/api/files/loc1abcDEF23456789012/3EB0ABC.oga"
+
+    def test_path_traversal_no_filename_bloqueado(self, monkeypatch):
+        t = self._tenant_waha()
+        client, _ = self._client(monkeypatch, tenant=t)
+        # barra vira outro segmento de rota → 404 do próprio router
+        assert client.get(f"/media/whatsapp/{t.location_id}/..%2f..%2fapi%2fsessions").status_code == 404
+
+    def test_filename_sem_extensao_bloqueado(self, monkeypatch):
+        t = self._tenant_waha()
+        client, _ = self._client(monkeypatch, tenant=t)
+        assert client.get(f"/media/whatsapp/{t.location_id}/sessions").status_code == 404
+
+    def test_tenant_inexistente_404(self, monkeypatch):
+        client, _ = self._client(monkeypatch, tenant=None)
+        assert client.get("/media/whatsapp/loc1abcDEF23456789012/x.oga").status_code == 404
+
+    def test_tenant_que_nao_e_waha_404(self, monkeypatch):
+        zapi = SimpleNamespace(
+            location_id="loc1abcDEF23456789012", whatsapp_provider="zapi",
+            waha_session=None, zapi_instance_id="3EB1", zapi_token="tok",
+        )
+        client, _ = self._client(monkeypatch, tenant=zapi)
+        assert client.get(f"/media/whatsapp/{zapi.location_id}/x.oga").status_code == 404
+
+    def test_arquivo_expirado_no_waha_degrada(self, monkeypatch):
+        class _R404:
+            status_code = 404
+            content = b""
+            headers = {}
+        t = self._tenant_waha()
+        client, _ = self._client(monkeypatch, tenant=t, waha_resp=_R404())
+        assert client.get(f"/media/whatsapp/{t.location_id}/x.oga").status_code == 404

@@ -149,19 +149,28 @@ def _contato_foi_deletado(resp: Any) -> bool:
     )
 
 
-async def mirror_inbound(tenant, pm: ParsedMessage, contact_id: str) -> Optional[str]:
+async def mirror_inbound(adapter, tenant, pm: ParsedMessage, contact_id: str) -> Optional[str]:
     """
     Registra a mensagem recebida no CRM. Devolve o contact_id em uso (pode mudar
     se o contato tiver sido apagado no CRM e precisar ser recriado), ou None se falhou.
     """
     location_id = pm.location_id
 
+    # Anexos que o CRM baixa sozinho. Se a mídia deste provedor é autenticada
+    # (WAHA), o adapter devolve a URL do nosso proxy público; senão, o que já
+    # veio em attachments (Z-API serve mídia por CDN público).
+    anexos = list(pm.attachments)
+    if pm.media_url and hasattr(adapter, "public_media_url"):
+        proxy = adapter.public_media_url(tenant, pm.media_url)
+        if proxy:
+            anexos.append(proxy)
+
     async def _enviar(cid: str):
         return await ghl_service.send_inbound_message(
             location_id=location_id,
             phone=pm.sender_id,
             message=pm.text,
-            attachments=pm.attachments,
+            attachments=anexos,
             conversation_provider_id=getattr(tenant, "conversation_provider_id", None),
             contact_id=cid,
         )
@@ -383,7 +392,7 @@ async def handle_inbound(adapter, tenant, pm: ParsedMessage) -> None:
             logger.error(f"Impossível registrar inbound: sem contactId para {pm.sender_id}")
             return
 
-        espelhado = await mirror_inbound(tenant, pm, contact_id)
+        espelhado = await mirror_inbound(adapter, tenant, pm, contact_id)
         if espelhado:
             contact_id = espelhado
         else:

@@ -86,6 +86,29 @@ class WAHAChannel:
         session = getattr(tenant, "waha_session", None) or getattr(tenant, "location_id", "") or ""
         return base, key, session
 
+    def public_media_url(self, tenant, media_url: Optional[str]) -> Optional[str]:
+        """
+        URL do NOSSO proxy que o CRM consegue baixar, ou None.
+
+        A URL crua do WAHA é interna e autenticada; o CRM não a busca. Extraímos o
+        basename (o messageId.ext) e montamos o link do proxy público
+        (`/media/whatsapp/{location_id}/{filename}`), que serve o arquivo com a
+        credencial do lado de cá.
+        """
+        if not media_url:
+            return None
+        marcador = "/api/files/"
+        if marcador not in media_url:
+            return None
+        base = (getattr(settings, "public_base_url", "") or "").rstrip("/")
+        if not base:
+            return None
+        filename = media_url.split("/")[-1].split("?")[0]
+        if not filename:
+            return None
+        loc = getattr(tenant, "location_id", "")
+        return f"{base}/media/whatsapp/{loc}/{filename}"
+
     def media_fetch(self, tenant, url: Optional[str]) -> tuple[Optional[str], dict]:
         """
         (URL alcançável, headers) para baixar mídia deste provedor.
