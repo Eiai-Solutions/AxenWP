@@ -117,7 +117,7 @@
             closeInstanceSettings();
             if (action === 'agent') {
                 // Find the row that has the data attributes and open AI modal
-                const row = document.querySelector(`tr[data-location="${d.locationId}"]`);
+                const row = document.querySelector(`[data-location="${d.locationId}"]`);
                 if (row) openAIAgentModal(row);
             } else if (action === 'zapi') {
                 openZAPIModal(d.locationId, d.companyName, d.zapiInstanceId, d.zapiToken, d.zapiClientToken);
@@ -935,7 +935,7 @@
 
             // Atualiza a aba Cadastro (form_data) com os dados do canal corrente
             const fdRaw = agent.form_data ? JSON.stringify(agent.form_data) : '';
-            const row = document.querySelector(`tr[data-location="${document.getElementById('ai_location_id').value}"]`);
+            const row = document.querySelector(`[data-location="${document.getElementById('ai_location_id').value}"]`);
             if (row) row.dataset.aiformdata = fdRaw;
             _renderFormDataTab(fdRaw);
         }
@@ -1062,7 +1062,7 @@
             }
 
             // Caminho ANTIGO: agente independente
-            const row = document.querySelector(`tr[data-location="${locationId}"]`);
+            const row = document.querySelector(`[data-location="${locationId}"]`);
             const baseFormData = (row && row.dataset.aiformdata) ? row.dataset.aiformdata : '';
             document.getElementById('ai_channel').value = normalized;
             _populateAgentForm({ form_data: baseFormData ? JSON.parse(baseFormData) : null });
@@ -1303,7 +1303,7 @@
 
             // Ensure _qualFields is set from row data if not yet loaded
             if (_qualFields.length === 0) {
-                const row = document.querySelector(`tr[data-location="${locationId}"]`);
+                const row = document.querySelector(`[data-location="${locationId}"]`);
                 if (row) {
                     try { _qualFields = JSON.parse(row.dataset.aiqualfields || '[]'); } catch(e) {}
                 }
@@ -1355,7 +1355,7 @@
             if (_qualFields.length > 0) return;
             const locationId = document.getElementById('ai_location_id')?.value;
             if (!locationId) return;
-            const row = document.querySelector('tr[data-location="' + locationId + '"]');
+            const row = document.querySelector('[data-location="' + locationId + '"]');
             if (row) {
                 try { _qualFields = JSON.parse(row.dataset.aiqualfields || '[]'); } catch(e) {}
             }

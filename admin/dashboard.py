@@ -164,6 +164,9 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
             "telegram_bot_token": t.telegram_bot_token,
             "telegram_bot_username": t.telegram_bot_username,
             "pending_onboarding": int(pending_onboarding_map.get(t.location_id, 0)),
+            # Provedor real de WhatsApp (zapi | waha) — a UI não deve assumir Z-API.
+            "whatsapp_provider": getattr(t, "whatsapp_provider", "zapi") or "zapi",
+            "waha_session": getattr(t, "waha_session", None),
         }
 
         agent = agent_map.get(t.location_id)
