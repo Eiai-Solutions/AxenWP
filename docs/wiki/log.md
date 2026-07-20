@@ -31,3 +31,8 @@
 - Escolhido proxy em vez de `WHATSAPP_API_KEY_EXCLUDE_PATH`: não reinicia o WAHA e mantém a chave global privada.
 - Provado em produção: proxy sem chave devolve Ogg/Opus 200; path traversal 404.
 - Retenção (180s default) fica como env de infra opcional para folga.
+
+## [2026-07-20] add | Mídia recebida durável — player toca no CRM
+- `integracoes/whatsapp-waha.md` (quirk nº2): áudio virava player mas não tocava. Causa: GHL hot-linka a URL de entrada e busca lazy, quando o WAHA (retenção 180s) já apagou → 404.
+- Solução (`e249daa`): persistir binário no Postgres (`media_blobs`, migration 025) no inbound; proxy serve dali com Range/CORS. Download em background + streaming com teto 25MB; limpeza > 90 dias; rate limit 240/min.
+- Verificado por revisão adversarial (5 lentes): sem bloqueadores; chave escrita==lida, Range RFC ok, sem regressão Z-API.

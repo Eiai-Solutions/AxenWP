@@ -124,11 +124,31 @@ monta o link a partir do basename + `PUBLIC_BASE_URL`; o pipeline o põe em
 > Provado em produção: `GET` sem chave no proxy → `200` Ogg/Opus válido; `GET
 > …/sessions` → `404`.
 
-Ponto de atenção — **retenção**: o arquivo local do WAHA expira em 180s por
-default (`WHATSAPP_FILES_LIFETIME`) e mora em `/tmp` sem volume. O GHL busca em
-segundos, então o caminho feliz cabe; mas atraso/retry pode dar 404, e aí o proxy
-degrada para o rótulo textual. Para folga, setar `WHATSAPP_FILES_LIFETIME=3600`
-(não `0`: `/tmp` encheria) — é env do container WAHA, não código.
+**Player que abre mas não toca → persistência própria.** Para *áudio*, além de
+entregar o arquivo, o GHL precisa que a URL continue servindo quando o operador
+clica play — e aí a retenção de 180s do WAHA morde de verdade: o GHL **hot-linka**
+o anexo de entrada (guarda a nossa URL, não re-hospeda como faz no de saída) e o
+busca de forma **preguiçosa**, ao abrir a conversa. Minutos depois o WAHA já
+apagou o arquivo → proxy 404 → `<audio>` com `--:--` e play morto.
+
+Solução (commit `e249daa`): persistimos o binário no **Postgres** (`media_blobs`,
+migration 025) no momento do inbound, enquanto o arquivo existe no WAHA, e o proxy
+serve dali. Detalhes que importam:
+- download em **background** (não segura a resposta da IA) e por **streaming** com
+  corte no teto de 25 MB (arquivo grande não bufferiza na RAM; cai no proxy ao vivo);
+- o proxy serve do store primeiro, **fallback** ao vivo no WAHA para a janela de
+  corrida / anexos antigos;
+- **Range (206) + `Accept-Ranges` + CORS**: o `<audio>` cross-origin do CRM pede
+  a mídia por partes; sem isso não toca nem calcula duração;
+- limpeza diária de mídia > 90 dias (como o GHL hot-linka, isso limita por quanto
+  tempo o áudio antigo continua tocando); rate limit 240/min no endpoint público.
+
+Chave do blob = o basename da URL do proxy (`{messageId}.{ext_de_exibição}`, já com
+`.oga`→`.ogg`), escopado por location — o mesmo nome que o proxy recebe do GHL.
+
+`WHATSAPP_FILES_LIFETIME` no container WAHA deixa de ser necessário para áudio (a
+persistência resolve); ainda ajuda como folga para a janela antes do background
+terminar, mas não é mais o que sustenta a reprodução.
 
 ## Quirk nº 2b — áudio sem legenda era descartado (bug do pipeline, não do WAHA)
 
