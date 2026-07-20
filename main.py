@@ -28,6 +28,7 @@ from auth.oauth import router as oauth_router
 from webhooks.ghl_provider import router as ghl_webhook_router
 from webhooks.zapi_receiver import router as zapi_webhook_router
 from webhooks.telegram_receiver import router as telegram_webhook_router
+from webhooks.waha_receiver import router as waha_webhook_router
 from admin.dashboard import router as admin_router
 from admin.ai_agent import router as admin_ai_agent_router
 from admin.seed_joorney import router as seed_joorney_router
@@ -96,10 +97,12 @@ async def lifespan(app: FastAPI):
     logger.info("Axen WP Server iniciando...")
     from webhooks.zapi_receiver import cleanup_stale_debounce_entries
     from webhooks.telegram_receiver import cleanup_stale_telegram_debounce
+    from services.inbound_pipeline import cleanup_stale_entries as cleanup_pipeline_entries
     scheduler.add_job(refresh_tokens_job, "interval", hours=12)
     scheduler.add_job(cleanup_old_chat_history, "interval", hours=24)
     scheduler.add_job(cleanup_stale_debounce_entries, "interval", minutes=10)
     scheduler.add_job(cleanup_stale_telegram_debounce, "interval", minutes=10)
+    scheduler.add_job(cleanup_pipeline_entries, "interval", minutes=10)
     scheduler.start()
     
     # Inicializa clientes HTTP compartilhados
@@ -158,6 +161,7 @@ app.include_router(oauth_router)
 app.include_router(ghl_webhook_router)
 app.include_router(zapi_webhook_router)
 app.include_router(telegram_webhook_router)
+app.include_router(waha_webhook_router)
 app.include_router(admin_router)
 app.include_router(admin_ai_agent_router)
 app.include_router(seed_joorney_router)

@@ -56,7 +56,24 @@ class WAHAChannel:
         return bool(base and session)
 
     def _chat_id(self, to: str) -> str:
-        return to if "@" in to else f"{to}@c.us"
+        """
+        Destinatário no formato que o WAHA espera.
+
+        A Z-API tolerava telefone formatado porque descartava tudo que não é
+        dígito; o WAHA aceita o POST com um chatId torto e a mensagem
+        simplesmente não sai — falha silenciosa. Por isso normalizamos aqui:
+        "+55 47 99720-4869" → "5547997204869@c.us".
+        """
+        alvo = (to or "").strip()
+        if "@" in alvo:
+            if alvo.endswith("@lid"):
+                # Identidade de lead de anúncio: não é um chatId comum. Deixamos
+                # passar (o GOWS resolve alguns casos) mas registramos, porque é
+                # candidato número 1 quando "enviou e não chegou".
+                logger.warning(f"[WAHA] Enviando para identidade @lid ({alvo}); entrega não é garantida.")
+            return alvo
+        digitos = re.sub(r"\D", "", alvo)
+        return f"{digitos or alvo}@c.us"
 
     @staticmethod
     def _extract_message_id(resp: Optional[dict]) -> Optional[str]:

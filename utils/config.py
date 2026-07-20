@@ -36,6 +36,14 @@ class Settings(BaseSettings):
     zapi_webhook_secret: str = Field(
         default="", description="Token para validar webhooks do Z-API"
     )
+    waha_webhook_hmac_key: str = Field(
+        default="",
+        description=(
+            "Chave HMAC dos webhooks do WAHA. Vazio = sem assinatura (as sessões já "
+            "criadas foram registradas assim). Ao definir, re-registre o webhook das "
+            "sessões existentes, senão elas passam a ser rejeitadas."
+        ),
+    )
     allowed_origins: str = Field(
         default="",
         description="Origens permitidas para CORS (separadas por virgula). Ex: https://app.example.com,https://admin.example.com"
