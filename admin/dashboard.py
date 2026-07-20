@@ -15,6 +15,7 @@ import hashlib
 from utils.logger import logger
 from utils.config import settings as app_settings
 from auth.token_manager import token_manager
+from services.channel_policy import ZAPI, active_whatsapp_provider
 from services.zapi_service import zapi_service
 from services.telegram_service import telegram_service
 
@@ -202,8 +203,13 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
         else:
             t_dict["ai_agent_data"] = None
 
+        # Só consulta a Z-API quando ela é o provedor ATIVO da instância: numa
+        # instância que migrou para o WAHA a credencial antiga fica dormente, e
+        # perguntar por ela só produziria um "Escanear QR" da Z-API num número
+        # que não é mais atendido por ela (além de uma chamada HTTP por tenant
+        # em cada carregamento do painel).
         t_dict["zapi_connection_status"] = "NOT_CONFIGURED"
-        if t.zapi_instance_id and t.zapi_token:
+        if active_whatsapp_provider(t) == ZAPI:
             status_data = await zapi_service.get_status(t.zapi_instance_id, t.zapi_token, t.zapi_client_token)
             if status_data:
                 t_dict["zapi_connection_status"] = "CONNECTED" if status_data.get("connected") else "DISCONNECTED"
@@ -304,6 +310,18 @@ async def update_zapi_credentials(
     tenant_data = token_manager.get_tenant(location_id)
     if not tenant_data:
         return RedirectResponse(url="/admin/dashboard?err=Empresa não encontrada.", status_code=303)
+
+    # Um provedor de WhatsApp por instância. Bloquear só no card não basta —
+    # este form posta direto no endpoint.
+    from urllib.parse import quote
+    from services.channel_policy import ZAPI, conflict_message, whatsapp_conflict
+    blocking = whatsapp_conflict(tenant_data, ZAPI)
+    if blocking:
+        msg = quote(conflict_message(blocking, ZAPI))
+        return RedirectResponse(
+            url=f"/admin/dashboard?err={msg}&instance={location_id}&tab=canais",
+            status_code=303,
+        )
 
     # Atualiza pelo TokenManager direto ao banco
     try:

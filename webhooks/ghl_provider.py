@@ -14,6 +14,7 @@ from pydantic import Field
 
 from utils.logger import logger
 from auth.token_manager import token_manager
+from services.channel_policy import ZAPI, active_whatsapp_provider
 from services.zapi_service import zapi_service
 from services.ghl_service import ghl_service
 
@@ -77,6 +78,21 @@ async def process_outbound_message(payload: GHLOutboundPayload):
         logger.info(f"GHL Outbound abortado: Automação pausada/desativada para {location_id}.")
         await ghl_service.update_message_status(
             location_id, payload.messageId, status="failed", error_message="Automação Axen WP pausada no painel."
+        )
+        return
+
+    # Exclusividade vale nos DOIS sentidos: se a instância migrou para outro
+    # provedor, a credencial Z-API dormente não pode continuar despachando —
+    # sairia pelo número errado e ainda seria marcado como entregue no CRM.
+    ativo = active_whatsapp_provider(tenant)
+    if ativo and ativo != ZAPI:
+        logger.warning(
+            f"[CHANNEL] GHL Outbound abortado: {location_id} usa {ativo} como provedor, "
+            f"envio pela Z-API bloqueado."
+        )
+        await ghl_service.update_message_status(
+            location_id, payload.messageId, status="failed",
+            error_message=f"Instância usa {ativo.upper()} como provedor de WhatsApp.",
         )
         return
 

@@ -65,7 +65,7 @@
             // Store data for sub-actions
             window._instanceSettingsData = { locationId, companyName, mode, clientId, zapiInstanceId, zapiToken, zapiClientToken, pitToken, telegramBotToken, telegramBotUsername };
 
-            renderCanaisStatus(locationId, telegramBotToken, telegramBotUsername, zapiInstanceId);
+            renderCanaisStatus(locationId);
 
             // Status da conexão com o CRM — PIT e OAuth são caminhos alternativos.
             const crmStatus = document.getElementById('crm_status');
@@ -155,68 +155,126 @@
         });
 
         // Faixa de status reutilizável (mesma linguagem visual do status do CRM).
-        // state: 'ok' (verde, funcionando) · 'bad' (vermelho, configurado mas com
-        // problema) · 'off' (neutro, nada configurado ainda).
+        // state: 'ok' (verde, funcionando) · 'bad'/'down' (vermelho, configurado mas
+        // com problema) · 'pending' (ocre, em andamento) · 'off' (neutro, nada ainda).
         function _statusRow(state, title, right) {
             const box = state === 'ok' ? 'bg-green-500/10 border-green-500/25'
-                : state === 'bad' ? 'bg-brand-red/10 border-brand-red/30'
-                    : 'bg-[#211C17] border-gray-800';
-            const dot = state === 'ok' ? 'bg-green-500' : state === 'bad' ? 'bg-brand-red' : 'bg-gray-700';
+                : state === 'pending' ? 'bg-ocre/10 border-ocre/30'
+                    : (state === 'bad' || state === 'down') ? 'bg-brand-red/10 border-brand-red/30'
+                        : 'bg-[#211C17] border-gray-800';
+            const dot = state === 'ok' ? 'bg-green-500'
+                : state === 'pending' ? 'bg-ocre'
+                    : (state === 'bad' || state === 'down') ? 'bg-brand-red' : 'bg-gray-700';
             const txt = state === 'off' ? 'text-gray-400' : 'text-white';
+            // title/right podem carregar dado vindo do provedor (nome de perfil,
+            // status cru) — escapar antes de entrar no innerHTML.
             return '<div class="flex items-center gap-2 px-4 py-3 rounded-xl border ' + box + '">'
                 + '<span class="w-2 h-2 rounded-full ' + dot + '"></span>'
-                + '<span class="text-sm font-bold ' + txt + '">' + title + '</span>'
-                + '<span class="text-[10px] text-gray-400 font-mono uppercase tracking-widest ml-auto">' + (right || '') + '</span>'
+                + '<span class="text-sm font-bold ' + txt + '">' + _escapeHtml(title || '') + '</span>'
+                + '<span class="text-[10px] text-gray-400 font-mono uppercase tracking-widest ml-auto">' + _escapeHtml(right || '') + '</span>'
                 + '</div>';
         }
 
-        // Status dos canais. O provedor real vem do card (zapi|waha); no WAHA a sessão
-        // é consultada ao vivo, porque o estado vive no servidor WAHA e não no banco.
-        function renderCanaisStatus(locationId, telegramBotToken, telegramBotUsername, zapiInstanceId) {
+        // Estado dos canais: UMA pergunta ao servidor, que é quem sabe. Nada aqui sai
+        // de atributo gravado no carregamento da página — era justamente isso que fazia
+        // o painel dizer "nenhum canal" logo depois de o operador conectar um número.
+        let _canaisFetchId = 0;
+
+        async function renderCanaisStatus(locationId) {
             const box = document.getElementById('canais_status');
             if (!box) return;
-            const card = document.querySelector('[data-location="' + locationId + '"]');
-            const provider = (card && card.dataset.provider) || 'zapi';
-            const waStatus = (card && card.dataset.wastatus) || '';
+            // Cada chamada ganha um número; só a mais recente pode pintar a tela.
+            // Sem isso, abrir a instância A e logo a B faz a resposta atrasada de A
+            // sobrescrever o status (e o bloqueio de provedor) de B.
+            const fetchId = ++_canaisFetchId;
+            const atual = () => fetchId === _canaisFetchId;
 
-            // Só entram canais que EXISTEM. Canal ausente não vira linha de ruído.
-            const tg = telegramBotToken
-                ? [_statusRow('ok', 'Telegram conectado', telegramBotUsername ? '@' + telegramBotUsername : '')]
-                : [];
+            box.innerHTML = _statusRow('off', 'Verificando canais…', '');
+            _applyProviderLocks('loading');
 
-            const paint = function (whatsappRow) {
-                const rows = (whatsappRow ? [whatsappRow] : []).concat(tg);
-                box.innerHTML = rows.length
-                    ? rows.join('')
-                    : _statusRow('off', 'Nenhum canal configurado ainda', '');
-            };
+            try {
+                const r = await fetch('/admin/instance/' + encodeURIComponent(locationId) + '/channels');
+                const d = await r.json();
+                if (!atual()) return;
+                if (d.error) {
+                    box.innerHTML = _statusRow('down', 'Nao foi possivel ler o status dos canais', d.error);
+                    // Some com o bloqueio de carregamento: o backend segue guardando a regra.
+                    window._instanceChannels = null;
+                    _applyProviderLocks(null);
+                    return;
+                }
+                // Carimba de quem é a resposta: abrir duas instâncias em sequência não
+                // pode fazer o estado de uma vazar para a outra.
+                window._instanceChannels = Object.assign({ locationId: locationId }, d);
 
-            if (provider === 'waha') {
-                paint(null);
-                fetch('/admin/waha/tenant/' + locationId + '/status')
-                    .then(function (r) { return r.json(); })
-                    .then(function (d) {
-                        // Servidor WAHA sem config = canal ainda não existe.
-                        if (d.error || d.configured === false) { paint(null); return; }
-                        if (d.status === 'WORKING') {
-                            paint(_statusRow('ok', 'WhatsApp conectado', 'via WAHA' + (d.me ? ' · ' + d.me : '')));
-                        } else if (d.status === 'SCAN_QR_CODE') {
-                            paint(_statusRow('bad', 'WhatsApp aguardando leitura do QR', 'via WAHA'));
-                        } else if (d.status === 'STARTING') {
-                            paint(_statusRow('bad', 'WhatsApp iniciando a sessao', 'via WAHA'));
-                        } else {
-                            paint(_statusRow('bad', 'WhatsApp desconectado', 'via WAHA'));
-                        }
-                    })
-                    .catch(function () { paint(null); });
-                return;
+                // Só entram canais que EXISTEM. Canal ausente não vira linha de ruído.
+                const rows = [];
+                if (d.whatsapp) rows.push(_statusRow(d.whatsapp.state, d.whatsapp.title, d.whatsapp.detail));
+                if (d.telegram) rows.push(_statusRow(d.telegram.state, d.telegram.title, d.telegram.detail));
+                box.innerHTML = rows.length ? rows.join('') : _statusRow('off', 'Nenhum canal configurado ainda', '');
+
+                _applyProviderLocks(d.providers);
+            } catch (e) {
+                if (!atual()) return;
+                // Falha de rede não é "nenhum canal" — dizer o que houve de verdade.
+                box.innerHTML = _statusRow('down', 'Nao foi possivel ler o status dos canais', 'erro de rede');
+                window._instanceChannels = null;
+                _applyProviderLocks(null);
             }
+        }
 
-            // Z-API: só é canal se houver instância configurada.
-            if (!zapiInstanceId) { paint(null); return; }
-            paint(waStatus === 'CONNECTED'
-                ? _statusRow('ok', 'WhatsApp conectado', 'via Z-API')
-                : _statusRow('bad', 'WhatsApp desconectado', 'via Z-API'));
+        // Um provedor de WhatsApp por instância. O card bloqueado fica inerte e explica
+        // o porquê; o do provedor ativo recebe a keyline vermelha (a "corrente" do DNA).
+        // Os estados vêm do backend — a UI não reimplementa a regra, só a veste.
+        function _applyProviderLocks(providers) {
+            // 'loading' = ainda perguntando ao servidor; enquanto isso os cards de
+            // provedor não aceitam clique, senão dá para furar o bloqueio no intervalo.
+            const carregando = providers === 'loading';
+            ['waha', 'zapi'].forEach(function (name) {
+                const card = document.getElementById('chan_card_' + name);
+                if (!card) return;
+                const desc = card.querySelector('.chan-desc');
+                const chip = card.querySelector('.chan-chip');
+                const info = (!carregando && providers && providers[name]) || {};
+                const state = carregando ? 'loading' : (info.state || 'free');
+
+                card.classList.remove('corrente', 'opacity-40', 'opacity-60', 'cursor-not-allowed');
+                // aria-disabled em vez de disabled: botão desabilitado não recebe hover,
+                // e sem hover o tooltip que explica o bloqueio nunca apareceria.
+                card.removeAttribute('aria-disabled');
+                card.title = card.dataset.title || '';
+                if (desc) desc.textContent = desc.dataset.default || '';
+                if (chip) { chip.textContent = ''; chip.className = 'chan-chip hidden'; }
+
+                const setChip = function (text, tone) {
+                    if (!chip) return;
+                    chip.textContent = text;
+                    chip.className = 'chan-chip text-[10px] font-mono uppercase tracking-widest ' + tone;
+                };
+
+                if (state === 'loading') {
+                    card.classList.add('opacity-60', 'cursor-not-allowed');
+                    card.setAttribute('aria-disabled', 'true');
+                    card.title = 'Verificando o estado do canal…';
+                    setChip('…', 'text-gray-600');
+                } else if (state === 'active') {
+                    card.classList.add('corrente');
+                    if (info.hint && desc) desc.textContent = info.hint;
+                    card.title = info.hint || card.dataset.title || '';
+                    setChip('Ativo', 'text-green-400');
+                } else if (state === 'locked') {
+                    card.classList.add('opacity-40', 'cursor-not-allowed');
+                    card.setAttribute('aria-disabled', 'true');
+                    if (info.hint && desc) desc.textContent = info.hint;
+                    card.title = info.tooltip || 'Bloqueado nesta instancia';
+                    setChip('Bloqueado', 'text-gray-500');
+                } else if (state === 'swap') {
+                    card.classList.add('opacity-60');
+                    if (info.hint && desc) desc.textContent = info.hint;
+                    card.title = info.tooltip || 'Trocar de provedor';
+                    setChip('Troca', 'text-ocre');
+                }
+            });
         }
 
         // Módulos do modal de instância: Canais · CRM · Agente IA · Onboarding · Avançado.
@@ -234,8 +292,29 @@
             });
         }
 
+        // Estado de bloqueio do provedor, se a resposta em memória for desta instância.
+        function _providerLock(locationId, name) {
+            const ch = window._instanceChannels;
+            if (!ch || ch.locationId !== locationId || !ch.providers) return {};
+            return ch.providers[name] || {};
+        }
+
         function instanceAction(action) {
             const d = window._instanceSettingsData;
+            // Provedor bloqueado: avisar ANTES de fechar o modal, senão o operador
+            // fica sem contexto nenhum na tela.
+            if (action === 'zapi' || action === 'waha') {
+                const card = document.getElementById('chan_card_' + action);
+                if (card && card.getAttribute('aria-disabled') === 'true') {
+                    alert(card.title || 'Este provedor esta bloqueado nesta instancia.');
+                    return;
+                }
+                const lock = _providerLock(d.locationId, action);
+                if (lock.state === 'locked') {
+                    alert(lock.tooltip || 'Este provedor esta bloqueado nesta instancia.');
+                    return;
+                }
+            }
             closeInstanceSettings();
             if (action === 'agent') {
                 // Find the row that has the data attributes and open AI modal
@@ -2169,17 +2248,36 @@
             </div>`;
         }
 
-        async function connectWaha(btn) {
+        async function connectWaha(btn, force) {
             if (btn) { btn.disabled = true; btn.innerText = 'Conectando…'; }
             document.getElementById('waha_content').innerHTML = _wahaSpinner('Criando sessão…');
             try {
-                const r = await fetch(`/admin/waha/tenant/${_wahaLoc}/connect`, { method: 'POST' });
+                const url = `/admin/waha/tenant/${_wahaLoc}/connect` + (force ? '?force=1' : '');
+                const r = await fetch(url, { method: 'POST' });
                 const d = await r.json();
+                // Outro provedor de WhatsApp está ativo: trocar é decisão do operador,
+                // então mostramos o que muda em vez de trocar por conta própria.
+                if (d.conflict) { document.getElementById('waha_content').innerHTML = _wahaConflict(d); return; }
                 if (d.error) { document.getElementById('waha_content').innerHTML = _wahaError(d.error); return; }
                 setTimeout(refreshWahaStatus, 900);
             } catch (e) {
                 document.getElementById('waha_content').innerHTML = _wahaError('Falha ao conectar.');
             }
+        }
+
+        function _wahaConflict(d) {
+            return `<div class="py-6 text-center w-full">
+                <div class="w-11 h-11 rounded-full bg-ocre/10 border border-ocre/30 flex items-center justify-center mx-auto mb-3">
+                    <svg class="w-5 h-5 text-ocre" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86a2 2 0 001.74-3L13.74 4a2 2 0 00-3.48 0L3.33 16a2 2 0 001.74 3z"></path></svg>
+                </div>
+                <p class="text-sm font-bold text-white mb-2">Trocar o provedor de WhatsApp?</p>
+                <p class="text-[11px] text-gray-400 leading-relaxed px-3 mb-1">${d.error || ''}</p>
+                <p class="text-[10px] text-gray-500 font-mono leading-relaxed px-3 mb-5">${d.swap_hint || ''} As credenciais antigas ficam guardadas — nada é apagado.</p>
+                <div class="flex gap-2">
+                    <button onclick="closeWahaModal()" title="Manter o provedor atual" class="flex-1 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest text-gray-400 bg-gray-800 hover:bg-gray-700 transition-colors font-mono">Manter</button>
+                    <button onclick="connectWaha(this, true)" title="Desativar o provedor atual e conectar pelo WAHA" class="flex-1 btn-brand px-3 py-2 rounded-lg text-white text-[10px] font-bold uppercase tracking-widest font-mono">Trocar para o WAHA</button>
+                </div>
+            </div>`;
         }
 
         function showWahaQr() {

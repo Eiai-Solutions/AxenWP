@@ -59,8 +59,8 @@
             }
         }
     </script>
-    <script src="/static/js/dashboard.js?v=corrente-10" defer></script>
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=corrente-10">
+    <script src="/static/js/dashboard.js?v=corrente-12" defer></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=corrente-12">
 </head>
 
 <body class="font-sans min-h-screen antialiased selection:bg-brand-red selection:text-[#FDFBF6]">
@@ -158,8 +158,6 @@
                 title="Abrir conexões e detalhes de {{ tenant.company_name }}"
                 data-location="{{ tenant.location_id }}"
                 data-company="{{ tenant.company_name }}"
-                data-provider="{{ tenant.whatsapp_provider or 'zapi' }}"
-                data-wastatus="{{ tenant.zapi_connection_status or '' }}"
                 data-ainame="{{ (tenant.ai_agent_data.name | forceescape) if tenant.ai_agent_data else '' }}"
                 data-aiprompt="{{ (tenant.ai_agent_data.prompt | forceescape) if tenant.ai_agent_data and tenant.ai_agent_data.prompt else '' }}"
                 data-aimodel="{{ (tenant.ai_agent_data.model | forceescape) if tenant.ai_agent_data else '' }}"

@@ -34,6 +34,7 @@ from admin.seed_joorney import router as seed_joorney_router
 from admin.diagnostics import router as diagnostics_router
 from admin.inspect import router as inspect_router
 from admin.waha import router as waha_router
+from admin.channels import router as channels_router
 from public.onboarding import router as onboarding_router
 
 # =============================================================================
@@ -163,6 +164,7 @@ app.include_router(seed_joorney_router)
 app.include_router(diagnostics_router)
 app.include_router(inspect_router)
 app.include_router(waha_router)
+app.include_router(channels_router)
 app.include_router(onboarding_router)
 
 

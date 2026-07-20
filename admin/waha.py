@@ -17,6 +17,7 @@ from admin.dashboard import verify_admin
 from auth.token_manager import token_manager
 from data.database import SessionLocal
 from data.models import SystemSettings, Tenant
+from services.channel_policy import WAHA, conflict_message, provider_with_article, whatsapp_conflict
 from services.waha_service import get_global_waha_config, invalidate_global_waha_config, waha_service
 from utils.config import settings as app_settings
 from utils.logger import logger
@@ -123,13 +124,29 @@ async def waha_status(location_id: str, authenticated: bool = Depends(verify_adm
 
 
 @router.post("/tenant/{location_id}/connect")
-async def waha_connect(location_id: str, authenticated: bool = Depends(verify_admin)):
-    """Cria/inicia a sessão do tenant, registra o webhook e marca o tenant como WAHA."""
+async def waha_connect(location_id: str, force: bool = False, authenticated: bool = Depends(verify_admin)):
+    """
+    Cria/inicia a sessão do tenant, registra o webhook e marca o tenant como WAHA.
+
+    Recusa se a instância já tem outro provedor de WhatsApp ativo — `force=1` é a
+    troca deliberada, feita pelo operador depois do aviso. A troca NÃO apaga as
+    credenciais da Z-API: elas ficam dormentes e voltam a valer se ele
+    desconectar o WAHA.
+    """
     if not authenticated:
         return {"error": "Unauthorized"}
     tenant = token_manager.get_tenant(location_id)
     if not tenant:
         return {"error": "Tenant não encontrado"}
+
+    blocking = whatsapp_conflict(tenant, WAHA)
+    if blocking and not force:
+        return {
+            "conflict": blocking,
+            "error": conflict_message(blocking, WAHA),
+            "swap_hint": f"Conectar pelo WAHA desativa {provider_with_article(blocking)} desta instância.",
+        }
+
     base, key, session = _resolve(tenant)
     if not (base and key):
         return {"error": "Configure o servidor WAHA (URL + API key) primeiro."}
@@ -138,10 +155,16 @@ async def waha_connect(location_id: str, authenticated: bool = Depends(verify_ad
     webhook_url = f"{public_base}/webhook/whatsapp/{location_id}" if public_base else None
     hmac_key = getattr(app_settings, "waha_webhook_hmac_key", None) or None
 
-    await waha_service.create_session(
+    created = await waha_service.create_session(
         base, key, session, webhook_url=webhook_url,
         events=["message", "session.status"], hmac_key=hmac_key, start=True,
     )
+    if not created:
+        # Servidor fora do ar / recusou: NÃO marcar a instância como WAHA. Marcar
+        # aqui derrubaria o provedor anterior e deixaria a instância sem WhatsApp
+        # nenhum — pior que não ter trocado.
+        logger.error(f"[CHANNEL] connect: sessão WAHA não foi criada para {location_id}; provedor mantido.")
+        return {"error": "Não foi possível criar a sessão no servidor WAHA. Nada foi alterado."}
 
     # O tenant guarda APENAS a sua sessão (o número) + o provedor.
     # A URL/API key do servidor WAHA sao config GLOBAL do admin (uma vez, para todos)
@@ -151,9 +174,13 @@ async def waha_connect(location_id: str, authenticated: bool = Depends(verify_ad
     try:
         t = db.query(Tenant).filter(Tenant.location_id == location_id).first()
         if t:
+            if blocking:
+                logger.info(f"[CHANNEL] Troca de provedor {blocking} -> waha em {location_id}")
             t.whatsapp_provider = "waha"
             t.waha_session = session
             db.commit()
+        else:
+            logger.error(f"[CHANNEL] connect: tenant {location_id} sumiu antes de gravar o provedor")
     finally:
         db.close()
 
@@ -190,6 +217,13 @@ async def waha_session_action(location_id: str, action: str, authenticated: bool
         return {"error": "Tenant não encontrado"}
     base, key, session = _resolve(tenant)
     if not (base and key):
+        # Sem servidor global não há o que desligar lá fora — mas o desconectar
+        # precisa continuar sendo a saída do operador, senão a instância fica
+        # presa em WAHA (sem canal e sem poder voltar) só porque o admin trocou
+        # a configuração global.
+        if action == "disconnect":
+            _release_whatsapp_provider(location_id)
+            return {"success": True, "note": "Servidor WAHA não configurado; provedor liberado localmente."}
         return {"error": "WAHA não configurado"}
 
     if action == "restart":
@@ -198,4 +232,28 @@ async def waha_session_action(location_id: str, action: str, authenticated: bool
         ok = await waha_service.logout_session(base, key, session)
         if action == "disconnect":
             await waha_service.delete_session(base, key, session)
+            _release_whatsapp_provider(location_id)
     return {"success": ok}
+
+
+def _release_whatsapp_provider(location_id: str) -> None:
+    """
+    Desconectar libera o provedor — e só o disconnect faz isso.
+
+    `logout` e `restart` mantêm o tenant em WAHA de propósito: queda temporária
+    de sessão não pode destravar a Z-API no meio de um reboot. Idempotente, para
+    servir também de escape quando a sessão foi apagada por fora do painel.
+    """
+    db = SessionLocal()
+    try:
+        t = db.query(Tenant).filter(Tenant.location_id == location_id).first()
+        if t:
+            t.whatsapp_provider = "zapi"
+            t.waha_session = None
+            db.commit()
+            logger.info(f"[CHANNEL] Provedor WhatsApp liberado em {location_id} (WAHA desconectado)")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[CHANNEL] Falha ao liberar provedor de {location_id}: {e}")
+    finally:
+        db.close()

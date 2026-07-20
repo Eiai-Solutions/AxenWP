@@ -16,6 +16,7 @@ from utils.limiter import limiter
 from utils import metrics
 from auth.token_manager import token_manager
 from channels.whatsapp.zapi import ZAPIChannel
+from services.channel_policy import WAHA, active_whatsapp_provider
 from services.ghl_service import ghl_service
 from services.zapi_service import zapi_service
 
@@ -251,6 +252,14 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
 
     if not getattr(tenant, 'is_active', True):
         logger.info(f"Z-API Inbound abortado: Automação desativada para {location_id}.")
+        return
+
+    # "Indisponível" precisa valer de verdade: se a instância migrou para o WAHA,
+    # um webhook velho da Z-API ainda apontado pra cá não pode responder junto —
+    # seriam duas pontas atendendo o mesmo número.
+    if active_whatsapp_provider(tenant) == WAHA:
+        logger.info(f"[CHANNEL] Z-API Inbound ignorado: {location_id} usa WAHA como provedor.")
+        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "provider_inactive"})
         return
 
     pm = ZAPIChannel().parse_inbound(location_id, payload)
