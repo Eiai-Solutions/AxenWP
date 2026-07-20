@@ -12,3 +12,10 @@
 - Aterrissou porta AgentEngine + LangChainAgentEngine (commit 2091bf2) e contratos ChannelAdapter + ZAPIChannel.parse_inbound (commit af37549), branch feat/pr1-abstracoes-portas.
 - 111 testes verdes (era 90). Adicionada seção "Estado de implementação" em decisoes/reestruturacao-abstracoes-primeiro.
 - Pendente PR #1: send methods + pipeline compartilhado + rota universal (fatia crítica).
+
+## [2026-07-20] add | Circuito WhatsApp↔CRM fechado — identidade, tokens e providers
+- `integracoes/whatsapp-waha.md` — quirk book do WAHA/GOWS. O quirk caro: o remetente chega como `@lid` e o telefone está em `_data.Info.SenderAlt` (ninguém lia). Também: reeco das próprias mensagens (dedup obrigatório), ciclo de sessão, pairing code disponível e não implementado.
+- `integracoes/gohighlevel-conversas.md` — a assimetria entre as duas direções: PIT cobre o espelho, mas a saída exige conversation provider do app. Status de entrega dá 401 para token que não é dono do provider (leitura da mesma mensagem dá 200 — é posse, não escopo). Descoberta: as instâncias antigas NUNCA usaram provider; o modo espelho é que sempre funcionou.
+- `decisoes/identidade-do-contato.md` — telefone e `@lid` na mesma linha de `contact_mappings` (migration 024), busca por qualquer uma das duas, 4 camadas de resolução por custo crescente.
+- Origem: sessão de depuração que fechou os dois sentidos em produção (Eiai Solutions). Commits `b3236b3` (resolução de LID) e `ee6e553` (vínculo das identidades).
+- Dívidas registradas: `/webhook/ghl/outbound` sem autenticação nenhuma; `conversation_provider_id` nunca escrito por código algum.

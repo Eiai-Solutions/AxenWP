@@ -16,9 +16,12 @@ Cérebro externo do projeto. O código é a fonte da verdade; aqui mora o **porq
 - [[decisoes/whatsapp-waha]] — trocar Z-API por WAHA self-host (vs Evolution/Baileys) · status:solid
 - [[decisoes/agente-claude-agent-sdk]] — trocar LangChain single-turn por Claude Agent SDK (tool-use) · status:solid
 - [[decisoes/reestruturacao-abstracoes-primeiro]] — **plano-mãe:** ChannelAdapter + AgentEngine, migração strangler, sprints, 1º PR · status:solid
+- [[decisoes/identidade-do-contato]] — telefone e `@lid` são a mesma pessoa; 4 camadas de resolução · status:solid
 
 ## Fluxos
 - (a registrar) qualificação SDR, debounce/dedup, sync GHL
 
 ## Integrações
-- (a registrar) GoHighLevel (OAuth/PIT), Z-API, WAHA, Anthropic, OpenRouter, Groq, ElevenLabs/Fish Audio
+- [[integracoes/whatsapp-waha]] — quirk book do WAHA/GOWS: `@lid`, reeco de mensagens, sessões · status:solid
+- [[integracoes/gohighlevel-conversas]] — espelho vs conversation provider, PIT vs token do app, os dois providers · status:solid
+- (a registrar) Z-API, Anthropic, OpenRouter, Groq, ElevenLabs/Fish Audio
