@@ -1,0 +1,51 @@
+# Mantém o contexto de build enxuto (era ~233MB por causa do .venv).
+# Build leve = menos memória = não estoura OOM no VPS.
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Git e metadados
+.git/
+.gitignore
+.gitattributes
+
+# Caches Python
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Bancos locais / dados de dev
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+test.db
+
+# Ferramentas e artefatos de dev (não vão pra runtime)
+.ralph/
+.claude/
+docs/
+tests/
+scripts/
+template_agenteia/
+fix_plan.md
+
+# Segredos e ambiente (o container recebe env vars do EasyPanel)
+.env
+.env.*
+!.env.example
+
+# SO / editor
+.DS_Store
+**/.DS_Store
+*.swp
+*.log
+
+# Node (caso apareça)
+node_modules/

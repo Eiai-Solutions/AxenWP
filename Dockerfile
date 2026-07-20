@@ -1,24 +1,23 @@
 FROM python:3.11-slim
 
 # Impede a gravação de arquivos .pyc em disco
-ENV PYTHONDONTWRITEBYTECODE 1
+ENV PYTHONDONTWRITEBYTECODE=1
 # Mantém o stdout/stderr desprotegido (logs em tempo real)
-ENV PYTHONUNBUFFERED 1
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Instala ferramentas base
-RUN apt-get update \
-    && apt-get -y install git build-essential \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Instala dependências Python
+# Dependências Python.
+# NÃO instalamos build-essential/gcc: todas as libs deste projeto distribuem
+# wheels prontas para linux (psycopg2-binary, uvicorn[standard]/uvloop/httptools,
+# pydantic-core). O apt-get install de compilador fazia o build estourar a
+# memória do VPS (OOM -> "Killed" / "context canceled") depois que o container
+# WAHA passou a dividir a máquina.
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# Copia o projeto inteiro
+# Copia o projeto (ver .dockerignore — .venv/.git/tests/docs ficam de fora)
 COPY . .
 
 # Expõe a porta do servidor
