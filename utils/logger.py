@@ -29,6 +29,11 @@ def setup_logger(name: str = "axenwp") -> logging.Logger:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
+    # Sem propagar para o root: o alembic configura o root no startup (fileConfig
+    # do alembic.ini) e, propagando, cada linha sairia duas vezes em produção —
+    # uma no nosso formato e outra no do alembic.
+    logger.propagate = False
+
     return logger
 
 
