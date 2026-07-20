@@ -313,7 +313,10 @@ async def update_zapi_credentials(
             token=token.strip(),
             client_token=client_token.strip()
         )
-        return RedirectResponse(url="/admin/dashboard?msg=Credenciais do Z-API atualizadas!", status_code=303)
+        return RedirectResponse(
+            url=f"/admin/dashboard?msg=Credenciais do Z-API atualizadas!&instance={location_id}&tab=canais",
+            status_code=303,
+        )
     except Exception as e:
         logger.error(f"Erro ao salvar z-api: {e}")
         return RedirectResponse(url="/admin/dashboard?err=Erro interno salvar.", status_code=303)
@@ -526,7 +529,11 @@ async def update_tenant_pit(
         finally:
             db.close()
 
-    return RedirectResponse(url="/admin/dashboard?msg=PIT atualizado com sucesso!", status_code=303)
+    # Volta para a instância na aba CRM, para o operador ver o status atualizado.
+    return RedirectResponse(
+        url=f"/admin/dashboard?msg=Axen CRM conectado via Token PIT.&instance={location_id}&tab=crm",
+        status_code=303,
+    )
 
 
 @router.post("/test-pit")
@@ -644,7 +651,7 @@ async def save_telegram_config(
         )
 
     return RedirectResponse(
-        url=f"/admin/dashboard?msg=Telegram conectado com sucesso! Bot: @{bot_info.get('username')}",
+        url=f"/admin/dashboard?msg=Telegram conectado com sucesso! Bot: @{bot_info.get('username')}&instance={location_id}&tab=canais",
         status_code=303,
     )
 

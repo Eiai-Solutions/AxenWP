@@ -65,6 +65,27 @@
             // Store data for sub-actions
             window._instanceSettingsData = { locationId, companyName, mode, clientId, zapiInstanceId, zapiToken, zapiClientToken, pitToken, telegramBotToken, telegramBotUsername };
 
+            // Status da conexão com o CRM — PIT e OAuth são caminhos alternativos.
+            const crmStatus = document.getElementById('crm_status');
+            if (crmStatus) {
+                if (pitToken) {
+                    crmStatus.className = 'flex items-center gap-2 px-4 py-3 rounded-xl border mb-1 bg-green-500/10 border-green-500/25';
+                    crmStatus.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span>'
+                        + '<span class="text-sm font-bold text-white">Axen CRM conectado</span>'
+                        + '<span class="text-[10px] text-gray-400 font-mono uppercase tracking-widest ml-auto">via Token PIT</span>';
+                } else if (clientId) {
+                    crmStatus.className = 'flex items-center gap-2 px-4 py-3 rounded-xl border mb-1 bg-green-500/10 border-green-500/25';
+                    crmStatus.innerHTML = '<span class="w-2 h-2 rounded-full bg-green-500"></span>'
+                        + '<span class="text-sm font-bold text-white">Axen CRM conectado</span>'
+                        + '<span class="text-[10px] text-gray-400 font-mono uppercase tracking-widest ml-auto">via OAuth</span>';
+                } else {
+                    crmStatus.className = 'flex items-center gap-2 px-4 py-3 rounded-xl border mb-1 bg-[#211C17] border-gray-800';
+                    crmStatus.innerHTML = '<span class="w-2 h-2 rounded-full bg-gray-700"></span>'
+                        + '<span class="text-sm font-bold text-gray-400">Nenhum CRM conectado</span>'
+                        + '<span class="text-[10px] text-gray-600 font-mono uppercase tracking-widest ml-auto">leads ficam no painel</span>';
+                }
+            }
+
             // Show reconnect/connect CRM for all tenants
             const reconnectCard = document.getElementById('instance_card_reconnect');
             if (reconnectCard) {
@@ -72,12 +93,16 @@
                 reconnectCard.classList.remove('hidden');
                 const reconnectTitle = reconnectCard.querySelector('.instance-card-title');
                 const reconnectDesc = reconnectCard.querySelector('.instance-card-desc');
-                if (!clientId) {
-                    if (reconnectTitle) reconnectTitle.textContent = 'Conectar CRM';
-                    if (reconnectDesc) reconnectDesc.textContent = 'Conectar ao GHL para enviar leads qualificados';
-                } else {
+                if (clientId) {
                     if (reconnectTitle) reconnectTitle.textContent = 'Reconectar CRM';
                     if (reconnectDesc) reconnectDesc.textContent = 'Re-autorizar OAuth do GHL (atualizar permissoes)';
+                } else if (pitToken) {
+                    // Já conectado via PIT — OAuth vira alternativa, não uma pendência.
+                    if (reconnectTitle) reconnectTitle.textContent = 'Conectar via OAuth (opcional)';
+                    if (reconnectDesc) reconnectDesc.textContent = 'Ja conectado via PIT — OAuth e um caminho alternativo';
+                } else {
+                    if (reconnectTitle) reconnectTitle.textContent = 'Conectar CRM';
+                    if (reconnectDesc) reconnectDesc.textContent = 'Conectar ao GHL para enviar leads qualificados';
                 }
             }
 
@@ -112,6 +137,20 @@
         function closeInstanceSettings() {
             document.getElementById('instanceSettingsModal').classList.add('hidden');
         }
+
+        // Depois de salvar (PIT, Telegram, Z-API) o backend redireciona com
+        // ?instance=<loc>&tab=<modulo> — reabrimos a instância no módulo certo
+        // para o operador ver o status atualizado sem perder o contexto.
+        document.addEventListener('DOMContentLoaded', function () {
+            const params = new URLSearchParams(window.location.search);
+            const inst = params.get('instance');
+            if (!inst) return;
+            const card = document.querySelector('[data-location="' + inst + '"]');
+            if (!card) return;
+            card.click();
+            const tab = params.get('tab');
+            if (tab) switchInstanceTab(tab);
+        });
 
         // Módulos do modal de instância: Canais · CRM · Agente IA · Onboarding · Avançado.
         function switchInstanceTab(tab) {
