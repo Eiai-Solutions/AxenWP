@@ -554,131 +554,171 @@
 
     <!-- Modal Instance Settings -->
     <div id="instanceSettingsModal" class="hidden fixed inset-0 z-[55] flex items-center justify-center p-4">
-        <div class="absolute inset-0 bg-black/80 backdrop-blur-md" onclick="closeInstanceSettings()"></div>
-        <div class="relative glass-panel rounded-2xl border border-gray-800 w-full max-w-lg p-8 z-10">
-            <button onclick="closeInstanceSettings()" class="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors">
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-            </button>
+        <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeInstanceSettings()"></div>
 
-            <div class="mb-6">
-                <h3 class="font-display text-xl font-bold text-white uppercase tracking-tight">Configuracoes da Instancia</h3>
-                <p class="text-brand-red text-sm font-mono font-bold mt-1" id="instance_settings_company"></p>
-            </div>
+        <div class="relative w-full max-w-2xl bg-gray-900 border border-gray-800 rounded-2xl shadow-[0_30px_70px_-30px_rgba(0,0,0,0.8)] overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-red to-brand-darkred"></div>
 
-            <div class="grid grid-cols-1 gap-3">
-                <!-- Agent AI -->
-                <button onclick="instanceAction('agent')"
-                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-brand-red/50 rounded-xl transition-all group text-left">
-                    <div class="w-10 h-10 rounded-lg bg-brand-red/10 border border-brand-red/30 flex items-center justify-center flex-shrink-0">
-                        <svg class="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-                        </svg>
-                    </div>
+            <div class="p-7">
+                <!-- Cabeçalho -->
+                <div class="flex justify-between items-start mb-5">
                     <div>
-                        <p class="text-sm font-bold text-white group-hover:text-brand-red transition-colors">Agente IA</p>
-                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Configurar motor IA, voz, qualificacao</p>
+                        <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight">Configuracoes da Instancia</h3>
+                        <p id="instance_settings_company" class="text-brand-red font-bold text-sm mt-0.5"></p>
                     </div>
-                </button>
-
-                <!-- Configure Z-API -->
-                <button onclick="instanceAction('zapi')"
-                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-green-500/50 rounded-xl transition-all group text-left">
-                    <div class="w-10 h-10 rounded-lg bg-green-500/10 border border-green-500/30 flex items-center justify-center flex-shrink-0">
-                        <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                    <button onclick="closeInstanceSettings()" title="Fechar" class="text-gray-500 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                         </svg>
-                    </div>
-                    <div>
-                        <p class="text-sm font-bold text-white group-hover:text-green-400 transition-colors">Configurar Z-API</p>
-                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Configuracoes de conexao WhatsApp e webhooks</p>
-                    </div>
-                </button>
+                    </button>
+                </div>
 
-                <!-- Reconnect CRM -->
-                <button id="instance_card_reconnect" onclick="instanceAction('reconnect')"
-                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-yellow-500/50 rounded-xl transition-all group text-left">
-                    <div class="w-10 h-10 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center flex-shrink-0">
-                        <svg class="w-5 h-5 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                        </svg>
-                    </div>
-                    <div>
-                        <p class="instance-card-title text-sm font-bold text-white group-hover:text-yellow-400 transition-colors">Reconectar CRM</p>
-                        <p class="instance-card-desc text-[10px] text-gray-500 font-mono uppercase tracking-widest">Re-autorizar OAuth do GHL (atualizar permissoes)</p>
-                    </div>
-                </button>
+                <!-- Módulos (abas) -->
+                <div class="flex gap-1 border-b border-gray-800 mb-5 overflow-x-auto">
+                    <button data-itab="canais" onclick="switchInstanceTab('canais')" title="WhatsApp e Telegram"
+                        class="instance-tab px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-widest border-b-2 transition-colors whitespace-nowrap">Canais</button>
+                    <button data-itab="crm" onclick="switchInstanceTab('crm')" title="Conexoes com CRM"
+                        class="instance-tab px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-widest border-b-2 transition-colors whitespace-nowrap">CRM</button>
+                    <button data-itab="agente" onclick="switchInstanceTab('agente')" title="Configuracao do agente de IA"
+                        class="instance-tab px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-widest border-b-2 transition-colors whitespace-nowrap">Agente IA</button>
+                    <button data-itab="onboarding" onclick="switchInstanceTab('onboarding')" title="Formulario publico do cliente"
+                        class="instance-tab px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-widest border-b-2 transition-colors whitespace-nowrap">Onboarding</button>
+                    <button data-itab="avancado" onclick="switchInstanceTab('avancado')" title="Acoes destrutivas"
+                        class="instance-tab px-3 py-2 text-[10px] font-mono font-bold uppercase tracking-widest border-b-2 transition-colors whitespace-nowrap">Avancado</button>
+                </div>
 
-                <!-- PIT Token -->
-                <button onclick="instanceAction('pit')"
-                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-amber-500/50 rounded-xl transition-all group text-left">
-                    <div class="w-10 h-10 rounded-lg bg-amber-500/10 border border-amber-500/30 flex items-center justify-center flex-shrink-0">
-                        <svg class="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
-                        </svg>
-                    </div>
-                    <div>
-                        <p id="instance_card_pit_title" class="text-sm font-bold text-white group-hover:text-amber-400 transition-colors">Token PIT</p>
-                        <p id="instance_card_pit_desc" class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Configurar Private Integration Token</p>
-                    </div>
-                </button>
+                <!-- ── Canais ── -->
+                <div id="itab-canais" class="instance-panel space-y-3">
+                    <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest mb-1">Por onde o agente conversa</p>
 
-                <!-- Conectar WhatsApp (WAHA) -->
-                <button onclick="instanceAction('waha')"
-                    title="Conectar um número de WhatsApp via WAHA (QR code)"
-                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-emerald-500/50 rounded-xl transition-all group text-left">
-                    <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
-                        <svg class="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.71.306 1.263.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                        </svg>
-                    </div>
-                    <div class="flex-1">
-                        <p class="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors">Conectar WhatsApp</p>
-                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Número via WAHA — escanear QR</p>
-                    </div>
-                </button>
+                    <button onclick="instanceAction('waha')" title="Conectar um numero de WhatsApp via WAHA (QR code)"
+                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-emerald-500/40 rounded-xl transition-all group text-left">
+                        <div class="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-emerald-400" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.71.306 1.263.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors">WhatsApp — WAHA</p>
+                            <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Conectar numero proprio — escanear QR</p>
+                        </div>
+                    </button>
 
-                <!-- Telegram Bot -->
-                <button onclick="instanceAction('telegram')"
-                    title="Conectar um bot do Telegram (token do BotFather)"
-                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-sky-500/50 rounded-xl transition-all group text-left">
-                    <div class="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/30 flex items-center justify-center flex-shrink-0">
-                        <svg class="w-5 h-5 text-sky-400" fill="currentColor" viewBox="0 0 24 24">
-                            <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/>
-                        </svg>
-                    </div>
-                    <div class="flex-1">
-                        <p id="instance_card_telegram_title" class="text-sm font-bold text-white group-hover:text-sky-400 transition-colors">Telegram Bot</p>
-                        <p id="instance_card_telegram_desc" class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Conectar bot do Telegram (BotFather)</p>
-                    </div>
-                </button>
+                    <button onclick="instanceAction('zapi')" title="Credenciais e webhooks da Z-API (provedor legado)"
+                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-brand-red/40 rounded-xl transition-all group text-left">
+                        <div class="w-10 h-10 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-bold text-white group-hover:text-brand-red transition-colors">WhatsApp — Z-API</p>
+                            <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Provedor legado — credenciais e webhooks</p>
+                        </div>
+                    </button>
 
-                <!-- Form Link -->
-                <button onclick="instanceAction('form')"
-                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-purple-500/50 rounded-xl transition-all group text-left">
-                    <div class="w-10 h-10 rounded-lg bg-purple-500/10 border border-purple-500/30 flex items-center justify-center flex-shrink-0">
-                        <svg class="w-5 h-5 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
-                        </svg>
-                    </div>
-                    <div>
-                        <p class="text-sm font-bold text-white group-hover:text-purple-400 transition-colors">Formulario de Cadastro</p>
-                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Gerar link do formulario publico</p>
-                    </div>
-                </button>
+                    <button onclick="instanceAction('telegram')" title="Conectar bot do Telegram (token do BotFather)"
+                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-sky-500/40 rounded-xl transition-all group text-left">
+                        <div class="w-10 h-10 rounded-lg bg-sky-500/10 border border-sky-500/25 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-sky-400" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M9.78 18.65l.28-4.23 7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3 3.64 12c-.88-.25-.89-.86.2-1.3l15.97-6.16c.73-.33 1.43.18 1.15 1.3l-2.72 12.81c-.19.91-.74 1.13-1.5.71L12.6 16.3l-1.99 1.93c-.23.23-.42.42-.83.42z"/>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p id="instance_card_telegram_title" class="text-sm font-bold text-white group-hover:text-sky-400 transition-colors">Telegram Bot</p>
+                            <p id="instance_card_telegram_desc" class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Conectar bot do Telegram (BotFather)</p>
+                        </div>
+                    </button>
+                </div>
 
-                <!-- Delete -->
-                <button onclick="instanceAction('delete')"
-                    class="flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-red-600/50 rounded-xl transition-all group text-left mt-2">
-                    <div class="w-10 h-10 rounded-lg bg-red-900/20 border border-red-900/30 flex items-center justify-center flex-shrink-0">
-                        <svg class="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
-                        </svg>
-                    </div>
-                    <div>
-                        <p class="text-sm font-bold text-red-400 group-hover:text-red-300 transition-colors">Excluir Instancia</p>
-                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Remover permanentemente esta instancia</p>
-                    </div>
-                </button>
+                <!-- ── CRM ── -->
+                <div id="itab-crm" class="instance-panel space-y-3 hidden">
+                    <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest mb-1">Para onde vao os leads qualificados</p>
+
+                    <button id="instance_card_reconnect" onclick="instanceAction('reconnect')" title="Autorizar/re-autorizar o OAuth do GoHighLevel"
+                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-ocre/50 rounded-xl transition-all group text-left">
+                        <div class="w-10 h-10 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-ocre" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p class="instance-card-title text-sm font-bold text-white transition-colors">Reconectar CRM</p>
+                            <p class="instance-card-desc text-[10px] text-gray-500 font-mono uppercase tracking-widest">Re-autorizar OAuth do GHL</p>
+                        </div>
+                    </button>
+
+                    <button onclick="instanceAction('pit')" title="Private Integration Token — alternativa ao OAuth, nao expira"
+                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-ocre/50 rounded-xl transition-all group text-left">
+                        <div class="w-10 h-10 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-ocre" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p id="instance_card_pit_title" class="text-sm font-bold text-white transition-colors">Token PIT</p>
+                            <p id="instance_card_pit_desc" class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Configurar Private Integration Token</p>
+                        </div>
+                    </button>
+
+                    <p class="text-[10px] text-gray-600 font-mono leading-relaxed pt-1">
+                        Hoje o CRM suportado e o <span class="text-gray-400">Axen / GoHighLevel</span>. A integracao e plugavel — novos CRMs entram aqui sem mexer no resto.
+                    </p>
+                </div>
+
+                <!-- ── Agente IA ── -->
+                <div id="itab-agente" class="instance-panel space-y-3 hidden">
+                    <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest mb-1">O cerebro que conversa e qualifica</p>
+
+                    <button onclick="instanceAction('agent')" title="Prompt, modelo, voz e regras de qualificacao"
+                        class="corrente w-full flex items-center gap-4 p-4 bg-brand-red/[0.06] border border-brand-red/25 hover:border-brand-red/50 rounded-xl transition-all group text-left">
+                        <div class="w-10 h-10 rounded-lg bg-brand-red/10 border border-brand-red/25 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-bold text-white group-hover:text-brand-red transition-colors">Configurar Agente IA</p>
+                            <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Prompt, modelo, voz, qualificacao</p>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- ── Onboarding ── -->
+                <div id="itab-onboarding" class="instance-panel space-y-3 hidden">
+                    <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest mb-1">O cliente preenche, a IA Mestre monta o agente</p>
+
+                    <button onclick="instanceAction('form')" title="Gerar o link publico do formulario para o cliente"
+                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-brand-red/40 rounded-xl transition-all group text-left">
+                        <div class="w-10 h-10 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-bold text-white group-hover:text-brand-red transition-colors">Formulario de Cadastro</p>
+                            <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Gerar link do formulario publico</p>
+                        </div>
+                    </button>
+                </div>
+
+                <!-- ── Avançado ── -->
+                <div id="itab-avancado" class="instance-panel space-y-3 hidden">
+                    <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest mb-1">Zona de perigo</p>
+
+                    <button onclick="instanceAction('delete')" title="Remove permanentemente esta instancia"
+                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-brand-red/60 rounded-xl transition-all group text-left">
+                        <div class="w-10 h-10 rounded-lg bg-brand-red/10 border border-brand-red/25 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-bold text-brand-red">Excluir Instancia</p>
+                            <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Remover permanentemente esta instancia</p>
+                        </div>
+                    </button>
+                </div>
             </div>
         </div>
     </div>

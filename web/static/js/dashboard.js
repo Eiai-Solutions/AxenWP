@@ -105,11 +105,27 @@
                 }
             }
 
+            switchInstanceTab('canais');
             document.getElementById('instanceSettingsModal').classList.remove('hidden');
         }
 
         function closeInstanceSettings() {
             document.getElementById('instanceSettingsModal').classList.add('hidden');
+        }
+
+        // Módulos do modal de instância: Canais · CRM · Agente IA · Onboarding · Avançado.
+        function switchInstanceTab(tab) {
+            document.querySelectorAll('.instance-panel').forEach(p => p.classList.add('hidden'));
+            const panel = document.getElementById('itab-' + tab);
+            if (panel) panel.classList.remove('hidden');
+
+            document.querySelectorAll('.instance-tab').forEach(b => {
+                const on = b.dataset.itab === tab;
+                b.classList.toggle('text-white', on);
+                b.classList.toggle('border-brand-red', on);
+                b.classList.toggle('text-gray-500', !on);
+                b.classList.toggle('border-transparent', !on);
+            });
         }
 
         function instanceAction(action) {
