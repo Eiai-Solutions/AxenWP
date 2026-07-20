@@ -25,7 +25,17 @@ class ParsedMessage:
     text: str
     is_audio: bool = False
     audio_url: Optional[str] = None
+    # `attachments` significa: URLs que O CRM CONSEGUE BAIXAR sozinho, pela
+    # internet pública e sem credencial. Mídia atrás de autenticação (o caso do
+    # WAHA, cujo /api/files exige X-Api-Key) NÃO entra aqui — o GHL recusa o
+    # inbound inteiro com 422 "each value in attachments must be an URL address",
+    # e a mensagem se perde, não só o anexo.
     attachments: list = field(default_factory=list)
+    # Mídia do provedor que pode exigir credencial para baixar. É o que
+    # alimenta o STT; nunca vai direto para o CRM.
+    media_url: Optional[str] = None
+    media_mimetype: Optional[str] = None
+    media_filename: Optional[str] = None
     is_group: bool = False
     from_me: bool = False
     sender_name: str = ""

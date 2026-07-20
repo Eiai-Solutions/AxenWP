@@ -105,7 +105,8 @@ class AIEngine:
     # ── Etapas internas ──
 
     async def _maybe_transcribe_audio(
-        self, is_audio: bool, audio_url: Optional[str], user_message: str
+        self, is_audio: bool, audio_url: Optional[str], user_message: str,
+        audio_headers: Optional[dict] = None,
     ) -> str:
         """Se for áudio e tiver chave/url, transcreve. Caso contrário retorna o user_message."""
         if not is_audio:
@@ -125,7 +126,7 @@ class AIEngine:
             return user_message
 
         logger.info(f"[AUDIO] Transcrevendo {audio_url[:80]}...")
-        transcription = await transcribe_audio(audio_url, groq_key)
+        transcription = await transcribe_audio(audio_url, groq_key, headers=audio_headers)
         if not transcription:
             logger.warning("[AUDIO] Transcrição retornou None — fallback texto.")
             return user_message
@@ -259,6 +260,7 @@ class AIEngine:
         user_message: str,
         is_audio: bool = False,
         audio_url: Optional[str] = None,
+        audio_headers: Optional[dict] = None,
     ) -> Optional[dict]:
         """Gera a resposta do agente para uma mensagem do lead."""
         if not self.agent_config.is_active or not self.llm:
@@ -277,7 +279,9 @@ class AIEngine:
                 return None
 
         # 1. Transcreve áudio se for o caso (ou usa o texto recebido).
-        actual_message = await self._maybe_transcribe_audio(is_audio, audio_url, user_message)
+        actual_message = await self._maybe_transcribe_audio(
+            is_audio, audio_url, user_message, audio_headers=audio_headers
+        )
 
         # 2. Detecção de escalação humana / sentimento negativo.
         escalate, escalate_reason = check_escalation(actual_message)
@@ -463,6 +467,7 @@ class AIService:
         is_audio: bool = False,
         audio_url: Optional[str] = None,
         channel: str = "whatsapp",
+        audio_headers: Optional[dict] = None,
     ) -> Optional[dict]:
         """Entry point usado pelos webhooks para processar uma mensagem inbound."""
         engine = await self.get_agent_for_tenant(location_id, channel)
@@ -477,6 +482,7 @@ class AIService:
             user_message=text_content,
             is_audio=is_audio,
             audio_url=audio_url,
+            audio_headers=audio_headers,
         )
 
 

@@ -30,6 +30,29 @@ _STRIP_SUFFIX = re.compile(r"@(c\.us|s\.whatsapp\.net)$")
 _JID_DIGITS = re.compile(r"^(\d{6,})")
 
 
+def _rotulo_de_midia(mimetype: str, filename: Optional[str] = None) -> str:
+    """
+    Texto que representa a mídia quando ela chega sem legenda.
+
+    Serve a dois propósitos: o operador vê no CRM o que o lead mandou (em vez de
+    uma linha vazia), e o turno deixa de ser descartado por falta de texto.
+    Figurinha tem rótulo próprio — responder a uma figurinha como se fosse foto
+    faz o agente parecer que não entendeu.
+    """
+    mt = (mimetype or "").lower()
+    if mt.startswith("audio/"):
+        return "🎤 Áudio recebido"
+    if "webp" in mt:
+        return "🩹 Figurinha recebida"
+    if mt.startswith("image/"):
+        return "📸 Imagem recebida"
+    if mt.startswith("video/"):
+        return "🎬 Vídeo recebido"
+    if filename:
+        return f"📄 Documento recebido: {filename}"
+    return "📎 Arquivo recebido"
+
+
 def _phone_from_jid(jid: str) -> Optional[str]:
     """Telefone (só dígitos) a partir de um jid @c.us/@s.whatsapp.net, ou None se for @lid/vazio."""
     if not jid or "@lid" in jid:
@@ -62,6 +85,27 @@ class WAHAChannel:
             key = key or (g_key or "")
         session = getattr(tenant, "waha_session", None) or getattr(tenant, "location_id", "") or ""
         return base, key, session
+
+    def media_fetch(self, tenant, url: Optional[str]) -> tuple[Optional[str], dict]:
+        """
+        (URL alcançável, headers) para baixar mídia deste provedor.
+
+        O WAHA monta `media.url` com o host interno dele — em produção sai como
+        `http://localhost:3000/api/files/...`, que não resolve de dentro do nosso
+        container nem da internet. Reescrevemos para o servidor configurado e
+        devolvemos a credencial em HEADER, nunca embutida na URL: essa URL
+        aparece em log e poderia acabar num payload, e a chave é GLOBAL do
+        servidor compartilhado — vazá-la daria acesso às sessões de todo mundo.
+        """
+        if not url:
+            return None, {}
+        base, key, _ = self._cfg(tenant)
+        alcancavel = url
+        if base:
+            marcador = "/api/files/"
+            if marcador in url:
+                alcancavel = f"{base.rstrip('/')}{marcador}{url.split(marcador, 1)[1]}"
+        return alcancavel, ({"X-Api-Key": key} if key else {})
 
     def credentials_ok(self, tenant) -> bool:
         base, key, session = self._cfg(tenant)
@@ -157,16 +201,24 @@ class WAHAChannel:
         mimetype = str(media.get("mimetype") or "")
         is_audio = mimetype.startswith("audio/")
         media_url = media.get("url")
+        media_filename = media.get("filename")
+
+        # Mídia do WAHA fica atrás de X-Api-Key (/api/files) e a URL vem com o
+        # host interno do container. Ou seja: NÃO é anexo que o CRM consiga
+        # buscar. Vai em media_url (para o STT, que passa credencial) e o CRM
+        # recebe um texto descritivo. `attachments` fica vazio de propósito.
+        if p.get("hasMedia") and not media_url:
+            logger.warning(
+                f"[WAHA] hasMedia=true mas sem url (mimetype={mimetype or '?'}, "
+                f"erro={media.get('error') or '-'}) — mídia não será processada."
+            )
 
         text = p.get("body") or ""
-        attachments: list = []
-        audio_url = None
-        if is_audio:
-            audio_url = media_url  # pode ser None se o WAHA não baixou a mídia (hasMedia sem media)
-            if audio_url:
-                attachments.append(audio_url)
-        elif p.get("hasMedia") and media_url:
-            attachments.append(media_url)
+        audio_url = media_url if is_audio else None
+        if not text and media_url:
+            # Sem rótulo, a mensagem chega vazia no CRM e some no guard do
+            # pipeline. A Z-API já faz isso; o WAHA passava direto com body "".
+            text = _rotulo_de_midia(mimetype, media_filename)
 
         return ParsedMessage(
             channel=self.channel,
@@ -177,7 +229,10 @@ class WAHAChannel:
             text=text,
             is_audio=is_audio,
             audio_url=audio_url,
-            attachments=attachments,
+            attachments=[],  # mídia do WAHA é autenticada; ver ParsedMessage.attachments
+            media_url=media_url,
+            media_mimetype=mimetype or None,
+            media_filename=media_filename,
             is_group=is_group,
             from_me=bool(p.get("fromMe")),
             # notifyName costuma vir vazio no GOWS; PushName (em Info) traz o nome real.

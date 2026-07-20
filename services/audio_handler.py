@@ -47,15 +47,27 @@ def contains_special_content(text: str) -> bool:
 # STT — Groq Whisper
 # ─────────────────────────────────────────────────────────────────────
 
-async def transcribe_audio(audio_url: str, groq_api_key: str) -> Optional[str]:
-    """Baixa o áudio da URL e transcreve via Groq Whisper. Retorna None em erro."""
+async def transcribe_audio(
+    audio_url: str, groq_api_key: str, headers: Optional[dict] = None
+) -> Optional[str]:
+    """
+    Baixa o áudio da URL e transcreve via Groq Whisper. Retorna None em erro.
+
+    `headers` é opcional porque nem todo provedor protege a mídia: a Z-API serve
+    de CDN público, o WAHA exige X-Api-Key. Quem sabe disso é o adapter — esta
+    função é compartilhada e não pode carregar credencial de provedor nenhum.
+    """
     try:
         async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            audio_resp = await client.get(audio_url)
+            audio_resp = await client.get(audio_url, headers=headers or None)
             if audio_resp.status_code != 200:
-                logger.error(f"Erro ao baixar áudio: status={audio_resp.status_code}")
+                logger.error(
+                    f"Erro ao baixar áudio: status={audio_resp.status_code} "
+                    f"(auth={'sim' if headers else 'não'})"
+                )
                 return None
             audio_bytes = audio_resp.content
+            logger.info(f"[AUDIO] Baixado: {len(audio_bytes)} bytes")
 
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
             tmp.write(audio_bytes)

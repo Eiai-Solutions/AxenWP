@@ -251,7 +251,10 @@ async def _run_ai(adapter, tenant, pm: ParsedMessage, contact_id: Optional[str],
         texto = "\n".join(m[0] for m in mensagens if m[0])
         is_audio = any(m[1] for m in mensagens)
         audio_url = next((m[2] for m in reversed(mensagens) if m[1] and m[2]), None)
-        if not texto:
+        # Áudio sem legenda tem texto vazio e o conteúdo mora na transcrição:
+        # cair fora aqui era descartar a mensagem do lead em silêncio.
+        if not texto and not (is_audio and audio_url):
+            logger.debug(f"[PIPELINE] Turno sem texto nem áudio para {pm.sender_id}; ignorado.")
             return
 
         if len(mensagens) > 1:
@@ -259,9 +262,16 @@ async def _run_ai(adapter, tenant, pm: ParsedMessage, contact_id: Optional[str],
 
         from services.ai_service import ai_service
 
+        # Credencial para baixar a mídia vem do adapter (o WAHA exige, a Z-API
+        # não) e trafega em header — nunca embutida na URL, que vai para log.
+        audio_headers = None
+        if audio_url and hasattr(adapter, "media_fetch"):
+            audio_url, audio_headers = adapter.media_fetch(tenant, audio_url)
+
         resposta = await ai_service.process_incoming_message(
             pm.location_id, pm.sender_id, texto,
             is_audio=is_audio, audio_url=audio_url, channel=pm.channel,
+            audio_headers=audio_headers,
         )
         if not resposta:
             return

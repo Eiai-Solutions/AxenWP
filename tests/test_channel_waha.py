@@ -51,7 +51,17 @@ class TestWahaParse:
                      "media": {"mimetype": "audio/ogg; codecs=opus", "url": "http://a"}})
         assert pm.is_audio is True
         assert pm.audio_url == "http://a"
-        assert pm.attachments == ["http://a"]
+        assert pm.media_url == "http://a"
+        # A mídia do WAHA exige X-Api-Key: mandá-la como anexo fazia o GHL
+        # recusar o inbound INTEIRO com 422 "each value in attachments must be
+        # an URL address", perdendo a mensagem e não só o arquivo.
+        assert pm.attachments == []
+
+    def test_audio_sem_legenda_ganha_rotulo(self):
+        # Texto vazio fazia o turno morrer no guard do pipeline, sem STT e sem resposta.
+        pm = _parse({"from": "5511@c.us", "hasMedia": True,
+                     "media": {"mimetype": "audio/ogg; codecs=opus", "url": "http://a"}})
+        assert pm.text == "🎤 Áudio recebido"
 
     def test_audio_media_not_downloaded(self):
         # WAHA pode mandar hasMedia:true com media:null (não baixou) — não deve quebrar
@@ -64,8 +74,9 @@ class TestWahaParse:
         pm = _parse({"from": "5511@c.us", "body": "legenda", "hasMedia": True,
                      "media": {"mimetype": "image/jpeg", "url": "http://img"}})
         assert pm.is_audio is False
-        assert pm.text == "legenda"
-        assert pm.attachments == ["http://img"]
+        assert pm.text == "legenda"          # legenda do usuário tem prioridade
+        assert pm.media_url == "http://img"
+        assert pm.attachments == []          # ver test_audio_message
 
     def test_notify_name(self):
         pm = _parse({"from": "5511@c.us", "notifyName": "João", "body": "oi"})
