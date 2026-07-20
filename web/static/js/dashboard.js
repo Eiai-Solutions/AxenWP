@@ -65,6 +65,8 @@
             // Store data for sub-actions
             window._instanceSettingsData = { locationId, companyName, mode, clientId, zapiInstanceId, zapiToken, zapiClientToken, pitToken, telegramBotToken, telegramBotUsername };
 
+            renderCanaisStatus(locationId, telegramBotToken, telegramBotUsername);
+
             // Status da conexão com o CRM — PIT e OAuth são caminhos alternativos.
             const crmStatus = document.getElementById('crm_status');
             if (crmStatus) {
@@ -151,6 +153,55 @@
             const tab = params.get('tab');
             if (tab) switchInstanceTab(tab);
         });
+
+        // Faixa de status reutilizável (mesma linguagem visual do status do CRM).
+        function _statusRow(state, title, right) {
+            const box = state === 'ok' ? 'bg-green-500/10 border-green-500/25'
+                : state === 'warn' ? 'bg-ocre/10 border-ocre/30'
+                    : 'bg-[#211C17] border-gray-800';
+            const dot = state === 'ok' ? 'bg-green-500' : state === 'warn' ? 'bg-ocre' : 'bg-gray-700';
+            const txt = state === 'off' ? 'text-gray-400' : 'text-white';
+            return '<div class="flex items-center gap-2 px-4 py-3 rounded-xl border ' + box + '">'
+                + '<span class="w-2 h-2 rounded-full ' + dot + '"></span>'
+                + '<span class="text-sm font-bold ' + txt + '">' + title + '</span>'
+                + '<span class="text-[10px] text-gray-400 font-mono uppercase tracking-widest ml-auto">' + (right || '') + '</span>'
+                + '</div>';
+        }
+
+        // Status dos canais. O provedor real vem do card (zapi|waha); no WAHA a sessão
+        // é consultada ao vivo, porque o estado vive no servidor WAHA e não no banco.
+        function renderCanaisStatus(locationId, telegramBotToken, telegramBotUsername) {
+            const box = document.getElementById('canais_status');
+            if (!box) return;
+            const card = document.querySelector('[data-location="' + locationId + '"]');
+            const provider = (card && card.dataset.provider) || 'zapi';
+            const waStatus = (card && card.dataset.wastatus) || '';
+
+            const tg = telegramBotToken
+                ? _statusRow('ok', 'Telegram conectado', telegramBotUsername ? '@' + telegramBotUsername : '')
+                : _statusRow('off', 'Telegram nao conectado', '');
+
+            let wa;
+            if (provider === 'waha') wa = _statusRow('off', 'WhatsApp — verificando…', 'via WAHA');
+            else if (waStatus === 'CONNECTED') wa = _statusRow('ok', 'WhatsApp conectado', 'via Z-API');
+            else if (waStatus === 'DISCONNECTED') wa = _statusRow('warn', 'WhatsApp desconectado', 'via Z-API');
+            else wa = _statusRow('off', 'WhatsApp nao configurado', '');
+            box.innerHTML = wa + tg;
+
+            if (provider !== 'waha') return;
+            fetch('/admin/waha/tenant/' + locationId + '/status')
+                .then(r => r.json())
+                .then(d => {
+                    let row;
+                    if (d.error || d.configured === false) row = _statusRow('off', 'Servidor WAHA nao configurado', 'config. admin');
+                    else if (d.status === 'WORKING') row = _statusRow('ok', 'WhatsApp conectado', 'via WAHA' + (d.me ? ' · ' + d.me : ''));
+                    else if (d.status === 'SCAN_QR_CODE') row = _statusRow('warn', 'Aguardando leitura do QR', 'via WAHA');
+                    else if (d.status === 'STARTING') row = _statusRow('warn', 'Sessao iniciando…', 'via WAHA');
+                    else row = _statusRow('warn', 'WhatsApp desconectado', 'via WAHA · ' + (d.status || '—'));
+                    box.innerHTML = row + tg;
+                })
+                .catch(() => { /* mantem o estado otimista; nao quebra o modal */ });
+        }
 
         // Módulos do modal de instância: Canais · CRM · Agente IA · Onboarding · Avançado.
         function switchInstanceTab(tab) {
