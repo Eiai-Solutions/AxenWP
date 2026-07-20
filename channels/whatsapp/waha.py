@@ -1,14 +1,14 @@
 """
 Adapter WAHA (WhatsApp HTTP API self-host).
 
-Implementa a porta ChannelAdapter contra a API REST do WAHA. Ainda NÃO é ligado
-ao inbound (a rota universal + pipeline entram no próximo passo); fica pronto
-atrás da flag `Tenant.whatsapp_provider == "waha"`.
+Implementa a porta ChannelAdapter contra a API REST do WAHA, ligada ao inbound
+(`webhooks/waha_receiver`) e ao envio (`webhooks/ghl_provider` e o pipeline).
 
 Diferenças-chave vs Z-API (ver ChannelCapabilities):
 - WAHA REENTREGA as próprias mensagens (fromMe) -> dedup por provider_message_id
   é obrigatório (o pipeline compartilhado cuida disso).
-- Áudio outbound vai como base64 em file.data (não data-url).
+- Áudio: o TTS entrega data-url (vai como base64 em file.data), o anexo do CRM
+  entrega URL http (vai como file.url, com o WAHA transcodificando).
 """
 
 from __future__ import annotations
@@ -77,14 +77,41 @@ class WAHAChannel:
 
     @staticmethod
     def _extract_message_id(resp: Optional[dict]) -> Optional[str]:
+        """
+        Id da mensagem enviada, sempre string — ou None.
+
+        O id do WAHA muda de forma por engine: string direta, `key.id`, ou um
+        objeto `{"_serialized": "..."}`. Devolver o objeto cru faria o
+        `save_message_mapping` gravar um dict na chave primária, e o status de
+        entrega dessa mensagem nunca mais casaria.
+        """
         if not isinstance(resp, dict):
             return None
-        # WAHA devolve o objeto da mensagem enviada; o id pode vir em formas diferentes por engine.
-        return (
+        bruto = (
             resp.get("id")
             or (resp.get("key") or {}).get("id")
             or (resp.get("_data") or {}).get("id")
         )
+        if isinstance(bruto, dict):
+            bruto = bruto.get("_serialized") or bruto.get("id")
+        return bruto if isinstance(bruto, str) and bruto.strip() else None
+
+    def _result(self, resp: Optional[dict]) -> OutboundResult:
+        """
+        Resposta do WAHA -> OutboundResult.
+
+        `resp is not None` significa que o servidor aceitou (2xx). Mantemos isso
+        como sucesso mesmo sem id: marcar 'failed' uma mensagem que de fato saiu
+        levaria o operador a reenviar, e o cliente receberia duas vezes. Mas sem
+        id o vínculo com o CRM se perde e o status congela — por isso o aviso.
+        """
+        msg_id = self._extract_message_id(resp)
+        if resp is not None and not msg_id:
+            logger.warning(
+                "[WAHA] Envio aceito sem id de mensagem — status de entrega não subirá para o CRM. "
+                f"Resposta: {str(resp)[:200]}"
+            )
+        return OutboundResult(ok=resp is not None, provider_message_id=msg_id)
 
     # ── Inbound ──
 
@@ -137,19 +164,35 @@ class WAHAChannel:
     async def send_text(self, tenant, to: str, text: str, *, typing_delay: int = 0) -> OutboundResult:
         base, key, session = self._cfg(tenant)
         resp = await waha_service.send_text(base, key, session, self._chat_id(to), text)
-        return OutboundResult(ok=resp is not None, provider_message_id=self._extract_message_id(resp))
+        return self._result(resp)
 
     async def send_image(self, tenant, to: str, image_url: str, caption: str = "") -> OutboundResult:
         base, key, session = self._cfg(tenant)
         resp = await waha_service.send_image(base, key, session, self._chat_id(to), image_url, caption)
-        return OutboundResult(ok=resp is not None, provider_message_id=self._extract_message_id(resp))
+        return self._result(resp)
 
     async def send_audio(self, tenant, to: str, audio_data_url: str) -> OutboundResult:
+        """
+        Aceita as duas origens de áudio do sistema, que têm formatos diferentes:
+        o TTS entrega "data:audio/ogg;base64,<b64>" e o anexo do CRM entrega uma
+        URL http. Tratar a URL como base64 (o que o split por vírgula fazia)
+        colocava a própria URL dentro de file.data — o áudio nunca saía, e se a
+        URL assinada tivesse uma vírgula ainda ia cortada ao meio.
+        """
         base, key, session = self._cfg(tenant)
-        # O TTS entrega "data:audio/ogg;base64,<b64>"; o WAHA quer só o base64.
-        b64 = audio_data_url.split(",", 1)[1] if "," in audio_data_url else audio_data_url
-        resp = await waha_service.send_voice(base, key, session, self._chat_id(to), b64)
-        return OutboundResult(ok=resp is not None, provider_message_id=self._extract_message_id(resp))
+        alvo = self._chat_id(to)
+        if audio_data_url.startswith("http"):
+            resp = await waha_service.send_voice(base, key, session, alvo, audio_url=audio_data_url)
+        else:
+            b64 = audio_data_url.split(",", 1)[1] if "," in audio_data_url else audio_data_url
+            resp = await waha_service.send_voice(base, key, session, alvo, b64)
+        return self._result(resp)
+
+    async def send_document(self, tenant, to: str, document_url: str, filename: str = "documento") -> OutboundResult:
+        base, key, session = self._cfg(tenant)
+        # O WAHA baixa a URL do lado dele — anexo do CRM precisa ser público.
+        resp = await waha_service.send_file(base, key, session, self._chat_id(to), document_url, filename)
+        return self._result(resp)
 
     async def register_webhook(self, tenant, public_base_url: str) -> bool:
         base, key, session = self._cfg(tenant)

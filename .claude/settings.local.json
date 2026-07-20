@@ -10,7 +10,15 @@
       "WebFetch(domain:console.groq.com)",
       "Bash(python3:*)",
       "Bash(pip install:*)",
-      "Bash(pip3 install:*)"
+      "Bash(pip3 install:*)",
+      "Skill(artifact-design)",
+      "Skill(artifact-design:*)",
+      "Skill(claude-api)",
+      "Skill(claude-api:*)",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "mcp__claude-in-chrome__resize_window",
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__computer"
     ]
   }
 }

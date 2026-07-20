@@ -11,11 +11,12 @@ import pytest
 from services.channel_policy import WAHA, ZAPI, active_whatsapp_provider
 
 
-def tenant_waha(loc="loc1"):
+def tenant_waha(loc="loc1", waha_session=...):
     return SimpleNamespace(
         location_id=loc,
+        company_name="Empresa WAHA",
         whatsapp_provider="waha",
-        waha_session=loc,
+        waha_session=loc if waha_session is ... else waha_session,
         zapi_instance_id="3EB1",   # credencial dormente da configuração antiga
         zapi_token="tok",
         zapi_client_token="",
@@ -26,6 +27,7 @@ def tenant_waha(loc="loc1"):
 def tenant_zapi(loc="loc2"):
     return SimpleNamespace(
         location_id=loc,
+        company_name="Empresa Z-API",
         whatsapp_provider="zapi",
         waha_session=None,
         zapi_instance_id="3EB1",
@@ -207,24 +209,63 @@ async def test_logout_nao_libera_o_provedor():
 
 # ── saída do CRM (GHL -> WhatsApp) ──
 
-@pytest.mark.asyncio
-async def test_outbound_do_ghl_nao_sai_pela_zapi_dormente():
-    """A exclusividade vale nos dois sentidos: entrada cortada, saída também."""
-    from webhooks import ghl_provider
-
-    payload = SimpleNamespace(
+def _payload_outbound(**kw):
+    base = dict(
         status="pending", messageId="msg1", phone="5547999", contactId="c1",
         locationId="loc1", message="oi", attachments=[], type="SMS",
     )
+    base.update(kw)
+    p = SimpleNamespace(**base)
+    p.dict = lambda: dict(base)
+    return p
+
+
+@pytest.mark.asyncio
+async def test_outbound_do_ghl_sai_pelo_waha_e_nao_pela_zapi_dormente():
+    """
+    A saída segue o provedor ativo. Um tenant que migrou para o WAHA mantém a
+    credencial Z-API guardada; ela não pode despachar nada — sairia pelo número
+    errado e ainda seria marcada como entregue no CRM.
+    """
+    from webhooks import ghl_provider
+
+    enviados = []
+
+    class AdapterFalso:
+        provider = "waha"
+
+        def credentials_ok(self, tenant):
+            return True
+
+        async def send_text(self, tenant, to, text, **kw):
+            enviados.append((to, text))
+            return SimpleNamespace(ok=True, provider_message_id="WID")
+
     with patch.object(ghl_provider, "token_manager") as tm, \
          patch.object(ghl_provider, "ghl_service") as ghl, \
-         patch.object(ghl_provider, "zapi_service") as zapi:
+         patch.object(ghl_provider, "resolve_send_adapter", return_value=AdapterFalso()):
         tm.get_tenant.return_value = tenant_waha()
         ghl.update_message_status = AsyncMock()
-        await ghl_provider.process_outbound_message(payload)
+        await ghl_provider.process_outbound_message(_payload_outbound())
 
-    zapi.send_text.assert_not_called()
-    # O operador precisa VER que não saiu — falha explícita no CRM, não silêncio.
+    assert enviados == [("5547999", "oi")]
+    # O vínculo id-do-provedor ↔ id-do-CRM precisa existir, senão o status nunca sobe.
+    tm.save_message_mapping.assert_called_once_with("WID", "msg1", "loc1")
+    assert ghl.update_message_status.await_args.kwargs["status"] == "delivered"
+
+
+@pytest.mark.asyncio
+async def test_outbound_sem_provedor_ativo_falha_visivel_no_crm():
+    """Sem provedor conectado, o operador precisa VER a falha — não silêncio."""
+    from webhooks import ghl_provider
+
+    with patch.object(ghl_provider, "token_manager") as tm, \
+         patch.object(ghl_provider, "ghl_service") as ghl, \
+         patch.object(ghl_provider, "resolve_send_adapter", return_value=None):
+        tm.get_tenant.return_value = tenant_waha(waha_session=None)
+        ghl.update_message_status = AsyncMock()
+        await ghl_provider.process_outbound_message(_payload_outbound())
+
     ghl.update_message_status.assert_awaited_once()
     assert ghl.update_message_status.await_args.kwargs["status"] == "failed"
 

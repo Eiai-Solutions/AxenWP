@@ -14,8 +14,8 @@ from pydantic import Field
 
 from utils.logger import logger
 from auth.token_manager import token_manager
-from services.channel_policy import ZAPI, active_whatsapp_provider
-from services.zapi_service import zapi_service
+from channels.registry import resolve_send_adapter
+from services.channel_policy import provider_label
 from services.ghl_service import ghl_service
 
 
@@ -81,25 +81,26 @@ async def process_outbound_message(payload: GHLOutboundPayload):
         )
         return
 
-    # Exclusividade vale nos DOIS sentidos: se a instância migrou para outro
-    # provedor, a credencial Z-API dormente não pode continuar despachando —
-    # sairia pelo número errado e ainda seria marcado como entregue no CRM.
-    ativo = active_whatsapp_provider(tenant)
-    if ativo and ativo != ZAPI:
-        logger.warning(
-            f"[CHANNEL] GHL Outbound abortado: {location_id} usa {ativo} como provedor, "
-            f"envio pela Z-API bloqueado."
-        )
+    # O envio segue o provedor ATIVO da instância (WAHA ou Z-API), resolvido pela
+    # mesma política que a exclusividade usa — a credencial Z-API que ficou
+    # dormente após uma troca não despacha nada, senão sairia pelo número errado
+    # e ainda seria marcada como entregue no CRM. Sem provedor ativo, a mensagem
+    # falha com motivo legível no CRM em vez de sumir.
+    adapter = resolve_send_adapter(tenant)
+    if adapter is None:
+        logger.error(f"GHL Outbound abortado: nenhum provedor de WhatsApp conectado em {location_id}.")
         await ghl_service.update_message_status(
             location_id, payload.messageId, status="failed",
-            error_message=f"Instância usa {ativo.upper()} como provedor de WhatsApp.",
+            error_message="Nenhum provedor de WhatsApp conectado nesta instância.",
         )
         return
 
-    if not tenant.zapi_instance_id or not tenant.zapi_token:
-        logger.error(f"GHL Outbound abortado: Z-API não configurada para tenant {location_id}.")
+    if not adapter.credentials_ok(tenant):
+        rotulo = provider_label(adapter.provider)
+        logger.error(f"GHL Outbound abortado: {rotulo} sem credencial completa em {location_id}.")
         await ghl_service.update_message_status(
-            location_id, payload.messageId, status="failed", error_message="Z-API não configurada."
+            location_id, payload.messageId, status="failed",
+            error_message=f"{rotulo} não está configurado nesta instância.",
         )
         return
 
@@ -123,7 +124,8 @@ async def process_outbound_message(payload: GHLOutboundPayload):
     message_text = payload.message or payload_dict.get("body", "")
 
     logger.info(
-        f"Enviando via Z-API para {tenant.company_name}: phone={phone}, msg_id={payload.messageId}"
+        f"[CHANNEL] Enviando via {provider_label(adapter.provider)} para {tenant.company_name}: "
+        f"phone={phone}, msg_id={payload.messageId}"
     )
 
     success = False
@@ -155,6 +157,12 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                 
         return base_name
 
+    def _map(res) -> bool:
+        """Guarda o vínculo id-do-provedor ↔ id-do-CRM; sem ele o status nunca sobe."""
+        if res and res.ok and res.provider_message_id:
+            token_manager.save_message_mapping(res.provider_message_id, payload.messageId, location_id)
+        return bool(res and res.ok)
+
     try:
         # Se tiver anexos, priorizamos o envio do primeiro anexo.
         # Caso clássico: envio de imagem com caption.
@@ -162,58 +170,23 @@ async def process_outbound_message(payload: GHLOutboundPayload):
             attachment_url = payload.attachments[0]
             # Usa send_image ou send_document dependendo da URL
             if any(ext in attachment_url.lower() for ext in [".png", ".jpg", ".jpeg", ".gif", ".webp"]):
-                resp = await zapi_service.send_image(
-                    instance_id=tenant.zapi_instance_id,
-                    token=tenant.zapi_token,
-                    phone=phone,
-                    image_url=attachment_url,
-                    caption=message_text,  # Msg de texto vira caption
-                    client_token=tenant.zapi_client_token,
-                )
+                res = await adapter.send_image(tenant, phone, attachment_url, caption=message_text)
             elif any(ext in attachment_url.lower() for ext in [".mp3", ".ogg", ".wav", ".mpeg"]):
-                resp = await zapi_service.send_audio(
-                    instance_id=tenant.zapi_instance_id,
-                    token=tenant.zapi_token,
-                    phone=phone,
-                    audio_url=attachment_url,
-                    client_token=tenant.zapi_client_token,
-                )
+                res = await adapter.send_audio(tenant, phone, attachment_url)
                 # Se tinha texto junto com o áudio GHL (raro, mas pode ocorrer), enviamos logo depois
                 if message_text:
-                    resp_text = await zapi_service.send_text(
-                        instance_id=tenant.zapi_instance_id,
-                        token=tenant.zapi_token,
-                        phone=phone,
-                        message=message_text,
-                        client_token=tenant.zapi_client_token,
-                    )
-                    if hasattr(resp_text, "get") and resp_text.get("zapiMessageId"):
-                        token_manager.save_message_mapping(resp_text["zapiMessageId"], payload.messageId, location_id)
+                    _map(await adapter.send_text(tenant, phone, message_text))
             else:
-                resp = await zapi_service.send_document(
-                    instance_id=tenant.zapi_instance_id,
-                    token=tenant.zapi_token,
-                    phone=phone,
-                    document_url=attachment_url,
+                res = await adapter.send_document(
+                    tenant, phone, attachment_url,
                     filename=_generate_clean_filename(attachment_url, message_text),
-                    client_token=tenant.zapi_client_token,
                 )
                 # Se tinha texto junto, manda
                 if message_text:
-                    resp_text = await zapi_service.send_text(
-                        instance_id=tenant.zapi_instance_id,
-                        token=tenant.zapi_token,
-                        phone=phone,
-                        message=message_text,
-                        client_token=tenant.zapi_client_token,
-                    )
-                    if hasattr(resp_text, "get") and resp_text.get("zapiMessageId"):
-                        token_manager.save_message_mapping(resp_text["zapiMessageId"], payload.messageId, location_id)
-            
+                    _map(await adapter.send_text(tenant, phone, message_text))
+
             # (Opcional) se houver múltiplos anexos, poderia fazer um forloop
-            success = bool(resp)
-            if success and hasattr(resp, "get") and resp.get("zapiMessageId"):
-                token_manager.save_message_mapping(resp["zapiMessageId"], payload.messageId, location_id)
+            success = _map(res)
 
         # Se não tem anexos, é texto simples (Mas pode ser um Link do GHL para arquivo grande)
         elif message_text:
@@ -221,50 +194,22 @@ async def process_outbound_message(payload: GHLOutboundPayload):
             # Vamos procurar se a mensagem inteira é apenas um link ou se contém um link de arquivo
             url_pattern = r'(https?://(?:api\.leadconnectorhq\.com|storage\.googleapis\.com)[^\s]+)'
             match = re.search(url_pattern, message_text)
-            
+
             if match:
                 file_url = match.group(1)
-                
+
                 # Se a mensagem for APENAS o link (GHL envia nativamente assim)
                 if file_url == message_text.strip():
-                    filename = _generate_clean_filename(file_url, "")
-                         
-                    resp = await zapi_service.send_document(
-                        instance_id=tenant.zapi_instance_id,
-                        token=tenant.zapi_token,
-                        phone=phone,
-                        document_url=file_url,
-                        filename=filename,
-                        client_token=tenant.zapi_client_token,
-                    )
-                    success = bool(resp)
-                    if success and hasattr(resp, "get") and resp.get("zapiMessageId"):
-                        token_manager.save_message_mapping(resp["zapiMessageId"], payload.messageId, location_id)
+                    success = _map(await adapter.send_document(
+                        tenant, phone, file_url, filename=_generate_clean_filename(file_url, "")
+                    ))
                 else:
-                    # Se tiver texto misturado, manda os dois (Texto e Link) como texto normal 
+                    # Se tiver texto misturado, manda os dois (Texto e Link) como texto normal
                     # ou poderia mandar preview de link. Por precaução mantemos texto.
-                    resp = await zapi_service.send_text(
-                        instance_id=tenant.zapi_instance_id,
-                        token=tenant.zapi_token,
-                        phone=phone,
-                        message=message_text,
-                        client_token=tenant.zapi_client_token,
-                    )
-                    success = bool(resp)
-                    if success and hasattr(resp, "get") and resp.get("zapiMessageId"):
-                        token_manager.save_message_mapping(resp["zapiMessageId"], payload.messageId, location_id)
+                    success = _map(await adapter.send_text(tenant, phone, message_text))
             else:
                 # Texto 100% normal sem links do GHL
-                resp = await zapi_service.send_text(
-                    instance_id=tenant.zapi_instance_id,
-                    token=tenant.zapi_token,
-                    phone=phone,
-                    message=message_text,
-                    client_token=tenant.zapi_client_token,
-                )
-                success = bool(resp)
-                if success and hasattr(resp, "get") and resp.get("zapiMessageId"):
-                    token_manager.save_message_mapping(resp["zapiMessageId"], payload.messageId, location_id)
+                success = _map(await adapter.send_text(tenant, phone, message_text))
 
         # Atualiza status no GHL
         if success:
@@ -273,7 +218,7 @@ async def process_outbound_message(payload: GHLOutboundPayload):
             )
         else:
             await ghl_service.update_message_status(
-                location_id, payload.messageId, status="failed", error_message="Erro interno na Z-API."
+                location_id, payload.messageId, status="failed", error_message=f"Falha no envio via {provider_label(adapter.provider)}."
             )
 
     except Exception as e:

@@ -1,18 +1,18 @@
 """
 Adapter Z-API (provedor de WhatsApp atual).
 
-Neste primeiro passo implementa apenas `parse_inbound` — a normalização do
-payload Z-API num `ParsedMessage`, extraída verbatim de
-`webhooks/zapi_receiver.process_inbound_message`. Os métodos de envio
-(delegando para `services.zapi_service`) entram junto com o pipeline
-compartilhado no passo seguinte.
+Implementa `parse_inbound` (normalização do payload Z-API num `ParsedMessage`,
+extraída verbatim de `webhooks/zapi_receiver.process_inbound_message`) e os
+métodos de envio, que delegam para `services.zapi_service` sem alterar um
+argumento sequer — o adapter é uma fachada, não uma reimplementação.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
-from channels.base import ChannelCapabilities, ParsedMessage
+from channels.base import ChannelCapabilities, OutboundResult, ParsedMessage
+from services.zapi_service import zapi_service
 from utils.logger import logger
 
 
@@ -108,3 +108,57 @@ class ZAPIChannel:
             event_kind="message",
             raw=payload,
         )
+
+    # ── Outbound ──
+    #
+    # Delegação fina para `services.zapi_service`, preservando EXATAMENTE os
+    # argumentos que `webhooks/ghl_provider` e o pipeline já passavam — inclusive
+    # `client_token`, `delay_typing` e `record_audio`. Qualquer divergência aqui
+    # apareceria como regressão silenciosa nos tenants que rodam em Z-API.
+
+    def credentials_ok(self, tenant) -> bool:
+        return bool(getattr(tenant, "zapi_instance_id", None) and getattr(tenant, "zapi_token", None))
+
+    def _creds(self, tenant) -> tuple[str, str, str]:
+        return (
+            tenant.zapi_instance_id,
+            tenant.zapi_token,
+            getattr(tenant, "zapi_client_token", None) or "",
+        )
+
+    @staticmethod
+    def _result(resp: Optional[dict]) -> OutboundResult:
+        msg_id = resp.get("zapiMessageId") if isinstance(resp, dict) else None
+        return OutboundResult(ok=bool(resp), provider_message_id=msg_id)
+
+    async def send_text(self, tenant, to: str, text: str, *, typing_delay: int = 0) -> OutboundResult:
+        instance_id, token, client_token = self._creds(tenant)
+        resp = await zapi_service.send_text(
+            instance_id=instance_id, token=token, phone=to, message=text,
+            client_token=client_token, delay_typing=typing_delay,
+        )
+        return self._result(resp)
+
+    async def send_image(self, tenant, to: str, image_url: str, caption: str = "") -> OutboundResult:
+        instance_id, token, client_token = self._creds(tenant)
+        resp = await zapi_service.send_image(
+            instance_id=instance_id, token=token, phone=to, image_url=image_url,
+            caption=caption, client_token=client_token,
+        )
+        return self._result(resp)
+
+    async def send_audio(self, tenant, to: str, audio_data_url: str) -> OutboundResult:
+        instance_id, token, client_token = self._creds(tenant)
+        resp = await zapi_service.send_audio(
+            instance_id=instance_id, token=token, phone=to, audio_url=audio_data_url,
+            client_token=client_token, record_audio=True,
+        )
+        return self._result(resp)
+
+    async def send_document(self, tenant, to: str, document_url: str, filename: str = "document") -> OutboundResult:
+        instance_id, token, client_token = self._creds(tenant)
+        resp = await zapi_service.send_document(
+            instance_id=instance_id, token=token, phone=to, document_url=document_url,
+            filename=filename, client_token=client_token,
+        )
+        return self._result(resp)

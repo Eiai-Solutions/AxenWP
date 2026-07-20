@@ -104,12 +104,35 @@ class WAHAService:
             "caption": caption,
         })
 
-    async def send_voice(self, base_url, api_key, session, chat_id, audio_b64) -> dict | None:
-        # WhatsApp exige OGG/OPUS; nosso TTS já entrega audio/ogg (base64).
+    async def send_voice(self, base_url, api_key, session, chat_id, audio_b64=None, *, audio_url=None) -> dict | None:
+        """
+        Áudio como PTT. Duas origens, dois formatos:
+
+        - `audio_b64`: nosso TTS, que já entrega audio/ogg — vai em `file.data`
+          e dispensa conversão.
+        - `audio_url`: anexo do CRM, que pode ser mp3/wav — o WAHA baixa a URL e
+          transcodifica. Não declaramos mimetype aqui: quem sabe o tipo é quem
+          serve o arquivo.
+        """
+        if audio_url:
+            file_body: dict = {"url": audio_url}
+            convert = True
+        else:
+            file_body = {"mimetype": "audio/ogg; codecs=opus", "data": audio_b64}
+            convert = False
         return await self._post(base_url, api_key, "/api/sendVoice", {
             "session": session, "chatId": chat_id,
-            "file": {"mimetype": "audio/ogg; codecs=opus", "data": audio_b64},
-            "convert": False,
+            "file": file_body,
+            "convert": convert,
+        })
+
+    async def send_file(self, base_url, api_key, session, chat_id, file_url, filename="documento", mimetype=None) -> dict | None:
+        """Documento/arquivo genérico. O WAHA baixa a URL — ela precisa ser pública."""
+        file_body: dict = {"url": file_url, "filename": filename}
+        if mimetype:
+            file_body["mimetype"] = mimetype
+        return await self._post(base_url, api_key, "/api/sendFile", {
+            "session": session, "chatId": chat_id, "file": file_body,
         })
 
     # ── Sessão / webhook ──
