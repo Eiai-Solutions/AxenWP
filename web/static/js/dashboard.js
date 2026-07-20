@@ -2114,13 +2114,18 @@
             if (d.error) { c.innerHTML = _wahaError(d.error); return; }
             if (d.configured === false) {
                 _setWahaBadge('');
-                c.innerHTML = `<div class="py-6 text-center">
+                // Credencial de servidor e assunto do ADMIN, nao da instancia:
+                // aqui so informamos onde se resolve — sem abrir formulario de credencial.
+                c.innerHTML = `<div class="py-8 text-center">
+                    <div class="w-11 h-11 rounded-full bg-[#211C17] border border-gray-800 flex items-center justify-center mx-auto mb-3">
+                        <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
                     <p class="text-sm font-bold text-white mb-2">Servidor WAHA ainda nao configurado</p>
-                    <p class="text-[11px] text-gray-400 leading-relaxed mb-5 px-2">
-                        O servidor e configurado <strong class="text-white">uma vez</strong>, em Config. Admin, e atende todos os clientes.
-                        Aqui em cada instancia voce so conecta o numero.
+                    <p class="text-[11px] text-gray-400 leading-relaxed px-3">
+                        O servidor e configurado <strong class="text-white">uma unica vez</strong> pelo administrador,
+                        em <span class="text-gray-300">Config. Admin</span> (canto superior direito), e atende todos os clientes.
+                        Depois disso, aqui em cada instancia voce so conecta o numero pelo QR.
                     </p>
-                    <button onclick="closeWahaModal(); openSystemModal();" title="Abrir Configuracoes Globais do admin" class="btn-brand px-5 py-2 rounded-lg text-white font-bold text-xs uppercase tracking-widest font-mono">Configurar servidor</button>
                 </div>`;
                 return;
             }
