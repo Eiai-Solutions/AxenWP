@@ -36,3 +36,8 @@
 - `integracoes/whatsapp-waha.md` (quirk nº2): áudio virava player mas não tocava. Causa: GHL hot-linka a URL de entrada e busca lazy, quando o WAHA (retenção 180s) já apagou → 404.
 - Solução (`e249daa`): persistir binário no Postgres (`media_blobs`, migration 025) no inbound; proxy serve dali com Range/CORS. Download em background + streaming com teto 25MB; limpeza > 90 dias; rate limit 240/min.
 - Verificado por revisão adversarial (5 lentes): sem bloqueadores; chave escrita==lida, Range RFC ok, sem regressão Z-API.
+
+## [2026-07-20] add | Log de mensagens próprio + fix @lid
+- `decisoes/log-de-mensagens.md` (nova): tabela `messages` (migration 026) como base do painel de chat próprio; separada de `chat_histories` (memória da IA). Choke point `services/message_log.persist_message`, dedup por índices únicos parciais. Commit `f6e5509`.
+- `decisoes/identidade-do-contato.md`: fix do backfill telefone↔@lid ao achar pelo cache (commit `c0f46ae`) — evitava reconectar e duplicava contato; duplicata da Eiai reconciliada no banco.
+- Cobertura: WAHA (pipeline) + Z-API (legado) + operador-CRM + status. Telegram fica de fora até migrar ao pipeline.
