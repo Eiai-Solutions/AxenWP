@@ -18,6 +18,9 @@ from auth.token_manager import token_manager
 from channels.whatsapp.zapi import ZAPIChannel
 from services.channel_policy import WAHA, active_whatsapp_provider
 from services.ghl_service import ghl_service
+from services.message_log import message_type_from_url as msglog_type_from_url
+from services.message_log import persist_message as msglog_persist
+from services.message_log import update_message_status as msglog_update_status
 from services.zapi_service import zapi_service
 
 
@@ -178,10 +181,11 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
                 client_token=tenant.zapi_client_token,
                 record_audio=True
             )
+            zapi_message_id = sent_data.get("zapiMessageId") if sent_data else None
             if sent_data:
-                _track_sent_message(sent_data.get("zapiMessageId"))
+                _track_sent_message(zapi_message_id)
+            ghl_msg_id = None
             if sent_data and not is_whatsapp_only:
-                zapi_message_id = sent_data.get("zapiMessageId")
                 outbound_resp = await ghl_service.send_inbound_message(
                     location_id=location_id,
                     phone=phone,
@@ -194,6 +198,13 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
                     ghl_msg_id = outbound_resp.get("messageId") or outbound_resp.get("id")
                     if ghl_msg_id and zapi_message_id:
                         token_manager.save_message_mapping(zapi_message_id, ghl_msg_id, location_id)
+            await msglog_persist(
+                location_id=location_id, channel="whatsapp", provider="zapi",
+                direction="outbound", sender_role="ai", contact_ref=phone, ghl_contact_id=contact_id,
+                message_type="audio", text="[Áudio da IA]",
+                provider_message_id=zapi_message_id, ghl_message_id=ghl_msg_id,
+                status="sent" if sent_data else "failed",
+            )
         else:
             import re
 
@@ -214,10 +225,11 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
                     client_token=tenant.zapi_client_token,
                     delay_typing=delay
                 )
+                zapi_message_id = sent_data.get("zapiMessageId") if sent_data else None
                 if sent_data:
-                    _track_sent_message(sent_data.get("zapiMessageId"))
+                    _track_sent_message(zapi_message_id)
+                ghl_msg_id = None
                 if sent_data and not is_whatsapp_only:
-                    zapi_message_id = sent_data.get("zapiMessageId")
                     outbound_resp = await ghl_service.send_inbound_message(
                         location_id=location_id,
                         phone=phone,
@@ -230,6 +242,12 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
                         ghl_msg_id = outbound_resp.get("messageId") or outbound_resp.get("id")
                         if ghl_msg_id and zapi_message_id:
                             token_manager.save_message_mapping(zapi_message_id, ghl_msg_id, location_id)
+                await msglog_persist(
+                    location_id=location_id, channel="whatsapp", provider="zapi",
+                    direction="outbound", sender_role="ai", contact_ref=phone, ghl_contact_id=contact_id,
+                    text=chunk, provider_message_id=zapi_message_id, ghl_message_id=ghl_msg_id,
+                    status="sent" if sent_data else "failed",
+                )
 
     except asyncio.CancelledError:
         # Nova mensagem chegou antes do delay expirar — comportamento esperado do debounce
@@ -384,6 +402,17 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
 
         logger.info(f"Sucesso ao registrar inbound ({phone}) no GHL para tenant {location_id}.")
 
+    # Log completo (base do painel próprio) — Z-API serve mídia por CDN público,
+    # então o anexo já é uma URL utilizável; sem media_filename (não há blob local).
+    _anexo = attachments[0] if attachments else None
+    await msglog_persist(
+        location_id=location_id, channel="whatsapp", provider="zapi",
+        direction="inbound", sender_role="contact", contact_ref=phone,
+        ghl_contact_id=contact_id, message_type=msglog_type_from_url(_anexo, is_audio),
+        text=content_message or None, media_url=_anexo,
+        provider_message_id=msg_id, status="delivered",
+    )
+
     # =========================================================================
     # INTEGRAÇÃO AGENTE IA NATIVO — com debounce anti-duplicata
     # =========================================================================
@@ -524,12 +553,15 @@ async def process_status_update(location_id: str, payload: Dict[str, Any]):
         ghl_status = "failed"
         
     logger.info(f"Atualizando status no GHL para '{ghl_status}' (GHL MsgId: {ghl_message_id})")
+    erro = payload.get("error", "Erro remoto no Z-API") if ghl_status == "failed" else None
     await ghl_service.update_message_status(
         location_id=location_id,
         message_id=ghl_message_id,
         status=ghl_status,
-        error_message=payload.get("error", "Erro remoto no Z-API") if ghl_status == "failed" else None
+        error_message=erro,
     )
+    # Espelha o status no nosso log (base do painel próprio).
+    await msglog_update_status(location_id, provider_message_id=zapi_message_id, status=ghl_status, error=erro)
 
 
 @router.post("/status/{location_id}")

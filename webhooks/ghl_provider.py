@@ -17,6 +17,7 @@ from auth.token_manager import token_manager
 from channels.registry import resolve_send_adapter
 from services.channel_policy import provider_label
 from services.ghl_service import ghl_service
+from services.message_log import message_type_from_url, persist_message
 
 
 router = APIRouter(prefix="/webhook/ghl", tags=["Webhooks GHL"])
@@ -157,10 +158,13 @@ async def process_outbound_message(payload: GHLOutboundPayload):
                 
         return base_name
 
+    enviados: list = []  # provider_message_ids dos envios desta mensagem do operador
+
     def _map(res) -> bool:
         """Guarda o vínculo id-do-provedor ↔ id-do-CRM; sem ele o status nunca sobe."""
         if res and res.ok and res.provider_message_id:
             token_manager.save_message_mapping(res.provider_message_id, payload.messageId, location_id)
+            enviados.append(res.provider_message_id)
         return bool(res and res.ok)
 
     try:
@@ -210,6 +214,19 @@ async def process_outbound_message(payload: GHLOutboundPayload):
             else:
                 # Texto 100% normal sem links do GHL
                 success = _map(await adapter.send_text(tenant, phone, message_text))
+
+        # Log da mensagem que o OPERADOR digitou no CRM (base do painel próprio).
+        # Dedup por ghl_message_id (o GHL dispara pending+sent para o mesmo id).
+        anexo = payload.attachments[0] if payload.attachments else None
+        await persist_message(
+            location_id=location_id, channel="whatsapp", provider=adapter.provider,
+            direction="outbound", sender_role="operator_crm", contact_ref=phone,
+            ghl_contact_id=payload.contactId, text=message_text or None,
+            message_type=message_type_from_url(anexo), media_url=anexo,
+            provider_message_id=enviados[-1] if enviados else None,
+            ghl_message_id=payload.messageId,
+            status="sent" if success else "failed",
+        )
 
         # Atualiza status no GHL
         if success:

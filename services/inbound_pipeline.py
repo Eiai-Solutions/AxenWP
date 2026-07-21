@@ -29,6 +29,7 @@ from auth.token_manager import token_manager
 from channels.base import ParsedMessage
 from services.ghl_service import ghl_service
 from services.media_store import MAX_BLOB_BYTES, store_media
+from services.message_log import message_type_from_mimetype, persist_message
 from utils import metrics
 from utils.logger import logger
 
@@ -270,8 +271,11 @@ async def mirror_inbound(adapter, tenant, pm: ParsedMessage, contact_id: str) ->
 
 
 async def _mirror_outbound(tenant, pm: ParsedMessage, contact_id: str, texto: str,
-                           provider_message_id: Optional[str]) -> None:
-    """Espelha no CRM o que a IA respondeu, e amarra o id do provedor ao id do CRM."""
+                           provider_message_id: Optional[str]) -> Optional[str]:
+    """
+    Espelha no CRM o que a IA respondeu, amarra o id do provedor ao id do CRM, e
+    devolve o ghl_message_id (para o log de mensagens completar a mesma linha).
+    """
     resp = await ghl_service.send_inbound_message(
         location_id=pm.location_id,
         phone=pm.sender_id,
@@ -284,6 +288,45 @@ async def _mirror_outbound(tenant, pm: ParsedMessage, contact_id: str, texto: st
         ghl_msg_id = resp.get("messageId") or resp.get("id")
         if ghl_msg_id and provider_message_id:
             token_manager.save_message_mapping(provider_message_id, ghl_msg_id, pm.location_id)
+        return ghl_msg_id
+    return None
+
+
+def _midia_para_log(adapter, tenant, pm: ParsedMessage) -> tuple[str, Optional[str], Optional[str]]:
+    """(message_type, media_filename, media_url) para o log — WAHA via proxy, Z-API via CDN."""
+    mtype = message_type_from_mimetype(pm.media_mimetype) if pm.media_url or pm.attachments else "text"
+    media_filename = media_url = None
+    if pm.media_url and hasattr(adapter, "public_media_url"):
+        proxy = adapter.public_media_url(tenant, pm.media_url)
+        if proxy:
+            media_url = proxy
+            media_filename = proxy.split("/")[-1].split("?")[0]
+    elif pm.attachments:
+        media_url = pm.attachments[0]  # Z-API serve mídia por CDN público
+    return mtype, media_filename, media_url
+
+
+async def _log_inbound(adapter, tenant, pm: ParsedMessage, contact_id: Optional[str]) -> None:
+    mtype, media_filename, media_url = _midia_para_log(adapter, tenant, pm)
+    await persist_message(
+        location_id=pm.location_id, channel=pm.channel, provider=adapter.provider,
+        direction="inbound", sender_role="contact", contact_ref=pm.sender_id,
+        ghl_contact_id=contact_id, sender_name=pm.sender_name,
+        message_type=mtype, text=pm.text,
+        media_filename=media_filename, media_mimetype=pm.media_mimetype, media_url=media_url,
+        provider_message_id=pm.provider_message_id, status="delivered",
+    )
+
+
+async def _log_outbound_ia(adapter, pm: ParsedMessage, contact_id: Optional[str], texto: str,
+                           res, ghl_id: Optional[str], message_type: str = "text") -> None:
+    await persist_message(
+        location_id=pm.location_id, channel=pm.channel, provider=adapter.provider,
+        direction="outbound", sender_role="ai", contact_ref=pm.sender_id,
+        ghl_contact_id=contact_id, message_type=message_type, text=texto,
+        provider_message_id=getattr(res, "provider_message_id", None), ghl_message_id=ghl_id,
+        status="sent" if getattr(res, "ok", False) else "failed",
+    )
 
 
 # ── Gate da IA ──
@@ -377,9 +420,11 @@ async def _run_ai(adapter, tenant, pm: ParsedMessage, contact_id: Optional[str],
         if tipo == "audio":
             res = await adapter.send_audio(tenant, pm.sender_id, conteudo)
             track_sent_message(res.provider_message_id)
+            ghl_id = None
             if res.ok and espelhar:
-                await _mirror_outbound(tenant, pm, contact_id, "[Mensagem de Áudio enviada pela IA]",
-                                       res.provider_message_id)
+                ghl_id = await _mirror_outbound(tenant, pm, contact_id, "[Mensagem de Áudio enviada pela IA]",
+                                                res.provider_message_id)
+            await _log_outbound_ia(adapter, pm, contact_id, "[Áudio da IA]", res, ghl_id, message_type="audio")
             return
 
         for i, chunk in enumerate(split_chunks(conteudo)):
@@ -390,9 +435,10 @@ async def _run_ai(adapter, tenant, pm: ParsedMessage, contact_id: Optional[str],
             track_sent_message(res.provider_message_id)
             if not res.ok:
                 logger.error(f"[PIPELINE] Falha ao enviar resposta via {adapter.provider} para {pm.sender_id}.")
+                await _log_outbound_ia(adapter, pm, contact_id, chunk, res, None)
                 continue
-            if espelhar:
-                await _mirror_outbound(tenant, pm, contact_id, chunk, res.provider_message_id)
+            ghl_id = await _mirror_outbound(tenant, pm, contact_id, chunk, res.provider_message_id) if espelhar else None
+            await _log_outbound_ia(adapter, pm, contact_id, chunk, res, ghl_id)
 
     except asyncio.CancelledError:
         # Chegou mensagem nova antes do delay expirar — é o debounce funcionando.
@@ -472,6 +518,11 @@ async def handle_inbound(adapter, tenant, pm: ParsedMessage) -> None:
                 f"({pm.location_id}); seguindo com a IA mesmo assim."
             )
             metrics.inc("axenwp_crm_mirror_failed_total", labels={"channel": pm.channel})
+
+    # Log completo (base do painel próprio) — depois dos filtros e da resolução de
+    # contato, e ANTES do gate da IA, para registrar toda mensagem do lead mesmo
+    # com a IA desligada e no modo whatsapp_only. Uma linha por mensagem real.
+    await _log_inbound(adapter, tenant, pm, contact_id)
 
     try:
         if await ai_is_enabled(tenant, pm.location_id, pm.sender_id, contact_id):

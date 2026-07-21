@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, ForeignKey, Text, Float, LargeBinary, UniqueConstraint
+from sqlalchemy import Column, String, DateTime, Boolean, JSON, Integer, ForeignKey, Text, Float, Index, LargeBinary, UniqueConstraint
 from sqlalchemy.orm import relationship
 
 from data.database import Base
@@ -305,6 +305,60 @@ class OnboardingSubmission(Base):
     status = Column(String(20), default="pending", server_default="pending", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     processed_at = Column(DateTime, nullable=True)
+
+
+class Message(Base):
+    """
+    Log completo de mensagens — a base do painel de chat próprio.
+
+    Distinto de `chat_histories`, que é a MEMÓRIA da IA (só turnos que a IA
+    processou, mesclados pelo debounce, podados a cada 30 dias). Esta tabela é
+    append-only e guarda TUDO: cada mensagem do contato, cada chunk da resposta
+    da IA, e o que o operador digita no CRM (e, no futuro, no painel próprio) —
+    com direção, autor, mídia e status de entrega. É o que permite listar
+    conversas e abrir o thread sem depender do CRM (essencial no modo
+    whatsapp_only).
+
+    Dedup: o helper faz upsert por `provider_message_id` ou `ghl_message_id`
+    (escopados por location). O eco do WAHA já é barrado antes de chegar aqui.
+    """
+    __tablename__ = "messages"
+    __table_args__ = (
+        Index("ix_messages_thread", "location_id", "session_id", "id"),
+        Index("ix_messages_contact", "location_id", "contact_ref"),
+    )
+
+    id = Column(Integer, primary_key=True)  # também é o tiebreaker de ordem do thread
+    location_id = Column(String, index=True, nullable=False)
+    session_id = Column(String, index=True, nullable=False)   # "{location_id}_{contact_ref}"
+    channel = Column(String, nullable=False)                  # whatsapp | telegram
+    provider = Column(String, nullable=True)                  # waha | zapi | telegram
+
+    # Identidade do CONTATO (telefone / @lid / chat_id) — invariante à direção:
+    # numa mensagem outbound continua sendo o contato destino, não a IA.
+    contact_ref = Column(String, index=True, nullable=False)
+    ghl_contact_id = Column(String, index=True, nullable=True)  # None em whatsapp_only/telegram
+
+    direction = Column(String, nullable=False)                # inbound | outbound
+    # QUEM falou — outbound tem 3 autores: contact | ai | operator_crm | operator_panel | system
+    sender_role = Column(String, nullable=False)
+    sender_name = Column(String, nullable=True)
+
+    message_type = Column(String, nullable=False, default="text")  # text|audio|image|video|document|sticker
+    text = Column(Text, nullable=True)                        # texto/legenda; rótulo quando mídia sem legenda
+
+    # Mídia: referência ao blob (WAHA) por (location_id, media_filename); URL para
+    # o caso Z-API (CDN público) ou fallback ao vivo.
+    media_filename = Column(String, nullable=True)
+    media_mimetype = Column(String, nullable=True)
+    media_url = Column(String, nullable=True)
+
+    provider_message_id = Column(String, index=True, nullable=True)  # id no WAHA/Z-API/Telegram
+    ghl_message_id = Column(String, index=True, nullable=True)       # id no CRM
+    status = Column(String, nullable=False, default="sent")   # pending|sent|delivered|read|failed
+    error_message = Column(Text, nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, index=True, nullable=False)
 
 
 class MediaBlob(Base):
