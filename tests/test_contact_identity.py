@@ -147,6 +147,32 @@ class TestReconciliacaoNoPipeline:
         assert await pipe.resolve_contact_id(LOC, FONE, "Luiz", sender_lid=LID) == "C1"
 
     @pytest.mark.asyncio
+    async def test_backfill_do_lid_quando_acha_pelo_cache_do_telefone(self, tm, monkeypatch):
+        """
+        O bug real da produção: o contato do telefone existia com lid VAZIO (criado
+        por código antigo). Ao reencontrá-lo pelo cache do telefone, a função
+        retornava sem gravar o lid — então o @lid nunca reconectava e a pessoa
+        virava dois contatos. Agora o cache-hit faz o backfill.
+        """
+        from services import inbound_pipeline as pipe
+
+        # Linha do telefone sem lid (estado da Eiai em produção).
+        tm.save_contact_mapping(LOC, FONE, "C1")
+        assert tm.get_phone_by_lid(LOC, LID) is None  # ainda não vinculado
+
+        async def nunca_cria(*a, **kw):
+            raise AssertionError("não deveria criar/buscar — achou pelo cache")
+
+        monkeypatch.setattr(pipe.ghl_service, "create_contact", nunca_cria)
+        monkeypatch.setattr(pipe.ghl_service, "search_contact_by_phone", nunca_cria)
+
+        # Chega o número já com o @lid conhecido → acha pelo cache do telefone.
+        assert await pipe.resolve_contact_id(LOC, FONE, "Luiz", sender_lid=LID) == "C1"
+        # …e agora o vínculo existe: um futuro @lid reencontra o MESMO contato.
+        assert tm.get_phone_by_lid(LOC, LID) == FONE
+        assert tm.get_mapped_contact_id(LOC, LID) == "C1"
+
+    @pytest.mark.asyncio
     async def test_contato_novo_grava_as_duas_identidades(self, tm, monkeypatch):
         from services import inbound_pipeline as pipe
 

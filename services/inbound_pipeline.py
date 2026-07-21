@@ -121,6 +121,13 @@ async def resolve_contact_id(
     if not contact_id and sender_lid:
         contact_id = token_manager.get_mapped_contact_id(location_id, sender_lid)
     if contact_id:
+        # Backfill do vínculo telefone↔@lid. Sem isto, um contato achado pelo
+        # cache do telefone (ou reencontrado pelo @lid) nunca grava a coluna lid,
+        # e a MESMA pessoa vira dois contatos quando chega pela outra identidade —
+        # foi assim que a duplicata aconteceu. save_contact_mapping só preenche
+        # (nunca sobrescreve) e faz upsert, então também consolida numa linha só.
+        if sender_lid and "@lid" not in sender_id:
+            token_manager.save_contact_mapping(location_id, sender_id, contact_id, lid=sender_lid)
         return contact_id
 
     if "@lid" not in sender_id:
