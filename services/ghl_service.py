@@ -548,6 +548,25 @@ class GHLService:
             logger.error(f"Exceção ao adicionar notas: {e}")
             return False
 
+    async def create_contact_note(self, location_id: str, contact_id: str, body: str) -> bool:
+        """Cria uma nota no contato (usada no handoff para humano). POST /contacts/{id}/notes."""
+        headers = await self._get_headers(location_id)
+        if not headers or not contact_id:
+            return False
+        try:
+            response = await self.client.post(
+                f"{self.BASE_URL}/contacts/{contact_id}/notes",
+                json={"body": body},
+                headers=headers,
+            )
+            if response.status_code in (200, 201):
+                return True
+            logger.warning(f"Falha ao criar nota no contato {contact_id}: {response.status_code} {response.text[:200]}")
+            return False
+        except Exception as e:
+            logger.error(f"Exceção ao criar nota no contato {contact_id}: {e}")
+            return False
+
     async def update_contact(self, location_id: str, contact_id: str, data: dict) -> dict | None:
         """
         Atualiza um contato no GHL (custom fields, nome, etc).

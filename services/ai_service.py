@@ -14,6 +14,7 @@ Lógica detalhada está distribuída em:
 """
 
 import asyncio
+import os
 from collections import deque
 from typing import Optional
 
@@ -96,11 +97,50 @@ class AIEngine:
             except Exception as e:
                 logger.error(f"Erro ao instanciar LLM OpenRouter: {e}")
 
-        # Motor de agente (porta AgentEngine). Flag por-agente `agent_engine`
-        # seleciona a implementação; no PR#1 só existe 'langchain' (default).
-        # 'claude' (tool-use) entra no PR#2 e cai aqui em LangChain até lá.
+        # Motor de agente (porta AgentEngine). Flag por-agente `agent_engine`:
+        # 'claude' (tool-use Anthropic direto, com caching) ou 'langchain' (default).
         self.engine_name = (getattr(agent_data, "agent_engine", None) or "langchain").lower()
-        self.engine = LangChainAgentEngine(self.llm) if self.llm is not None else None
+        if self.engine_name == "claude":
+            self.engine = self._build_claude_engine(agent_data)
+            if self.engine is None:  # sem chave Anthropic → cai no legado, sem quebrar
+                logger.warning("Motor 'claude' sem chave Anthropic; usando LangChain.")
+                self.engine_name = "langchain"
+                self.engine = LangChainAgentEngine(self.llm) if self.llm is not None else None
+        else:
+            self.engine = LangChainAgentEngine(self.llm) if self.llm is not None else None
+
+    def _resolve_anthropic_key(self, agent_data) -> Optional[str]:
+        """Chave do agente → chave global do admin → env ANTHROPIC_API_KEY."""
+        key = (getattr(agent_data, "anthropic_api_key", None) or "").strip()
+        if key:
+            return key
+        try:
+            from data.database import SessionLocal
+            from data.models import SystemSettings
+            db = SessionLocal()
+            try:
+                s = db.query(SystemSettings).first()
+                if s and (s.admin_anthropic_key or "").strip():
+                    return s.admin_anthropic_key.strip()
+            finally:
+                db.close()
+        except Exception as e:
+            logger.warning(f"Falha ao ler admin_anthropic_key: {e}")
+        return (os.getenv("ANTHROPIC_API_KEY") or "").strip() or None
+
+    def _build_claude_engine(self, agent_data):
+        key = self._resolve_anthropic_key(agent_data)
+        if not key:
+            return None
+        try:
+            from anthropic import AsyncAnthropic
+            from services.agent_engine import ClaudeAgentEngine
+            client = AsyncAnthropic(api_key=key)
+            model = (getattr(agent_data, "anthropic_model", None) or "").strip() or None
+            return ClaudeAgentEngine(client, model=model)
+        except Exception as e:
+            logger.error(f"Falha ao instanciar ClaudeAgentEngine: {e}")
+            return None
 
     # ── Etapas internas ──
 
@@ -263,8 +303,11 @@ class AIEngine:
         audio_headers: Optional[dict] = None,
     ) -> Optional[dict]:
         """Gera a resposta do agente para uma mensagem do lead."""
-        if not self.agent_config.is_active or not self.llm:
-            logger.info("Agente IA inativo ou sem API key. Ignorando.")
+        # `self.engine` cobre os dois motores: LangChain (só existe se há self.llm)
+        # ou Claude (existe sem OpenRouter). Checar o engine — não a self.llm —
+        # é o que deixa o agente claude sem chave OpenRouter responder.
+        if not self.agent_config.is_active or self.engine is None:
+            logger.info("Agente IA inativo ou sem motor disponível. Ignorando.")
             return None
 
         # Lead já qualificado? Não responde mais (libera pra o humano).
@@ -297,12 +340,16 @@ class AIEngine:
             f"[MEMORY] session_id={session_id} | past={len(past_messages)} | raw_phone={user_phone!r}"
         )
 
+        is_claude = self.engine_name == "claude"
+
         # 4. Monta system prompt (base + qualificação + modo áudio se for o caso).
+        #    No motor Claude, a qualificação vira instrução de TOOL (for_tools).
         system_prompt = build_system_prompt(
             base_prompt=self.agent_config.prompt,
             qualification_enabled=self.qualification_enabled,
             qualification_fields=self.qualification_fields,
             is_audio_input=is_audio,
+            for_tools=is_claude,
         )
 
         # Histórico neutro (engine-agnóstico) para a porta AgentEngine.
@@ -321,6 +368,10 @@ class AIEngine:
             is_audio_input=is_audio,
             agent_config=self.agent_config,
         )
+        if is_claude:
+            from services.agent_engine.tools import build_tool_specs
+            ctx.tools = build_tool_specs(self.agent_config)
+            ctx.tool_dispatch = self._claude_tool_dispatch
 
         # 5. Chama o motor de agente (porta).
         try:
@@ -335,21 +386,37 @@ class AIEngine:
         # 6. Guardrails de saída (emojis + placeholders + outbound).
         ai_text = await self._apply_response_guardrails(ai_text, system_prompt)
 
-        # 7. Log de uso OpenRouter.
-        await self._log_openrouter_usage(turn.raw)
+        # 7. Log de uso.
+        if is_claude:
+            await self._log_claude_usage(turn.usage)
+        else:
+            await self._log_openrouter_usage(turn.raw)
 
-        # 8. Qualificação (extrai marcador + gera resumo se completo).
+        # 8. Qualificação + handoff.
         qualified_data = None
         qualification_summary = None
-        if self.qualification_enabled and self.qualification_fields:
+        handoff = None
+        if is_claude:
+            # As ações vieram como CHAMADAS DE TOOL (não marcador de texto): a
+            # qualificação/escalação já é estruturada e verificável.
+            qualified_data, handoff = self._extract_tool_actions(turn.tool_calls)
+            # Guard de completude (o `required` do schema Anthropic é advisory): só
+            # qualifica se TODOS os campos de coleta vierem não-vazios — mesma regra
+            # do motor LangChain, senão o claude qualificaria com dados parciais.
+            if qualified_data and not self._qualification_complete(qualified_data):
+                logger.info(f"[CLAUDE] register_qualified_lead incompleto; segue coletando. dados={qualified_data}")
+                qualified_data = None
+        elif self.qualification_enabled and self.qualification_fields:
             ai_text, qualified_data = extract_qualification_data(
                 ai_text, self.qualification_fields, session_id
             )
-            if qualified_data:
-                all_messages = list(past_messages) + [
-                    HumanMessage(content=actual_message),
-                    AIMessage(content=ai_text),
-                ]
+
+        if qualified_data:
+            all_messages = list(past_messages) + [
+                HumanMessage(content=actual_message),
+                AIMessage(content=ai_text),
+            ]
+            if self.llm:
                 qualification_summary = await generate_summary(
                     llm=self.llm,
                     past_messages=all_messages,
@@ -396,10 +463,65 @@ class AIEngine:
         if qualified_data:
             result["qualified_data"] = qualified_data
             result["qualification_summary"] = qualification_summary
+        # `handoff` só é setado pelo motor Claude (tool escalate_to_human). O
+        # `escalate` heurístico legado permanece observacional (o pipeline age no
+        # `handoff`, não no `escalate`) — LangChain segue sem efeito de escalação.
+        if handoff:
+            result["handoff"] = handoff
         if escalate:
             result["escalate"] = True
             result["escalate_reason"] = escalate_reason
         return result
+
+    # ── Suporte ao motor Claude (tool-use) ──
+
+    async def _claude_tool_dispatch(self, name: str, args: dict, ctx) -> dict:
+        """
+        Dispatch das tools do modelo. Devolve sucesso ao modelo para ele encerrar
+        bem; o EFEITO real (criar opportunity, pausar IA) roda no PIPELINE, que tem
+        tenant + contact_id — as ações são derivadas de `turn.tool_calls` depois.
+        """
+        from services.agent_engine.tools import ESCALATE, QUALIFY
+        if name == QUALIFY:
+            return {"status": "ok", "message": "Lead registrado como qualificado."}
+        if name == ESCALATE:
+            return {"status": "ok", "message": "Conversa transferida para um atendente humano."}
+        return {"error": f"tool desconhecida: {name}"}
+
+    def _qualification_complete(self, data: dict) -> bool:
+        """Todos os campos de COLETA (não-auto) presentes e não-vazios."""
+        collect_keys = [f["key"] for f in self.qualification_fields if not f.get("auto") and f.get("key")]
+        if not collect_keys:
+            return False
+        return all(str((data or {}).get(k, "")).strip() for k in collect_keys)
+
+    @staticmethod
+    def _extract_tool_actions(tool_calls) -> tuple[Optional[dict], Optional[dict]]:
+        """(qualified_data, handoff) a partir das chamadas de tool do turno."""
+        from services.agent_engine.tools import ESCALATE, QUALIFY
+        qualified_data = None
+        handoff = None
+        for tc in tool_calls or []:
+            if tc.name == QUALIFY and isinstance(tc.arguments, dict):
+                qualified_data = tc.arguments
+            elif tc.name == ESCALATE:
+                motivo = (tc.arguments or {}).get("motivo", "") if isinstance(tc.arguments, dict) else ""
+                handoff = {"reason": motivo}
+        return qualified_data, handoff
+
+    async def _log_claude_usage(self, usage: dict) -> None:
+        """Persiste tokens do turno Claude (cache-aware) em usage_logs."""
+        try:
+            await asyncio.to_thread(
+                save_usage_log,
+                location_id=self.agent_config.location_id,
+                service="anthropic",
+                model=(getattr(self.agent_config, "anthropic_model", None) or "claude-sonnet-5"),
+                input_tokens=(usage or {}).get("input_tokens", 0),
+                output_tokens=(usage or {}).get("output_tokens", 0),
+            )
+        except Exception as e:
+            logger.warning(f"Falha usage log Claude: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -440,7 +562,12 @@ class AIService:
                         agent = target
 
             cache_key = (location_id, channel)
-            if not agent.is_active or not agent.api_key:
+            # O agente precisa de is_active e de ALGUM caminho para o modelo:
+            # api_key OpenRouter (langchain) OU motor 'claude' (que resolve a chave
+            # Anthropic sozinho). Sem afrouxar isto, um agente claude sem OpenRouter
+            # seria descartado aqui em silêncio.
+            usa_claude = (getattr(agent, "agent_engine", None) or "langchain").lower() == "claude"
+            if not agent.is_active or (not agent.api_key and not usa_claude):
                 self._engine_cache.pop(cache_key, None)
                 return None
 

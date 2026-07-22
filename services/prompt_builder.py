@@ -123,17 +123,56 @@ Quando voce detectar que TODOS os {len(collect_fields)} campos DE COLETA foram f
 ---"""
 
 
+def build_tools_block(qualification_fields: list[dict]) -> str:
+    """
+    Bloco de qualificação para o motor CLAUDE (tool-use): lista os campos a
+    coletar e manda usar a TOOL, em vez do marcador `[QUALIFIED_DATA]` (que o
+    motor tool-use dispensa — a ação é uma chamada de ferramenta estruturada).
+    """
+    collect = [f for f in (qualification_fields or []) if not f.get("auto")]
+    if not collect:
+        return ""
+    lista = "\n".join(f"{i+1}. {f['label']} (chave: {f['key']})" for i, f in enumerate(collect))
+    return f"""
+
+---
+[QUALIFICAÇÃO — coleta natural, sem formulário]
+Colete, de forma natural na conversa (nunca em lista visível), estes campos do lead:
+{lista}
+
+Quando tiver coletado TODOS eles — e só então — chame a ferramenta
+`register_qualified_lead` com os valores exatos que o lead informou (nunca invente).
+Depois, envie uma mensagem curta de encaminhamento e encerre.
+
+Se o lead pedir para falar com um humano, demonstrar forte frustração, ou você
+precisar de um dado que não tem e não pode inventar, chame `escalate_to_human`.
+---"""
+
+
 def build_system_prompt(
     base_prompt: str,
     qualification_enabled: bool = False,
     qualification_fields: Optional[list[dict]] = None,
     is_audio_input: bool = False,
+    for_tools: bool = False,
 ) -> str:
-    """Monta o system prompt final do agente para um turno específico."""
+    """
+    Monta o system prompt final do agente para um turno específico.
+
+    `for_tools=True` (motor Claude): usa o bloco de tools em vez do marcador de
+    texto — a qualificação/escalação viram chamadas de ferramenta.
+    """
     out = base_prompt or ""
 
     if qualification_enabled and qualification_fields:
-        out += build_qualification_block(qualification_fields)
+        out += build_tools_block(qualification_fields) if for_tools else build_qualification_block(qualification_fields)
+    elif for_tools:
+        # Sem qualificação, o agente ainda tem a tool de escalação.
+        out += (
+            "\n\n---\nSe o lead pedir um humano, demonstrar forte frustração, ou "
+            "você precisar de um dado que não tem e não pode inventar, chame "
+            "`escalate_to_human`.\n---"
+        )
 
     if is_audio_input:
         out += _AUDIO_MODE_BLOCK

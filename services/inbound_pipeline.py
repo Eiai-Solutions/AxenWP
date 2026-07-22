@@ -411,6 +411,21 @@ async def _run_ai(adapter, tenant, pm: ParsedMessage, contact_id: Optional[str],
                 channel=pm.channel,
             )
 
+        # Handoff para humano (motor Claude, tool escalate_to_human): pausa a IA +
+        # nota no CRM. Só o `handoff` dispara — o `escalate` heurístico legado não.
+        handoff = resposta.get("handoff")
+        if handoff:
+            from services.escalation_handler import handle_escalation
+
+            await handle_escalation(
+                location_id=pm.location_id,
+                phone=pm.sender_id,
+                contact_id=contact_id,
+                tenant=tenant,
+                reason=handoff.get("reason", ""),
+                channel=pm.channel,
+            )
+
         tipo = resposta.get("type", "text")
         conteudo = resposta.get("content", "")
         espelhar = getattr(tenant, "mode", "ghl") != "whatsapp_only" and contact_id
