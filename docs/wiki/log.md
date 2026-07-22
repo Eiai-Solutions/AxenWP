@@ -41,3 +41,9 @@
 - `decisoes/log-de-mensagens.md` (nova): tabela `messages` (migration 026) como base do painel de chat próprio; separada de `chat_histories` (memória da IA). Choke point `services/message_log.persist_message`, dedup por índices únicos parciais. Commit `f6e5509`.
 - `decisoes/identidade-do-contato.md`: fix do backfill telefone↔@lid ao achar pelo cache (commit `c0f46ae`) — evitava reconectar e duplicava contato; duplicata da Eiai reconciliada no banco.
 - Cobertura: WAHA (pipeline) + Z-API (legado) + operador-CRM + status. Telegram fica de fora até migrar ao pipeline.
+
+## [2026-07-22] update | Motor Claude (tool-use) — PR1+PR2 no ar, atrás da flag
+- `decisoes/agente-claude-agent-sdk.md`: de plano para IMPLEMENTADO. PR1 (`6786798`) = engine + specs + migration 027; PR2 (`c18ade7`) = fiação + escalation_handler + tools no lugar do marcador.
+- Decisões travadas: Anthropic direto (caching), escalar=pausar+nota, Sonnet default.
+- Zero regressão nos 5 tenants (langchain default), confirmado por revisão adversarial; 4 achados corrigidos antes do deploy.
+- Aplicado o método da skill /criar-agente-sdk: qualificação/escalação viram tools (register_qualified_lead, escalate_to_human) em vez de marcador de texto + heurística morta.

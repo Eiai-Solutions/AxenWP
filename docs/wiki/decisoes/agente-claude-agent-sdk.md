@@ -1,10 +1,34 @@
 ---
 type: decisao
 status: solid
-updated: 2026-07-14
-sources: [services/ai_service.py, services/qualification_engine.py, utils/guardrails.py, utils/master_prompt.py]
+updated: 2026-07-22
+sources: [services/ai_service.py, services/agent_engine/claude_engine.py, services/agent_engine/tools.py, services/escalation_handler.py, services/qualification_engine.py]
 confidence: high
 ---
+
+# Decisão: trocar LangChain single-turn por Claude Agent SDK (tool-use)
+
+## Estado da implementação (2026-07-22)
+**PR1 + PR2 no ar, atrás da flag `AIAgent.agent_engine` (default `langchain`).** Os 5 tenants
+seguem byte-idênticos (revisão adversarial confirmou zero regressão). Ainda **não ligado** em
+nenhum tenant — falta configurar a chave Anthropic e validar na Eiai.
+
+- **PR1** (`6786798`): `services/agent_engine/claude_engine.py` (o loop model↔tools + caching +
+  invariante tool_use/tool_result), `tools.py` (specs), migration 027 (`agent_engine`,
+  `anthropic_model`, `anthropic_api_key`, `admin_anthropic_key`), dep `anthropic`.
+- **PR2** (`c18ade7`): fiação em `ai_service` (constrói o engine + deriva ações de `turn.tool_calls`),
+  `escalation_handler.py`, `ghl_service.create_contact_note`, `prompt_builder.build_tools_block`,
+  `pipeline` consome `handoff`. 4 achados adversariais corrigidos antes do deploy (gate legado,
+  guard de completude, kill-switch durável nos dois modos).
+- **Falta (PR3+):** fail-closed 2.3 nas tools · taxonomia de erro 3.3 · reordenar `_AUDIO_MODE_BLOCK`
+  para não quebrar o prefixo do cache · ligar na Eiai e medir `cache_read>0`.
+
+## Decisões travadas com o dono (2026-07-22)
+- **Anthropic direto** (não OpenRouter) para o motor claude — o caching real (~87%) depende do
+  `cache_control` da API Anthropic. OpenRouter segue como o motor langchain legado.
+- **Escalar = pausar IA + nota no CRM** (kill-switch). ghl: custom field "Status IA"; whatsapp_only:
+  linha em `QualifiedLead` (o gate desse modo), idempotente.
+- **Sonnet default** (`claude-sonnet-5`), sobrescrevível por agente em `anthropic_model`.
 
 # Decisão: trocar LangChain single-turn por Claude Agent SDK (tool-use)
 
