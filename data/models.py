@@ -89,6 +89,13 @@ class AIAgent(Base):
     # OpenRouter
     api_key = Column(String(255), nullable=True)
 
+    # Motor de agente: 'langchain' (single-turn OpenRouter, atual) | 'claude'
+    # (tool-use Anthropic direto, com prompt caching). Default preserva o
+    # comportamento de todos os agentes existentes — a troca é opt-in por agente.
+    agent_engine = Column(String(20), default="langchain", server_default="langchain", nullable=False)
+    anthropic_model = Column(String(80), nullable=True)   # ex.: "claude-sonnet-5"; None → default do engine
+    anthropic_api_key = Column(String(255), nullable=True)  # None → cai na chave global do admin
+
     # TTS — provedor escolhido para geração de voz ('elevenlabs' | 'fishaudio')
     tts_provider = Column(String(20), default="elevenlabs", server_default="elevenlabs", nullable=False)
 
@@ -257,6 +264,8 @@ class SystemSettings(Base):
     # WAHA compartilhado (um servidor, N sessões). Config global; cada tenant vira uma sessão.
     admin_waha_url = Column(String(512), nullable=True)
     admin_waha_api_key = Column(String(512), nullable=True)
+    # Chave Anthropic global (fallback quando o agente com motor 'claude' não tem a sua própria).
+    admin_anthropic_key = Column(String(512), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 

@@ -8,7 +8,11 @@ uma flag por-agente (`AIAgent.agent_engine`), sem reescrever a orquestração.
 Ver docs/wiki/decisoes/reestruturacao-abstracoes-primeiro.md
 """
 
-from services.agent_engine.base import AgentContext, AgentEngine, AgentTurn
+from services.agent_engine.base import AgentContext, AgentEngine, AgentTurn, ToolCall, ToolSpec
+from services.agent_engine.claude_engine import ClaudeAgentEngine
 from services.agent_engine.langchain_engine import LangChainAgentEngine
 
-__all__ = ["AgentContext", "AgentEngine", "AgentTurn", "LangChainAgentEngine"]
+__all__ = [
+    "AgentContext", "AgentEngine", "AgentTurn", "ToolCall", "ToolSpec",
+    "LangChainAgentEngine", "ClaudeAgentEngine",
+]

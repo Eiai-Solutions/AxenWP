@@ -11,6 +11,7 @@ slowapi==0.1.9
 sqlalchemy==2.0.35
 alembic==1.13.3
 psycopg2-binary>=2.9.9
+anthropic>=0.40.0
 langchain==1.2.10
 langchain-classic==1.0.2
 langchain-community==0.4.1
