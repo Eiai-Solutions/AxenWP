@@ -67,3 +67,9 @@
 - `decisoes/ia-mestre-portadora-do-metodo.md`: passo 1 (`379e675`) marcado como feito. `services/agent_provisioning.py` monta a config além do prompt (campos, pipeline/stage, fail-closed real, report auditável).
 - Verificação adversarial pegou 4 bloqueadores antes do deploy — 2 de premissa: mudança seria no-op (form público não coleta o campo; testes injetavam à mão) e "fail-closed" estava fail-open.
 - **Lição:** a fonte dos campos deve ser o Agent Spec da Mestre (passo 3), não o parser de texto livre — que vira fallback. O encanamento do passo 1 permanece.
+
+## [2026-07-22] update | Passo 3 da Mestre: AgentSpec estruturado (a18888c)
+- `decisoes/ia-mestre-portadora-do-metodo.md`: passo 3 marcado feito. `utils/agent_spec.py` (contrato Pydantic que omite IDs de CRM por construção) + `services/master_engine.py` (caller Anthropic `messages.parse`, fail-closed) + `build_agent_provisioning` ganhou `fields_override` (Spec vira a fonte dos campos; parser = fallback).
+- Gate PRÓPRIO: `is_configured()` exige chave Anthropic E toggle `MASTER_ENGINE=anthropic` — senão a mesma chave do motor trocaria a Mestre de todos os tenants sozinha. Sem toggle = OpenRouter legado byte-idêntico.
+- Floor `anthropic>=0.80.0` (verificado: 0.69 não tem `messages.parse`/`output_format`).
+- Falta: validar QUALIDADE com API real (Anthropic vs gpt-4o) antes de ligar o toggle em produção.

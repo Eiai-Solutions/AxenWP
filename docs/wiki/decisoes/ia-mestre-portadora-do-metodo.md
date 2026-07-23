@@ -152,8 +152,41 @@ tool-use:
 2. **Prefetch** (2 awaits) + **Agent Spec validado** contra os conjuntos retornados —
    diferença de conjuntos em Python, não julgamento do LLM. *(prefetch já entregue no
    passo 1 via `services/agent_provisioning.fetch_crm_catalog`)*
-3. **Migrar a chamada** para Anthropic single-turn com `json_schema` — **passo atual**.
+3. ✅ **Migrar a chamada** para Anthropic single-turn com `json_schema`. **Feito**
+   (`a18888c`) — ver seção abaixo. Falta só **validar a qualidade** com API real antes de
+   ligar o toggle em produção.
 4. **Só então** o gatilho automático do onboarding.
+
+## Passo 3 — entregue (`a18888c`): a Mestre emite AgentSpec
+
+- **`utils/agent_spec.py`** — o contrato (Pydantic `AgentSpec`/`QualFieldSpec`). Por
+  **construção** o schema omite `qualification_pipeline_id/stage_id`, `ghl_field_id`,
+  `qualification_enabled`, `is_active`, `key` e chaves: o LLM **não tem onde** pôr ID de
+  CRM nem flag. Defesa mais forte que instruir o modelo. `QualFieldSpec` = só
+  `label`/`description`/`type` (intenção). Revisão adversarial confirmou o schema limpo.
+- **`services/master_engine.py`** — caller próprio (não reusa o `ClaudeAgentEngine`, que é
+  loop de tool-use e não devolve saída estruturada). `messages.parse(output_format=AgentSpec)`;
+  `system` string pura (sem `cache_control`). Fail-closed: qualquer falha levanta →
+  submissão fica `pending`.
+- **Fusão com o passo 1:** `build_agent_provisioning` ganhou `fields_override` — a fonte dos
+  campos passa a ser o Spec; o parser de texto livre vira fallback. `key`/`ghl_field_id`/
+  pipeline/stage seguem resolvidos por código contra o CRM; `qualification_enabled = intent
+  AND pipeline+stage` (fail-closed preservado).
+
+### Quirks duráveis (custaram tempo)
+
+- **Gate PRÓPRIO da Mestre** (achado da revisão): a mesma `admin_anthropic_key` liga o
+  **motor** Claude de um agente. Sem um gate separado, a Mestre de **todos** os tenants
+  trocaria de OpenRouter-prosa para AgentSpec no instante em que a chave aparecesse. Por
+  isso `is_configured()` exige chave **E** o toggle `MASTER_ENGINE=anthropic` (ou
+  `MASTER_USE_SPEC=1`). Sem o toggle → legado byte-idêntico. **Ligar em produção é
+  deliberado.**
+- **Floor do SDK:** `anthropic>=0.80.0`. Verificado baixando os wheels: **0.69 NÃO tem**
+  `messages.parse`/`output_format` (entrou entre 0.75 e 0.80). O `>=0.40` anterior
+  quebraria a Mestre estruturada em produção.
+- **Shape do `output_config`:** `{"format": {"type": "json_schema", "schema": {...}}}`;
+  `messages.parse` aceita `output_format=<Pydantic>` e o SDK gera o schema. `parsed_output`
+  é a instância ou `None`.
 
 ## Passo 1 — entregue (`379e675`), e o que ele ensinou
 
