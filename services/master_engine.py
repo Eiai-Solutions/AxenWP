@@ -70,22 +70,43 @@ def _resolve_master_key() -> Optional[str]:
     return (os.getenv("ANTHROPIC_API_KEY") or "").strip() or None
 
 
+def _read_settings() -> tuple[str, Optional[str]]:
+    """(master_engine, admin_anthropic_model) do banco — vazio se indisponível."""
+    try:
+        from data.database import SessionLocal
+        from data.models import SystemSettings
+
+        db = SessionLocal()
+        try:
+            s = db.query(SystemSettings).first()
+            if s:
+                return (getattr(s, "master_engine", "openrouter") or "openrouter"), getattr(s, "admin_anthropic_model", None)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"[MESTRE] Falha ao ler master_engine: {e}")
+    return "openrouter", None
+
+
 def is_configured() -> bool:
     """
-    A Mestre-Anthropic (structured) é o caminho quando há chave E o toggle próprio
-    está ligado. O toggle é DELIBERADO e independente do motor dos agentes: a
+    A Mestre-Anthropic (structured) é o caminho quando há chave E o motor escolhido
+    é 'anthropic'. O toggle é DELIBERADO e independente do motor dos AGENTES: a
     mesma `admin_anthropic_key` liga o motor Claude de um agente, e sem este gate
     a Mestre de TODOS os tenants trocaria de OpenRouter-prosa para AgentSpec no
     instante em que a chave aparecesse — mudança de frota sem ninguém pedir.
 
-    Ligar: env `MASTER_ENGINE=anthropic` (ou `MASTER_USE_SPEC=1`). Default = legado.
+    Fonte do toggle: o painel (System Settings → IA Mestre → Motor). O env
+    `MASTER_ENGINE=anthropic` continua valendo como override de operação.
     """
     if not _resolve_master_key():
         return False
-    flag = (os.getenv("MASTER_ENGINE") or "").strip().lower()
-    if flag in ("anthropic", "spec", "structured"):
+    env = (os.getenv("MASTER_ENGINE") or "").strip().lower()
+    if env in ("anthropic", "spec", "structured"):
         return True
-    return (os.getenv("MASTER_USE_SPEC") or "").strip().lower() in ("1", "true", "yes")
+    if env in ("openrouter", "legacy"):
+        return False
+    return _read_settings()[0].strip().lower() == "anthropic"
 
 
 def _build_user_message(form_data: dict) -> str:
@@ -104,7 +125,11 @@ async def generate_agent_spec(form_data: dict) -> AgentSpec:
     from anthropic import AsyncAnthropic
     from utils.master_prompt import MASTER_SYSTEM_PROMPT
 
-    model = (os.getenv("MASTER_ANTHROPIC_MODEL") or "").strip() or DEFAULT_MASTER_MODEL
+    model = (
+        (os.getenv("MASTER_ANTHROPIC_MODEL") or "").strip()
+        or (_read_settings()[1] or "").strip()
+        or DEFAULT_MASTER_MODEL
+    )
     client = AsyncAnthropic(api_key=key, timeout=120.0, max_retries=2)
 
     resp = await client.messages.parse(

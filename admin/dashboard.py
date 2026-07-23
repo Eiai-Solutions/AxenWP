@@ -146,6 +146,9 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
                 "admin_groq_api_key": settings.admin_groq_api_key,
                 "admin_waha_url": settings.admin_waha_url,
                 "admin_waha_api_key": settings.admin_waha_api_key,
+                "master_engine": getattr(settings, "master_engine", "openrouter") or "openrouter",
+                "admin_anthropic_key": getattr(settings, "admin_anthropic_key", "") or "",
+                "admin_anthropic_model": getattr(settings, "admin_anthropic_model", "") or "",
             }
         else:
             system_settings = {
@@ -154,6 +157,9 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
                 "admin_groq_api_key": "",
                 "admin_waha_url": "",
                 "admin_waha_api_key": "",
+                "master_engine": "openrouter",
+                "admin_anthropic_key": "",
+                "admin_anthropic_model": "",
             }
     except Exception as e:
         logger.error(f"Erro ao buscar AI Agents/Settings: {e}")
@@ -368,6 +374,9 @@ async def save_system_settings(
     admin_groq_api_key: str = Form(""),
     admin_waha_url: str = Form(""),
     admin_waha_api_key: str = Form(""),
+    master_engine: str = Form("openrouter"),
+    admin_anthropic_key: str = Form(""),
+    admin_anthropic_model: str = Form(""),
     authenticated: bool = Depends(verify_admin)
 ):
     """Salva configurações globais do Admin."""
@@ -390,6 +399,13 @@ async def save_system_settings(
         # Só sobrescreve a API key do WAHA se veio preenchida (permite editar a URL sem reenviar a key).
         if admin_waha_api_key.strip():
             settings.admin_waha_api_key = admin_waha_api_key.strip()
+
+        # IA Mestre: motor + config Anthropic. Só sobrescreve a chave Anthropic se
+        # veio preenchida (permite trocar o motor/modelo sem reenviar a chave).
+        settings.master_engine = "anthropic" if master_engine.strip().lower() == "anthropic" else "openrouter"
+        settings.admin_anthropic_model = admin_anthropic_model.strip() or None
+        if admin_anthropic_key.strip():
+            settings.admin_anthropic_key = admin_anthropic_key.strip()
 
         db.commit()
         # O servidor WAHA e resolvido com cache no envio — invalida para valer ja.

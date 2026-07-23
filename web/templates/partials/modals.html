@@ -41,7 +41,9 @@
                                 <p class="text-sm font-bold text-white">IA Mestre</p>
                                 <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest truncate">Gera e otimiza os prompts dos agentes</p>
                             </div>
-                            {% if system_settings and system_settings.admin_openrouter_key %}
+                            {% set _ia_anthropic = system_settings and system_settings.master_engine == 'anthropic' %}
+                            {% set _ia_ok = system_settings and ((_ia_anthropic and system_settings.admin_anthropic_key) or (not _ia_anthropic and system_settings.admin_openrouter_key)) %}
+                            {% if _ia_ok %}
                             <span class="text-[10px] font-mono uppercase tracking-widest text-green-400 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Configurado</span>
                             {% else %}
                             <span class="text-[10px] font-mono uppercase tracking-widest text-gray-600">Nao configurado</span>
@@ -52,35 +54,57 @@
                         </button>
 
                         <div id="body-ia" class="hidden px-4 pb-4 border-t border-gray-800 pt-4">
-                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">OpenRouter API Key</label>
-                            <input type="password" name="admin_openrouter_key"
-                                value="{{ system_settings.admin_openrouter_key if system_settings else '' }}"
-                                placeholder="sk-or-v1-..."
-                                title="Chave do OpenRouter usada pela IA Mestre"
-                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
+                            <!-- Motor da Mestre: Anthropic (estruturado, AgentSpec) vs OpenRouter (legado, prosa) -->
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Motor</label>
+                            <div class="grid grid-cols-2 gap-2 mb-4">
+                                <label class="ia-engine-opt flex flex-col gap-0.5 p-2.5 rounded-lg border cursor-pointer transition-colors {% if _ia_anthropic %}border-brand-red/50 bg-brand-red/5{% else %}border-gray-800{% endif %}"
+                                    title="Motor recomendado — gera um AgentSpec estruturado e auditável">
+                                    <input type="radio" name="master_engine" value="anthropic" class="hidden" onchange="switchMestreEngine('anthropic')" {% if _ia_anthropic %}checked{% endif %}>
+                                    <span class="text-xs font-bold text-white">Anthropic <span class="text-[9px] text-green-400 font-mono uppercase">recomendado</span></span>
+                                    <span class="text-[9px] text-gray-500 font-mono uppercase tracking-widest">Estruturado (AgentSpec)</span>
+                                </label>
+                                <label class="ia-engine-opt flex flex-col gap-0.5 p-2.5 rounded-lg border cursor-pointer transition-colors {% if not _ia_anthropic %}border-brand-red/50 bg-brand-red/5{% else %}border-gray-800{% endif %}"
+                                    title="Motor legado — gera prosa via OpenRouter">
+                                    <input type="radio" name="master_engine" value="openrouter" class="hidden" onchange="switchMestreEngine('openrouter')" {% if not _ia_anthropic %}checked{% endif %}>
+                                    <span class="text-xs font-bold text-white">OpenRouter</span>
+                                    <span class="text-[9px] text-gray-500 font-mono uppercase tracking-widest">Legado (prosa)</span>
+                                </label>
+                            </div>
 
-                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest mt-4">Modelo</label>
-                            <select name="admin_openrouter_model" title="Modelo usado pela IA Mestre"
-                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
-                                <option value="openai/gpt-4o" {% if system_settings and
-                                    system_settings.admin_openrouter_model=='openai/gpt-4o' %}selected{% endif %}>
-                                    openai/gpt-4o</option>
-                                <option value="openai/gpt-4o-mini" {% if system_settings and
-                                    system_settings.admin_openrouter_model=='openai/gpt-4o-mini' %}selected{% endif %}>
-                                    openai/gpt-4o-mini</option>
-                                <option value="anthropic/claude-sonnet-4.6" {% if system_settings and
-                                    system_settings.admin_openrouter_model=='anthropic/claude-sonnet-4.6' %}selected{% endif %}>
-                                    anthropic/claude-sonnet-4.6</option>
-                                <option value="anthropic/claude-haiku-4.5" {% if system_settings and
-                                    system_settings.admin_openrouter_model=='anthropic/claude-haiku-4.5' %}selected{% endif %}>
-                                    anthropic/claude-haiku-4.5</option>
-                                <option value="google/gemini-2.0-flash-001" {% if system_settings and
-                                    system_settings.admin_openrouter_model=='google/gemini-2.0-flash-001' %}selected{% endif %}>
-                                    google/gemini-2.0-flash</option>
-                                <option value="meta-llama/llama-3.1-70b-instruct" {% if system_settings and
-                                    system_settings.admin_openrouter_model=='meta-llama/llama-3.1-70b-instruct' %}selected{%
-                                    endif %}>meta-llama/llama-3.1-70b</option>
-                            </select>
+                            <!-- Campos Anthropic -->
+                            <div id="ia-fields-anthropic" class="{% if not _ia_anthropic %}hidden{% endif %}">
+                                <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Anthropic API Key</label>
+                                <input type="password" name="admin_anthropic_key"
+                                    value="{{ system_settings.admin_anthropic_key if system_settings else '' }}"
+                                    placeholder="sk-ant-..." title="Chave Anthropic usada pela IA Mestre (e pelo motor Claude dos agentes)"
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
+                                <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest mt-4">Modelo</label>
+                                <select name="admin_anthropic_model" title="Modelo Anthropic da IA Mestre"
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
+                                    {% set _am = system_settings.admin_anthropic_model if system_settings else '' %}
+                                    <option value="claude-sonnet-5" {% if _am=='claude-sonnet-5' or not _am %}selected{% endif %}>claude-sonnet-5 (padrão)</option>
+                                    <option value="claude-opus-4-8" {% if _am=='claude-opus-4-8' %}selected{% endif %}>claude-opus-4-8 (máxima qualidade)</option>
+                                    <option value="claude-haiku-4-5-20251001" {% if _am=='claude-haiku-4-5-20251001' %}selected{% endif %}>claude-haiku-4.5 (rápido)</option>
+                                </select>
+                            </div>
+
+                            <!-- Campos OpenRouter (legado) -->
+                            <div id="ia-fields-openrouter" class="{% if _ia_anthropic %}hidden{% endif %}">
+                                <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">OpenRouter API Key</label>
+                                <input type="password" name="admin_openrouter_key"
+                                    value="{{ system_settings.admin_openrouter_key if system_settings else '' }}"
+                                    placeholder="sk-or-v1-..." title="Chave do OpenRouter usada pela IA Mestre (legado)"
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
+                                <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest mt-4">Modelo</label>
+                                <select name="admin_openrouter_model" title="Modelo usado pela IA Mestre (legado)"
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
+                                    <option value="openai/gpt-4o" {% if system_settings and system_settings.admin_openrouter_model=='openai/gpt-4o' %}selected{% endif %}>openai/gpt-4o</option>
+                                    <option value="openai/gpt-4o-mini" {% if system_settings and system_settings.admin_openrouter_model=='openai/gpt-4o-mini' %}selected{% endif %}>openai/gpt-4o-mini</option>
+                                    <option value="anthropic/claude-sonnet-4.6" {% if system_settings and system_settings.admin_openrouter_model=='anthropic/claude-sonnet-4.6' %}selected{% endif %}>anthropic/claude-sonnet-4.6</option>
+                                    <option value="anthropic/claude-haiku-4.5" {% if system_settings and system_settings.admin_openrouter_model=='anthropic/claude-haiku-4.5' %}selected{% endif %}>anthropic/claude-haiku-4.5</option>
+                                    <option value="google/gemini-2.0-flash-001" {% if system_settings and system_settings.admin_openrouter_model=='google/gemini-2.0-flash-001' %}selected{% endif %}>google/gemini-2.0-flash</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 

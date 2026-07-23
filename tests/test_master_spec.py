@@ -98,27 +98,39 @@ class TestFusaoProvisionamento:
 
 
 class TestCallerGate:
-    def test_gate_exige_chave_E_toggle_proprio(self, monkeypatch):
+    def test_gate_exige_chave_E_motor_anthropic(self, monkeypatch):
         from services import master_engine
 
-        # Sem chave: nunca.
+        monkeypatch.delenv("MASTER_ENGINE", raising=False)
+
+        # Sem chave: nunca, mesmo com o motor 'anthropic'.
         monkeypatch.setattr(master_engine, "_resolve_master_key", lambda: None)
-        monkeypatch.setenv("MASTER_ENGINE", "anthropic")
+        monkeypatch.setattr(master_engine, "_read_settings", lambda: ("anthropic", None))
         assert master_engine.is_configured() is False
 
-        # Com chave mas SEM toggle: segue legado (não vira structured sozinho só
-        # porque a chave do MOTOR apareceu).
+        # Chave presente mas motor 'openrouter' (padrão): segue legado. É o achado
+        # da revisão — a chave do MOTOR dos agentes não troca a Mestre sozinha.
         monkeypatch.setattr(master_engine, "_resolve_master_key", lambda: "sk-ant-xxx")
-        monkeypatch.delenv("MASTER_ENGINE", raising=False)
-        monkeypatch.delenv("MASTER_USE_SPEC", raising=False)
+        monkeypatch.setattr(master_engine, "_read_settings", lambda: ("openrouter", None))
         assert master_engine.is_configured() is False
 
-        # Chave + toggle explícito: structured.
+        # Chave + motor 'anthropic' escolhido no painel: structured.
+        monkeypatch.setattr(master_engine, "_read_settings", lambda: ("anthropic", None))
+        assert master_engine.is_configured() is True
+
+    def test_env_override_de_operacao(self, monkeypatch):
+        from services import master_engine
+        monkeypatch.setattr(master_engine, "_resolve_master_key", lambda: "sk-ant-xxx")
+
+        # env força 'anthropic' mesmo com o banco em 'openrouter'.
+        monkeypatch.setattr(master_engine, "_read_settings", lambda: ("openrouter", None))
         monkeypatch.setenv("MASTER_ENGINE", "anthropic")
         assert master_engine.is_configured() is True
-        monkeypatch.delenv("MASTER_ENGINE", raising=False)
-        monkeypatch.setenv("MASTER_USE_SPEC", "1")
-        assert master_engine.is_configured() is True
+
+        # env força 'openrouter' mesmo com o banco em 'anthropic' (kill-switch de ops).
+        monkeypatch.setattr(master_engine, "_read_settings", lambda: ("anthropic", None))
+        monkeypatch.setenv("MASTER_ENGINE", "openrouter")
+        assert master_engine.is_configured() is False
 
     @pytest.mark.asyncio
     async def test_generate_spec_sem_chave_levanta(self, monkeypatch):

@@ -2364,6 +2364,21 @@
         // Cards de configuracao (System Settings) — fechados por padrao, abrem ao clicar.
         const SETTINGS_CARDS = ['ia', 'stt', 'waha'];
 
+        // Alterna os campos da IA Mestre entre Anthropic (estruturado) e OpenRouter (legado).
+        function switchMestreEngine(engine) {
+            const anthropic = engine === 'anthropic';
+            const fa = document.getElementById('ia-fields-anthropic');
+            const fo = document.getElementById('ia-fields-openrouter');
+            if (fa) fa.classList.toggle('hidden', !anthropic);
+            if (fo) fo.classList.toggle('hidden', anthropic);
+            document.querySelectorAll('.ia-engine-opt').forEach(function (opt) {
+                const marcado = opt.querySelector('input[type=radio]').checked;
+                opt.classList.toggle('border-brand-red/50', marcado);
+                opt.classList.toggle('bg-brand-red/5', marcado);
+                opt.classList.toggle('border-gray-800', !marcado);
+            });
+        }
+
         function toggleSettingsCard(id) {
             const body = document.getElementById('body-' + id);
             if (!body) return;

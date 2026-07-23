@@ -1,0 +1,267 @@
+<!doctype html><html><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel - Axen WP</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <script>
+        // Design DNA "Corrente" — editorial claro, vermelho Axen como única cor viva.
+        // A escala `gray` e `white` são REMAPEADAS para tons claros/tinta, então as
+        // classes utilitárias dark existentes (text-white, bg-gray-900, text-gray-400…)
+        // passam a renderizar a paleta Corrente sem reescrever cada uma.
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Hanken Grotesk"', 'sans-serif'],
+                        display: ['Fraunces', 'Georgia', 'serif'],
+                        mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+                    },
+                    colors: {
+                        // Corrente ESCURA (warm): grafite/tinta escura + tinta clara quente.
+                        white: '#ECE4D6',   // remap: text-white -> off-white quente (texto primário)
+                        gray: {
+                            400: '#A99E8C',  // muted (texto secundário)
+                            500: '#746A5B',  // faint
+                            600: '#746A5B',
+                            700: '#3C352B',  // hairline forte
+                            800: '#2E2820',  // hairline
+                            850: '#262019',
+                            900: '#1C1815',  // surface (grafite quente)
+                            950: '#14110E',  // paper (fundo near-black quente)
+                        },
+                        brand: {
+                            red: '#D8371B',      // vermelho Axen (única cor viva)
+                            darkred: '#B02C12',  // sombra do gradiente/keyline
+                            black: '#14110E',
+                            surface: '#1C1815',
+                        },
+                        // Verde -> moss, um pouco mais claro para legibilidade no escuro
+                        green: { 400: '#6DA45C', 500: '#6DA45C', 600: '#588A49' },
+                        paper: '#14110E',
+                        surface: '#1C1815',
+                        ink: '#ECE4D6',
+                        muted: '#A99E8C',
+                        faint: '#746A5B',
+                        hair: '#2E2820',
+                        moss: '#6DA45C',
+                        ocre: '#CE9433',
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <link rel="stylesheet" href="/web/static/css/dashboard.css">
+</head><body class="bg-gray-950"><div id="systemModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeSystemModal()"></div>
+
+        <!-- Modal Content -->
+        <div
+            class="relative w-full max-w-xl max-h-[90vh] overflow-y-auto bg-gray-900 border border-gray-800 rounded-2xl shadow-[0_30px_70px_-30px_rgba(0,0,0,0.8)]">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-red to-brand-darkred"></div>
+
+            <div class="p-8">
+                <div class="flex justify-between items-start mb-6 border-b border-gray-800 pb-4">
+                    <div>
+                        <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight">System Settings</h3>
+                        <p class="text-xs text-gray-400 font-mono mt-1">Configuracoes globais — valem para todas as instancias</p>
+                    </div>
+                    <button onclick="closeSystemModal()" title="Fechar" class="text-gray-500 hover:text-white transition-colors">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                </div>
+
+                <form action="/admin/system/save" method="POST" class="space-y-3">
+
+                    <!-- ── Modulo: IA Mestre ── -->
+                    <div class="bg-[#211C17] border border-gray-800 rounded-xl overflow-hidden">
+                        <button type="button" onclick="toggleSettingsCard('ia')" title="Abrir para configurar a IA Mestre"
+                            class="w-full flex items-center gap-3 p-4 text-left hover:bg-white/[0.02] transition-colors">
+                            <div class="w-9 h-9 rounded-lg bg-brand-red/10 border border-brand-red/25 flex items-center justify-center flex-shrink-0">
+                                <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+                                </svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-white">IA Mestre</p>
+                                <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest truncate">Gera e otimiza os prompts dos agentes</p>
+                            </div>
+                            
+                            
+                            
+                            <span class="text-[10px] font-mono uppercase tracking-widest text-green-400 flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>Configurado</span>
+                            
+                            <svg id="chev-ia" class="w-4 h-4 text-gray-500 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
+
+                        <div id="body-ia" class="hidden px-4 pb-4 border-t border-gray-800 pt-4">
+                            <!-- Motor da Mestre: Anthropic (estruturado, AgentSpec) vs OpenRouter (legado, prosa) -->
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Motor</label>
+                            <div class="grid grid-cols-2 gap-2 mb-4">
+                                <label class="ia-engine-opt flex flex-col gap-0.5 p-2.5 rounded-lg border cursor-pointer transition-colors border-brand-red/50 bg-brand-red/5"
+                                    title="Motor recomendado — gera um AgentSpec estruturado e auditável">
+                                    <input type="radio" name="master_engine" value="anthropic" class="hidden" onchange="switchMestreEngine('anthropic')" checked>
+                                    <span class="text-xs font-bold text-white">Anthropic <span class="text-[9px] text-green-400 font-mono uppercase">recomendado</span></span>
+                                    <span class="text-[9px] text-gray-500 font-mono uppercase tracking-widest">Estruturado (AgentSpec)</span>
+                                </label>
+                                <label class="ia-engine-opt flex flex-col gap-0.5 p-2.5 rounded-lg border cursor-pointer transition-colors border-gray-800"
+                                    title="Motor legado — gera prosa via OpenRouter">
+                                    <input type="radio" name="master_engine" value="openrouter" class="hidden" onchange="switchMestreEngine('openrouter')" >
+                                    <span class="text-xs font-bold text-white">OpenRouter</span>
+                                    <span class="text-[9px] text-gray-500 font-mono uppercase tracking-widest">Legado (prosa)</span>
+                                </label>
+                            </div>
+
+                            <!-- Campos Anthropic -->
+                            <div id="ia-fields-anthropic" class="">
+                                <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Anthropic API Key</label>
+                                <input type="password" name="admin_anthropic_key"
+                                    value="sk-ant-x"
+                                    placeholder="sk-ant-..." title="Chave Anthropic usada pela IA Mestre (e pelo motor Claude dos agentes)"
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
+                                <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest mt-4">Modelo</label>
+                                <select name="admin_anthropic_model" title="Modelo Anthropic da IA Mestre"
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
+                                    
+                                    <option value="claude-sonnet-5" >claude-sonnet-5 (padrão)</option>
+                                    <option value="claude-opus-4-8" selected>claude-opus-4-8 (máxima qualidade)</option>
+                                    <option value="claude-haiku-4-5-20251001" >claude-haiku-4.5 (rápido)</option>
+                                </select>
+                            </div>
+
+                            <!-- Campos OpenRouter (legado) -->
+                            <div id="ia-fields-openrouter" class="hidden">
+                                <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">OpenRouter API Key</label>
+                                <input type="password" name="admin_openrouter_key"
+                                    value="sk-or-x"
+                                    placeholder="sk-or-v1-..." title="Chave do OpenRouter usada pela IA Mestre (legado)"
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
+                                <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest mt-4">Modelo</label>
+                                <select name="admin_openrouter_model" title="Modelo usado pela IA Mestre (legado)"
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
+                                    <option value="openai/gpt-4o" selected>openai/gpt-4o</option>
+                                    <option value="openai/gpt-4o-mini" >openai/gpt-4o-mini</option>
+                                    <option value="anthropic/claude-sonnet-4.6" >anthropic/claude-sonnet-4.6</option>
+                                    <option value="anthropic/claude-haiku-4.5" >anthropic/claude-haiku-4.5</option>
+                                    <option value="google/gemini-2.0-flash-001" >google/gemini-2.0-flash</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ── Modulo: Transcricao de audio ── -->
+                    <div class="bg-[#211C17] border border-gray-800 rounded-xl overflow-hidden">
+                        <button type="button" onclick="toggleSettingsCard('stt')" title="Abrir para configurar a transcricao de audio"
+                            class="w-full flex items-center gap-3 p-4 text-left hover:bg-white/[0.02] transition-colors">
+                            <div class="w-9 h-9 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center flex-shrink-0">
+                                <svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0-4a3 3 0 01-3-3V5a3 3 0 016 0v10a3 3 0 01-3 3z"></path>
+                                </svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-white">Transcricao de audio</p>
+                                <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest truncate">Audios do lead viram texto para o agente</p>
+                            </div>
+                            
+                            <span class="text-[10px] font-mono uppercase tracking-widest text-gray-600">Nao configurado</span>
+                            
+                            <svg id="chev-stt" class="w-4 h-4 text-gray-500 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
+
+                        <div id="body-stt" class="hidden px-4 pb-4 border-t border-gray-800 pt-4">
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest flex justify-between items-center">
+                                <span>Groq API Key</span>
+                                <a href="https://console.groq.com/keys" target="_blank" title="Criar uma chave gratuita no Groq"
+                                    class="text-brand-red hover:underline normal-case font-normal">Obter chave</a>
+                            </label>
+                            <input type="password" name="admin_groq_api_key"
+                                value=""
+                                placeholder="gsk_..."
+                                title="Chave Groq (Whisper) para transcrever audios em todos os agentes"
+                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
+                            <p class="text-[10px] text-gray-600 mt-1.5">
+                                Vale para todos os agentes. Se um agente tiver chave propria, a dele prevalece.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- ── Modulo: Servidor WhatsApp (WAHA) ── -->
+                    <div class="bg-[#211C17] border border-gray-800 rounded-xl overflow-hidden">
+                        <button type="button" onclick="toggleSettingsCard('waha')" title="Abrir para configurar o servidor WAHA"
+                            class="w-full flex items-center gap-3 p-4 text-left hover:bg-white/[0.02] transition-colors">
+                            <div class="w-9 h-9 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center flex-shrink-0">
+                                <svg class="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 24 24">
+                                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51l-.57-.01c-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.71.306 1.263.489 1.694.625.712.227 1.36.195 1.872.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                                </svg>
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm font-bold text-white">Servidor WhatsApp (WAHA)</p>
+                                <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest truncate">Configuracao unica — atende todos os clientes</p>
+                            </div>
+                            
+                            <span class="text-[10px] font-mono uppercase tracking-widest text-gray-600">Nao configurado</span>
+                            
+                            <svg id="chev-waha" class="w-4 h-4 text-gray-500 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                            </svg>
+                        </button>
+
+                        <div id="body-waha" class="hidden px-4 pb-4 border-t border-gray-800 pt-4">
+                            <p class="text-[10px] text-gray-600 mb-3 leading-relaxed">
+                                Depois de configurado aqui, em cada instancia voce so conecta o numero pelo QR.
+                            </p>
+
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">URL do servidor</label>
+                            <input type="text" name="admin_waha_url"
+                                value=""
+                                placeholder="https://axenwp-waha.xxxxx.easypanel.host"
+                                title="URL HTTPS da sua instancia WAHA"
+                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
+
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest mt-4 flex justify-between items-center">
+                                <span>API Key</span>
+                                
+                            </label>
+                            <input type="password" name="admin_waha_api_key" value=""
+                                placeholder="WAHA_API_KEY do EasyPanel"
+                                title="A variavel WAHA_API_KEY do servico WAHA no EasyPanel"
+                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
+
+                            <div class="flex items-center gap-2 mt-3">
+                                <button type="button" onclick="testWahaConnection(this)"
+                                    title="Salve primeiro; testa se o AxenWP alcanca o servidor WAHA"
+                                    class="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-green-400 bg-green-500/10 border border-green-500/25 hover:bg-green-500/20 transition-colors font-mono">
+                                    Testar conexao
+                                </button>
+                                <span id="waha_test_result" class="text-[10px] font-mono"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="pt-5 flex justify-end gap-3 border-t border-gray-800">
+                        <button type="button" onclick="closeSystemModal()" title="Descartar alteracoes"
+                            class="px-5 py-2 text-sm font-bold text-gray-400 hover:text-white uppercase tracking-widest transition-colors font-mono">Cancelar</button>
+                        <button type="submit" title="Salvar todas as configuracoes globais"
+                            class="btn-brand px-6 py-2 rounded-lg text-white font-bold text-sm uppercase tracking-widest font-mono flex items-center gap-2">
+                            Salvar Global
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>function toggleSettingsCard(id){var b=document.getElementById("body-"+id);if(b)b.classList.remove("hidden");}function switchMestreEngine(e){var a=e==="anthropic";document.getElementById("ia-fields-anthropic").classList.toggle("hidden",!a);document.getElementById("ia-fields-openrouter").classList.toggle("hidden",a);document.querySelectorAll(".ia-engine-opt").forEach(function(o){var m=o.querySelector("input").checked;o.classList.toggle("border-brand-red/50",m);o.classList.toggle("bg-brand-red/5",m);o.classList.toggle("border-gray-800",!m);});}function closeSystemModal(){}function testWahaConnection(){}window.addEventListener("load",function(){document.getElementById("body-ia").classList.remove("hidden");});</script></body></html>

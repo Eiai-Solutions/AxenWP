@@ -265,7 +265,11 @@ class SystemSettings(Base):
     admin_waha_url = Column(String(512), nullable=True)
     admin_waha_api_key = Column(String(512), nullable=True)
     # Chave Anthropic global (fallback quando o agente com motor 'claude' não tem a sua própria).
+    # Também é a chave da IA Mestre quando master_engine='anthropic'.
     admin_anthropic_key = Column(String(512), nullable=True)
+    # Motor da IA Mestre: 'openrouter' (legado, prosa) | 'anthropic' (AgentSpec estruturado).
+    master_engine = Column(String(20), default="openrouter", server_default="openrouter", nullable=False)
+    admin_anthropic_model = Column(String(80), nullable=True)  # modelo da Mestre; None → default do engine
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
