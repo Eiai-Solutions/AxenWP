@@ -1,14 +1,15 @@
 ---
 type: decisao
-status: draft
+status: solid
 updated: 2026-07-22
 sources: [utils/master_prompt.py, admin/ai_agent.py, services/agent_engine/tools.py, public/onboarding.py, ~/.claude/skills/criar-agente-sdk]
-confidence: medium
+confidence: high
 ---
 
 # Decisão: a IA Mestre carrega o MÉTODO de criação de agentes
 
-**Status:** direção travada com o dono (2026-07-22), **não implementada**. É o norte
+**Status:** direção travada + **as duas perguntas em aberto resolvidas com medição** (2026-07-22).
+**Não implementada.** É o norte
 da frente "Mestre" — escrito antes de codar justamente para não construí-la errado.
 
 ## O problema
@@ -83,12 +84,98 @@ Mestre confiável, esse passo vira automático.
 
 Sequência: validar o motor claude na Eiai → **evoluir a Mestre** → ligar o gatilho.
 
-## Pontos em aberto
+## O BLOQUEADOR que reordena tudo (medido 2026-07-22)
 
-- A Mestre roda hoje em **OpenRouter** (`admin/ai_agent.py:772`), enquanto o motor dos
-  agentes foi para **Anthropic direto** ([[decisoes/agente-claude-agent-sdk]]). O dono
-  levantou que a Mestre deveria ser "o maior agente SDK" — se ela vira tool-use com
-  Anthropic, ou segue single-turn no OpenRouter, **ainda não foi decidido**.
-- O catálogo de tools hoje é derivado da config (`services/agent_engine/tools.py:83`,
-  só qualificação + handoff). Um Agent Spec mais rico pede um catálogo maior.
-- Como versionar o Spec (o `agent_prompt_history` hoje versiona prosa).
+`create_agent_from_submission` (`admin/ai_agent.py:1479-1503`) grava **apenas** `name`,
+`prompt` e `form_data`. Todas as colunas que fazem o agente **funcionar** ficam no
+default do modelo (`data/models.py:123-131`): `is_active=False`,
+`qualification_enabled=False`, `qualification_pipeline_id=None`, `stage_id=None`,
+`fields=None`, `agent_engine='langchain'`.
+
+**A Mestre preenche 1 de 35 colunas.** Consequência: `tools.py:89-93` só inclui
+`register_qualified_lead` quando há `qualification_enabled` + campos — então um agente
+gerado hoje nasce **desligado e com uma tool só** (`escalate_to_human`), estruturalmente
+incapaz de qualificar. `qualification_handler.py:67` exige `pipeline_id and stage_id`
+para criar a opportunity; sem isso, nenhum efeito no CRM.
+
+> **Ligar o gatilho automático hoje produziria agentes mudos.** Este é o pré-requisito —
+> não o motor, não as tools. Um Agent Spec estruturado que não alimente essas colunas
+> não muda nada.
+
+## Perguntas resolvidas (2026-07-22)
+
+### 1. Motor: Anthropic **single-turn com structured output** — não tool-use
+
+**Migrar** para Anthropic direto, mas com um caller próprio fino (~30 linhas), **sem**
+reusar `ClaudeAgentEngine`.
+
+- **O driver é o output contract, não custo.** A API Anthropic tem `json_schema` de
+  primeira classe; o OpenRouter repassa com suporte variável por provider — seria
+  construir a peça mais crítica sobre uma garantia que não controlamos.
+- **Caching NÃO paga aqui** (mata o argumento herdado do motor): prefixo medido =
+  6.752 chars (~1.7-2.2k tokens), **abaixo do mínimo de 4096 do Opus** — `cache_control`
+  seria silenciosamente inoperante. E o padrão é esparso (1 chamada por onboarding, dias
+  de intervalo): break-even exige 21,7% de hit rate. Economia otimista: **~$7,56/ano**.
+  Passar `enable_prompt_cache=False` explicitamente.
+- **Reusar o `claude_engine` seria reuso negativo:** o loop é genérico
+  (`claude_engine.py:77-124`), mas `client.messages.create` (:85-91) passa só 5
+  parâmetros — sem `output_config`. Uma tool forçada de saída seria tratada como efeito
+  colateral (:101, :115-118): gastaria uma 2ª chamada e enterraria o Spec em
+  `ToolCall.result`. Some-se `AgentContext` exigindo `session_id`/`user_phone` dummy e
+  `max_tokens` por-instância (1024 vs os 6000 que a Mestre usa).
+
+### 2. Tools: **prefetch determinístico**, não tool-use
+
+A Mestre **precisa** de dado do CRM (`qualification_pipeline_id`, `stage_id`,
+`ghl_field_id` são IDs opacos que só existem no CRM do cliente) — mas isso **não** exige
+tool-use:
+
+- **Zero graus de liberdade:** `get_pipelines` (`ghl_service.py:372`) e
+  `get_custom_fields` (:422) recebem **um** argumento (`location_id`), já conhecido antes
+  do modelo rodar. Sempre as duas, sempre primeiro, sempre o mesmo argumento.
+- **Sem encadeamento:** `get_pipelines` já devolve os stages embutidos (prova no
+  consumidor, `dashboard.js:1346`); `get_custom_fields(model='all')` já concatena tudo.
+- **O código de prefetch já está escrito** no mesmo arquivo (`ai_agent.py:374-412`, com a
+  guarda fail-closed).
+- **Decisivo — fail-closed fica MAIS FRACO com tools:** `if pipelines.get("error"):
+  spec.qualification_enabled = False` é invariante de código. Com tools vira *instrução
+  de prompt* que o modelo pode desobedecer (ou nem chamar a tool). Trocar invariante por
+  promessa do LLM, justamente na propriedade de segurança, é regressão.
+
+> Tools se justificariam se a recuperação fosse **condicional/iterativa** (nenhum pipeline
+> casou → tentar outro critério → talvez criar). Não é o escopo.
+
+## Ordem de ataque corrigida
+
+1. **Ampliar `create_agent_from_submission`** para gravar as colunas de ativação e
+   qualificação. Sem isto, nada mais importa.
+2. **Prefetch** (2 awaits) + **Agent Spec validado** contra os conjuntos retornados —
+   diferença de conjuntos em Python, não julgamento do LLM.
+3. **Migrar a chamada** para Anthropic single-turn com `json_schema`.
+4. **Só então** o gatilho automático do onboarding.
+
+## Achados colaterais (dívidas que apareceram)
+
+- **A "Mestre" são 5 call-sites, e só 2 usam `master_prompt.py`.** `analyze-prompt`
+  (`ai_agent.py:758-901`) e `master-chat` (:914-1030) têm prompts **inline**. O método só
+  existe em 2 dos 5 lugares — e "uma chave a menos" só fecha se os 5 migrarem.
+- **Rota morta:** `save_form_data(regenerate=True)` (:1321) é inalcançável pela UI —
+  `dashboard.js:561` fixa `regenerate: false`.
+- **Onde o caching REALMENTE pagaria** (e ninguém tinha olhado): `analyze-prompt` reenvia
+  o prompt inteiro do agente **3x** (~15k tokens de repetição pura; o `JOORNEY_PROMPT` tem
+  20.247 chars) e `master-chat` reenvia a cada turno.
+- **`agent_engine` não aparece em `admin/` nem `web/`** — trocar langchain→claude só é
+  possível direto no banco.
+- **Lacuna de formulário:** o onboarding coleta 14 campos, `build_company_context` lê 19.
+  No caminho automático, `agent_type` cai em `inbound` por default (:1455) e o
+  `MASTER_SYSTEM_PROMPT` ramifica pesado em INBOUND vs OUTBOUND. É decisão de produto.
+- **`qualification_questions` (texto livre) nunca vira `qualification_fields` estruturado** —
+  não existe código fazendo essa ponte.
+
+## Sem prova (assumir com cautela)
+
+- Token count real não foi medido com `count_tokens` (usei ~4 chars/tok e cl100k). A
+  conclusão é robusta às duas estimativas, mas o número exato não está provado.
+- **Qualidade do output na migração**: o `MASTER_SYSTEM_PROMPT` foi tunado contra gpt-4o
+  (fallback em :1458). "Migrar melhora" é hipótese até um A/B.
+- Como versionar o Spec (`agent_prompt_history` hoje versiona prosa).

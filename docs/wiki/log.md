@@ -55,3 +55,10 @@
 - Output da Mestre deve virar **Agent Spec estruturado** (auditável) em vez de blob de prosa — hoje `master_prompt.py:314` produz texto.
 - Em aberto: Mestre segue OpenRouter (`admin/ai_agent.py:772`) ou vira tool-use na Anthropic como o motor? Catálogo de tools maior; versionamento do Spec.
 - Backlinks adicionados em `agente-claude-agent-sdk` e `produto-saas-fase0`.
+
+## [2026-07-22] update | Mestre: as duas perguntas em aberto, resolvidas com medição
+- `decisoes/ia-mestre-portadora-do-metodo.md` promovida a **status:solid**.
+- **Motor:** migrar para Anthropic **single-turn com `output_config`/json_schema**, caller próprio — NÃO tool-use, NÃO reusar `ClaudeAgentEngine` (que não suporta saída estruturada; tool forçada viraria efeito colateral). Driver = output contract, **não** caching: prefixo medido 6.752 chars fica ABAIXO do mínimo de 4096 do Opus (cache seria inoperante) e o padrão esparso dá break-even de 21,7% de hit rate → economia otimista ~$7,56/ano.
+- **Tools:** **prefetch determinístico** (2 awaits), não tool-use. Zero graus de liberdade (um só argumento, sempre as duas, sem encadeamento) e o código já existe em `ai_agent.py:374-412`. Decisivo: com tools o fail-closed viraria instrução de prompt em vez de invariante de código — regressão na propriedade de segurança.
+- **BLOQUEADOR descoberto:** `create_agent_from_submission` grava 1 de 35 colunas — agente nasce `is_active=False`, sem qualificação, com uma tool só. Ligar o gatilho automático hoje produziria agentes mudos. Vira o passo 1 da ordem corrigida.
+- Colaterais: a "Mestre" são 5 call-sites e só 2 usam `master_prompt.py`; rota `regenerate=True` morta na UI; `agent_engine` não existe no painel (troca só via banco); caching pagaria mesmo é em `analyze-prompt` (reenvia o prompt 3x).

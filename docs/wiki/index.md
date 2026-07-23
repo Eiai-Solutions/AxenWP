@@ -17,7 +17,7 @@ Cérebro externo do projeto. O código é a fonte da verdade; aqui mora o **porq
 - [[decisoes/agente-claude-agent-sdk]] — trocar LangChain single-turn por Claude Agent SDK (tool-use) · status:solid
 - [[decisoes/reestruturacao-abstracoes-primeiro]] — **plano-mãe:** ChannelAdapter + AgentEngine, migração strangler, sprints, 1º PR · status:solid
 - [[decisoes/identidade-do-contato]] — telefone e `@lid` são a mesma pessoa; 4 camadas de resolução · status:solid
-- [[decisoes/ia-mestre-portadora-do-metodo]] — a Mestre carrega o método (Fórmula) e emite Agent Spec; design vs implementação · status:draft
+- [[decisoes/ia-mestre-portadora-do-metodo]] — a Mestre carrega o método e emite Agent Spec; **motor e tools decididos**; bloqueador: agente nasce desligado · status:solid
 - [[decisoes/log-de-mensagens]] — log próprio de mensagens como base do painel de chat · status:solid
 
 ## Fluxos
