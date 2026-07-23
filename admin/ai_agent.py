@@ -1351,6 +1351,19 @@ async def save_form_data(location_id: str, request: Request):
                 generated_prompt = resp.json()["choices"][0]["message"]["content"]
                 agent.prompt = generated_prompt
 
+        # Esta é a ÚNICA tela onde `qualification_questions` de fato é digitado
+        # (a aba Cadastro). Sem provisionar aqui, o operador escreve as perguntas,
+        # o prompt muda, mas os campos nunca passam a existir — e o agente segue
+        # sem a tool de qualificação.
+        provisionamento = None
+        if not agent.qualification_fields:
+            from services.agent_provisioning import build_agent_provisioning
+
+            provisionamento = await build_agent_provisioning(location_id, form_data)
+            for chave, valor in provisionamento["config"].items():
+                if valor not in (None, [], False) and not getattr(agent, chave, None):
+                    setattr(agent, chave, valor)
+
         db.commit()
 
         if regenerate:
@@ -1370,6 +1383,7 @@ async def save_form_data(location_id: str, request: Request):
         return {
             "success": True,
             "prompt": agent.prompt if regenerate else None,
+            "provisioning": provisionamento["report"] if provisionamento else None,
         }
     except Exception as e:
         logger.error(f"Erro ao salvar form_data: {e}", exc_info=True)
@@ -1476,11 +1490,20 @@ async def create_agent_from_submission(submission_id: int, request: Request):
                 return {"success": False, "error": "Erro ao gerar prompt com IA Mestre."}
             generated_prompt = resp.json()["choices"][0]["message"]["content"]
 
+        # Config além do prompt: sem isto o agente nasce com UMA tool
+        # (escalate_to_human) e é incapaz de qualificar — o prompt seria bonito e
+        # inútil. Fail-closed: o que não der para determinar com segurança fica
+        # desligado e vira pendência explícita no report.
+        from services.agent_provisioning import build_agent_provisioning
+        provisionamento = await build_agent_provisioning(location_id, form_data)
+        cfg = provisionamento["config"]
+
         agent = (
             db.query(AIAgent)
             .filter(AIAgent.location_id == location_id, AIAgent.channel == "whatsapp")
             .first()
         )
+        aplicado = dict(cfg)
         if not agent:
             agent = AIAgent(
                 location_id=location_id,
@@ -1488,6 +1511,7 @@ async def create_agent_from_submission(submission_id: int, request: Request):
                 name=form_data.get("agent_name") or "Agente Inteligente",
                 prompt=generated_prompt,
                 form_data=form_data,
+                **cfg,
             )
             db.add(agent)
         else:
@@ -1495,6 +1519,23 @@ async def create_agent_from_submission(submission_id: int, request: Request):
             agent.form_data = form_data
             if form_data.get("agent_name"):
                 agent.name = form_data["agent_name"]
+            # Agente existente pode ter sido afinado à mão — regerar o prompt não
+            # pode desfazer isso. Só preenchemos o que ainda está vazio, e o que
+            # NÃO for aplicado sai do `aplicado` para o report não mentir.
+            if agent.qualification_fields:
+                # Campos curados pelo operador mandam: sem eles, pipeline/stage
+                # e o enabled derivado também não se aplicam.
+                aplicado = {}
+            else:
+                for chave, valor in list(aplicado.items()):
+                    if valor in (None, [], False) or getattr(agent, chave, None):
+                        aplicado.pop(chave, None)
+                        continue
+                    setattr(agent, chave, valor)
+                # Ligar a qualificação só faz sentido junto do funil — e nunca
+                # reverter um desligamento deliberado do operador.
+                if "qualification_pipeline_id" not in aplicado:
+                    aplicado.pop("qualification_enabled", None)
 
         submission.status = "processed"
         submission.processed_at = datetime.now(timezone.utc)
@@ -1514,11 +1555,30 @@ async def create_agent_from_submission(submission_id: int, request: Request):
         except Exception as e_snap:
             logger.warning(f"Falha snapshot prompt (create-from-onboarding): {e_snap}")
 
+        # O report descreve o que FOI GRAVADO, não o que foi calculado — senão
+        # avisaria "qualificação ligada" num agente cuja config manual venceu.
+        report = dict(provisionamento["report"])
+        if not aplicado:
+            report = {
+                **report,
+                "qualification_enabled": bool(agent.qualification_enabled),
+                "pipeline_definido": bool(agent.qualification_pipeline_id and agent.qualification_stage_id),
+                "pendencias": (report.get("pendencias") or [])
+                + ["Config de qualificação já existente foi PRESERVADA — nada sobrescrito."],
+            }
         logger.info(
             f"Agente gerado da submissão {submission_id} para tenant {location_id} "
-            f"({tenant.company_name})"
+            f"({tenant.company_name}) — qualificação={'ligada' if report['qualification_enabled'] else 'desligada'}, "
+            f"campos={len(report.get('fields') or [])}, pendências={len(report.get('pendencias') or [])}"
         )
-        return {"success": True, "agent_id": agent.id, "location_id": location_id}
+        return {
+            "success": True,
+            "agent_id": agent.id,
+            "location_id": location_id,
+            # O operador precisa saber o que foi ligado sozinho e o que falta —
+            # geração auditável, não mágica.
+            "provisioning": report,
+        }
 
     except Exception as e:
         logger.error(f"Erro ao criar agente da submissão {submission_id}: {e}", exc_info=True)

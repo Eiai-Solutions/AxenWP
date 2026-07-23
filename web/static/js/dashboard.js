@@ -506,8 +506,21 @@
                 const resp = await fetch(`/admin/agents/onboarding/submissions/${submissionId}/create-agent`, { method: 'POST' });
                 const data = await resp.json();
                 if (data.success) {
-                    if (feedback) { feedback.textContent = 'Agente gerado! Recarregando...'; feedback.classList.add('text-green-400'); }
-                    setTimeout(() => window.location.reload(), 1200);
+                    // Pendências têm que chegar aos olhos do operador: sem isso ele
+                    // vê "sucesso" e não sabe que a qualificação ficou desligada
+                    // (sem CRM, vários funis, campos sem correspondente).
+                    const pend = (data.provisioning && data.provisioning.pendencias) || [];
+                    if (pend.length) {
+                        if (feedback) {
+                            feedback.innerHTML = '<span class="text-green-400">Agente gerado.</span> '
+                                + '<span class="text-ocre">Pendências:</span> ' + pend.join(' · ');
+                        }
+                        alert('Agente gerado, mas com pendências:\n\n• ' + pend.join('\n• '));
+                        setTimeout(() => window.location.reload(), 400);
+                    } else {
+                        if (feedback) { feedback.textContent = 'Agente gerado! Recarregando...'; feedback.classList.add('text-green-400'); }
+                        setTimeout(() => window.location.reload(), 1200);
+                    }
                 } else {
                     btn.disabled = false;
                     btn.textContent = original;
