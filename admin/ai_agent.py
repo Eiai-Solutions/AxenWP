@@ -1318,38 +1318,18 @@ async def save_form_data(location_id: str, request: Request):
         if agent.name and form_data.get("agent_name"):
             agent.name = form_data["agent_name"]
 
+        fields_override = None
         if regenerate:
             settings = db.query(SystemSettings).first()
-            if not settings or not settings.admin_openrouter_key:
+            try:
+                # Mesmo gate do onboarding: Anthropic-Spec quando há chave, senão
+                # OpenRouter legado. No caminho Spec, os campos vêm da Mestre.
+                generated_prompt, fields_override = await _run_master(settings, form_data)
+            except _MasterError as e:
                 db.commit()
-                return {"success": False, "error": "IA Mestre não configurada (System Settings)."}
-
-            from utils.master_prompt import build_messages
-            api_key = settings.admin_openrouter_key
-            model = settings.admin_openrouter_model or "openai/gpt-4o"
-
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                resp = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "HTTP-Referer": "https://axenwp.com",
-                        "X-Title": "AxenWP Prompt Generator",
-                    },
-                    json={
-                        "model": model,
-                        "max_tokens": 6000,
-                        "messages": build_messages(form_data),
-                    }
-                )
-
-                if resp.status_code != 200:
-                    logger.error(f"Erro OpenRouter ao regenerar prompt: {resp.status_code} — {resp.text}")
-                    db.commit()
-                    return {"success": False, "error": "Erro ao gerar prompt com IA Mestre."}
-
-                generated_prompt = resp.json()["choices"][0]["message"]["content"]
-                agent.prompt = generated_prompt
+                logger.error(f"IA Mestre falhou ao regenerar ({location_id}): {e}")
+                return {"success": False, "error": str(e)}
+            agent.prompt = generated_prompt
 
         # Esta é a ÚNICA tela onde `qualification_questions` de fato é digitado
         # (a aba Cadastro). Sem provisionar aqui, o operador escreve as perguntas,
@@ -1359,7 +1339,7 @@ async def save_form_data(location_id: str, request: Request):
         if not agent.qualification_fields:
             from services.agent_provisioning import build_agent_provisioning
 
-            provisionamento = await build_agent_provisioning(location_id, form_data)
+            provisionamento = await build_agent_provisioning(location_id, form_data, fields_override=fields_override)
             for chave, valor in provisionamento["config"].items():
                 if valor not in (None, [], False) and not getattr(agent, chave, None):
                     setattr(agent, chave, valor)
@@ -1428,6 +1408,53 @@ async def list_onboarding_submissions(request: Request, location_id: Optional[st
         db.close()
 
 
+class _MasterError(Exception):
+    """Falha da IA Mestre — o chamador mantém a submissão pending, sem criar meia-boca."""
+
+
+async def _run_master(settings, form_data: dict) -> tuple[str, Optional[list]]:
+    """
+    Roda a IA Mestre e devolve (system_prompt, fields_override).
+
+    Gate: se há chave Anthropic, usa o caminho ESTRUTURADO (AgentSpec) — a Mestre
+    emite prompt + campos de qualificação como intenção. Senão, cai no legado
+    OpenRouter (prosa), e os campos vêm do parser do texto livre (fields=None).
+    Assim a migração é opt-in por configuração e reversível — sem regredir os
+    tenants atuais até o admin configurar a chave.
+    """
+    from services import master_engine
+
+    if master_engine.is_configured():
+        try:
+            spec = await master_engine.generate_agent_spec(form_data)
+        except Exception as e:
+            raise _MasterError(f"IA Mestre (Anthropic) falhou: {e}")
+        from utils.agent_spec import spec_fields_as_intent
+        fields = spec_fields_as_intent(spec) if spec.wants_qualification else []
+        # A intenção do Spec vai para form_data também, para o prompt/def refletirem.
+        if spec.agent_name:
+            form_data["agent_name"] = spec.agent_name
+        if spec.qualification_summary_prompt:
+            form_data["_spec_summary_prompt"] = spec.qualification_summary_prompt
+        return spec.system_prompt, fields
+
+    # Legado OpenRouter — prosa; campos derivados do texto livre (fields=None).
+    if not settings or not settings.admin_openrouter_key:
+        raise _MasterError("IA Mestre não configurada (System Settings).")
+    from utils.master_prompt import build_messages
+    model = settings.admin_openrouter_model or "openai/gpt-4o"
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=_openrouter_headers(settings.admin_openrouter_key, "AxenWP Prompt Generator"),
+            json={"model": model, "max_tokens": 6000, "messages": build_messages(form_data)},
+        )
+    if resp.status_code != 200:
+        logger.error(f"Erro OpenRouter na IA Mestre: {resp.status_code} — {resp.text}")
+        raise _MasterError("Erro ao gerar prompt com IA Mestre (OpenRouter).")
+    return resp.json()["choices"][0]["message"]["content"], None
+
+
 @router.post("/onboarding/submissions/{submission_id}/create-agent")
 async def create_agent_from_submission(submission_id: int, request: Request):
     """
@@ -1456,8 +1483,6 @@ async def create_agent_from_submission(submission_id: int, request: Request):
             return {"success": False, "error": "Tenant não encontrado."}
 
         settings = db.query(SystemSettings).first()
-        if not settings or not settings.admin_openrouter_key:
-            return {"success": False, "error": "IA Mestre não configurada (System Settings)."}
 
         # Merge: respostas do cliente + defaults operacionais que a IA Mestre espera.
         form_data = dict(submission.form_data or {})
@@ -1467,36 +1492,23 @@ async def create_agent_from_submission(submission_id: int, request: Request):
         form_data.setdefault("restrictions", "")
         form_data.setdefault("qualification_questions", "")
 
-        from utils.master_prompt import build_messages
-        api_key = settings.admin_openrouter_key
-        model = settings.admin_openrouter_model or "openai/gpt-4o"
-
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(
-                "https://openrouter.ai/api/v1/chat/completions",
-                headers=_openrouter_headers(api_key, "AxenWP Prompt Generator"),
-                json={
-                    "model": model,
-                    "max_tokens": 6000,
-                    "messages": build_messages(form_data),
-                },
-            )
-            if resp.status_code != 200:
-                logger.error(
-                    f"Erro OpenRouter ao gerar agente da submissão {submission_id}: "
-                    f"{resp.status_code} — {resp.text}"
-                )
-                # Submissão permanece 'pending' — dado preservado.
-                return {"success": False, "error": "Erro ao gerar prompt com IA Mestre."}
-            generated_prompt = resp.json()["choices"][0]["message"]["content"]
+        try:
+            generated_prompt, fields_override = await _run_master(settings, form_data)
+        except _MasterError as e:
+            # Submissão permanece 'pending' — dado preservado, não cria meia-boca.
+            logger.error(f"IA Mestre falhou na submissão {submission_id}: {e}")
+            return {"success": False, "error": str(e)}
 
         # Config além do prompt: sem isto o agente nasce com UMA tool
         # (escalate_to_human) e é incapaz de qualificar — o prompt seria bonito e
         # inútil. Fail-closed: o que não der para determinar com segurança fica
         # desligado e vira pendência explícita no report.
         from services.agent_provisioning import build_agent_provisioning
-        provisionamento = await build_agent_provisioning(location_id, form_data)
+        provisionamento = await build_agent_provisioning(location_id, form_data, fields_override=fields_override)
         cfg = provisionamento["config"]
+        # Resumo de qualificação é decisão segura da Mestre (não é ID de CRM).
+        if form_data.get("_spec_summary_prompt") and cfg.get("qualification_enabled"):
+            cfg["qualification_summary_prompt"] = form_data["_spec_summary_prompt"]
 
         agent = (
             db.query(AIAgent)

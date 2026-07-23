@@ -68,24 +68,40 @@ def derive_qualification_fields(questions_text: Optional[str]) -> list[dict]:
         else:
             brutos.append(linha)
 
-    campos: list[dict] = []
-    vistos: set[str] = set()
+    entradas = []
     for bruto in brutos:
         label = bruto.rstrip("?").strip()
-        if not label:
-            continue
         # Cabeçalho ("Perguntas de qualificação:") não é pergunta. Se virasse
         # campo, seria um campo OBRIGATÓRIO que o lead nunca pode responder — e a
         # qualificação nunca completaria (`_qualification_complete` exige todos).
-        if label.endswith(":"):
+        if not label or label.endswith(":"):
+            continue
+        entradas.append({"label": label})
+    return _com_chaves(entradas)
+
+
+def _com_chaves(entradas: list[dict]) -> list[dict]:
+    """
+    Atribui `key` (slug) a cada campo e deduplica — o ponto único onde a chave
+    nasce, seja a fonte o parser (operador) ou o AgentSpec (Mestre). Preserva
+    `description`/`type` quando vierem (o Spec os traz; o parser não).
+    """
+    campos: list[dict] = []
+    vistos: set[str] = set()
+    for e in entradas:
+        label = (e.get("label") or "").strip()
+        if not label or label.endswith(":"):
             continue
         chave = _slug(label)
-        if not chave:
-            continue
-        if chave in vistos:  # duas perguntas parecidas não podem colidir no schema
+        if not chave or chave in vistos:  # chaves iguais colidiriam no input_schema da tool
             continue
         vistos.add(chave)
-        campos.append({"label": label, "key": chave})
+        campo = {"label": label, "key": chave}
+        if e.get("description"):
+            campo["description"] = e["description"]
+        if e.get("type"):
+            campo["type"] = e["type"]
+        campos.append(campo)
         if len(campos) >= _MAX_CAMPOS:
             logger.info(f"[PROVISION] Teto de {_MAX_CAMPOS} campos de qualificação atingido; resto ignorado.")
             break
@@ -215,16 +231,26 @@ def pick_pipeline_stage(pipelines: list) -> tuple[Optional[str], Optional[str], 
     return pipeline.get("id"), entrada[0].get("id"), None
 
 
-async def build_agent_provisioning(location_id: str, form_data: dict) -> dict:
+async def build_agent_provisioning(
+    location_id: str, form_data: dict, fields_override: Optional[list[dict]] = None
+) -> dict:
     """
     Monta a parte da config do agente que NÃO é o prompt, e explica o que fez.
 
-    Devolve `config` (só as chaves que devem ser gravadas) e `report` (o que foi
-    ligado automaticamente e o que ficou pendente para o operador) — a geração
-    precisa ser auditável, não mágica.
+    Fonte dos campos, em ordem de prioridade:
+    1. `fields_override` — o AgentSpec da Mestre (intenção estruturada: label +
+       description + type). É a fonte definitiva quando a Mestre roda.
+    2. o parser do texto livre do formulário — fallback do que o operador digita.
+
+    Em ambos os casos `key`/`ghl_field_id`/pipeline/stage são resolvidos AQUI, por
+    código, contra o CRM real — nunca vêm do LLM. Devolve `config` (só as chaves a
+    gravar) e `report` (o que ligou e o que ficou pendente) — auditável, não mágico.
     """
     pendencias: list[str] = []
-    campos = derive_qualification_fields(form_data.get("qualification_questions"))
+    if fields_override is not None:
+        campos = _com_chaves(fields_override)
+    else:
+        campos = derive_qualification_fields(form_data.get("qualification_questions"))
 
     if not campos:
         return {
