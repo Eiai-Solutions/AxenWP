@@ -59,4 +59,4 @@ IA Mestre v2 (system prompt), memória 20 msgs (`chat_memory`), guardrails (stri
 - Destino do handoff de `escalate_to_human` (nota GHL? número operador?) — definir antes de ligar a flag.
 - Prova de comportamento por **shadow mode** (não é golden-ável).
 
-Relacionado: [[sintese/visao-geral]] · [[decisoes/reestruturacao-abstracoes-primeiro]] · [[decisoes/produto-saas-fase0]]
+Relacionado: [[sintese/visao-geral]] · [[decisoes/reestruturacao-abstracoes-primeiro]] · [[decisoes/produto-saas-fase0]] · [[decisoes/ia-mestre-portadora-do-metodo]] (quem **gera** as configs que rodam neste motor)

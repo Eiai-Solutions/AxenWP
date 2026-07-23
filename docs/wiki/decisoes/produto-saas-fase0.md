@@ -50,4 +50,4 @@ Migrations vão até **021** (não 18, como o CLAUDE.md diz — doc drift). Aloc
 ## Decisões de produto ainda abertas
 Modelo de pricing (por conversa/lead/msg/flat — default: Free + 1 pago), nível de compliance-alvo, quais canais depois.
 
-Relacionado: [[sintese/visao-geral]] · [[decisoes/reestruturacao-abstracoes-primeiro]] · [[decisoes/whatsapp-waha]] · [[decisoes/agente-claude-agent-sdk]]
+Relacionado: [[sintese/visao-geral]] · [[decisoes/reestruturacao-abstracoes-primeiro]] · [[decisoes/whatsapp-waha]] · [[decisoes/agente-claude-agent-sdk]] · [[decisoes/ia-mestre-portadora-do-metodo]] (o que torna o self-service **confiável**: agente gerado nasce correto por construção)

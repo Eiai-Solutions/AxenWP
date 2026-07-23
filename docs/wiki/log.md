@@ -47,3 +47,11 @@
 - Decisões travadas: Anthropic direto (caching), escalar=pausar+nota, Sonnet default.
 - Zero regressão nos 5 tenants (langchain default), confirmado por revisão adversarial; 4 achados corrigidos antes do deploy.
 - Aplicado o método da skill /criar-agente-sdk: qualificação/escalação viram tools (register_qualified_lead, escalate_to_human) em vez de marcador de texto + heurística morta.
+
+## [2026-07-22] add | Decisão: a IA Mestre carrega o método de criação de agentes
+- `decisoes/ia-mestre-portadora-do-metodo.md` (nova, status:draft) — direção travada com o dono, **não implementada**. Registrada ANTES de codar para não construir a Mestre errado.
+- Três camadas: skill `criar-agente-sdk` (metodologia) → Mestre (aplica, gera config) → agentes do cliente (config no motor).
+- A divisão que evita o erro: **design** (Fórmula/persona/slots/fail-closed) vai na Mestre; **implementação** (lock, idempotência, caching, loop de tools) é código do motor, feito uma vez. A Mestre configura, não reimplementa.
+- Output da Mestre deve virar **Agent Spec estruturado** (auditável) em vez de blob de prosa — hoje `master_prompt.py:314` produz texto.
+- Em aberto: Mestre segue OpenRouter (`admin/ai_agent.py:772`) ou vira tool-use na Anthropic como o motor? Catálogo de tools maior; versionamento do Spec.
+- Backlinks adicionados em `agente-claude-agent-sdk` e `produto-saas-fase0`.
