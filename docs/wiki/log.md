@@ -62,3 +62,8 @@
 - **Tools:** **prefetch determinístico** (2 awaits), não tool-use. Zero graus de liberdade (um só argumento, sempre as duas, sem encadeamento) e o código já existe em `ai_agent.py:374-412`. Decisivo: com tools o fail-closed viraria instrução de prompt em vez de invariante de código — regressão na propriedade de segurança.
 - **BLOQUEADOR descoberto:** `create_agent_from_submission` grava 1 de 35 colunas — agente nasce `is_active=False`, sem qualificação, com uma tool só. Ligar o gatilho automático hoje produziria agentes mudos. Vira o passo 1 da ordem corrigida.
 - Colaterais: a "Mestre" são 5 call-sites e só 2 usam `master_prompt.py`; rota `regenerate=True` morta na UI; `agent_engine` não existe no painel (troca só via banco); caching pagaria mesmo é em `analyze-prompt` (reenvia o prompt 3x).
+
+## [2026-07-22] update | Passo 1 da Mestre entregue + lição
+- `decisoes/ia-mestre-portadora-do-metodo.md`: passo 1 (`379e675`) marcado como feito. `services/agent_provisioning.py` monta a config além do prompt (campos, pipeline/stage, fail-closed real, report auditável).
+- Verificação adversarial pegou 4 bloqueadores antes do deploy — 2 de premissa: mudança seria no-op (form público não coleta o campo; testes injetavam à mão) e "fail-closed" estava fail-open.
+- **Lição:** a fonte dos campos deve ser o Agent Spec da Mestre (passo 3), não o parser de texto livre — que vira fallback. O encanamento do passo 1 permanece.

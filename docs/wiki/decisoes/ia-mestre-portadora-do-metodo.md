@@ -147,12 +147,38 @@ tool-use:
 
 ## Ordem de ataque corrigida
 
-1. **Ampliar `create_agent_from_submission`** para gravar as colunas de ativação e
-   qualificação. Sem isto, nada mais importa.
+1. ✅ **Ampliar `create_agent_from_submission`** para gravar as colunas de ativação e
+   qualificação. **Feito** (`379e675`) — ver seção abaixo.
 2. **Prefetch** (2 awaits) + **Agent Spec validado** contra os conjuntos retornados —
-   diferença de conjuntos em Python, não julgamento do LLM.
-3. **Migrar a chamada** para Anthropic single-turn com `json_schema`.
+   diferença de conjuntos em Python, não julgamento do LLM. *(prefetch já entregue no
+   passo 1 via `services/agent_provisioning.fetch_crm_catalog`)*
+3. **Migrar a chamada** para Anthropic single-turn com `json_schema` — **passo atual**.
 4. **Só então** o gatilho automático do onboarding.
+
+## Passo 1 — entregue (`379e675`), e o que ele ensinou
+
+`services/agent_provisioning.py` monta a config além do prompt: deriva
+`qualification_fields` do texto livre das perguntas, pré-busca o catálogo do CRM
+(pipelines + custom fields, determinístico), casa campo→CRM e escolhe pipeline/stage.
+Ligado em `create_agent_from_submission` **e** em `save_form_data` (aba Cadastro).
+
+**Fail-closed real:** sem funil definido, a qualificação fica **desligada**. Ligar sem
+pipeline/stage seria a pior falha e silenciosa — o agente diria ao lead que registrou, o
+handler pularia o CRM sem logar (`qualification_handler.py:67`), e `ai_service.py:319`
+**pausaria a IA para sempre** naquele lead (idempotência impede o reenvio mesmo após
+correção). Melhor não prometer qualificar do que engolir o lead.
+
+**A verificação adversarial pegou 4 bloqueadores** (corrigidos antes do deploy) — dois
+eram erro de premissa: (a) a mudança seria **no-op**, porque o formulário público não
+coleta `qualification_questions` e eu testava injetando o campo à mão; (b) meu
+"fail-closed" estava **fail-open** (ligava com pipeline vazio).
+
+> **Lição que reorienta o passo 3:** a fonte dos `qualification_fields` **não deve ser um
+> parser de texto livre** — deve ser o **Agent Spec da Mestre**, que tem o contexto do
+> negócio para decidir o que coletar e qual o tipo de cada campo. O parser fica como
+> fallback do que o operador digita à mão. O *encanamento* do passo 1 (escrever config,
+> pré-buscar CRM, fail-closed, report auditável, preservar config manual) é o que
+> permanece e o que o Spec vai alimentar.
 
 ## Achados colaterais (dívidas que apareceram)
 
@@ -169,8 +195,9 @@ tool-use:
 - **Lacuna de formulário:** o onboarding coleta 14 campos, `build_company_context` lê 19.
   No caminho automático, `agent_type` cai em `inbound` por default (:1455) e o
   `MASTER_SYSTEM_PROMPT` ramifica pesado em INBOUND vs OUTBOUND. É decisão de produto.
-- **`qualification_questions` (texto livre) nunca vira `qualification_fields` estruturado** —
-  não existe código fazendo essa ponte.
+- ~~`qualification_questions` (texto livre) nunca vira `qualification_fields`~~ — **resolvido
+  no passo 1** (`derive_qualification_fields`), mas ver a lição acima: o Spec da Mestre é a
+  fonte definitiva; o parser é o fallback do que o operador digita.
 
 ## Sem prova (assumir com cautela)
 
