@@ -707,6 +707,15 @@
             }
         }
 
+        // Alterna os campos do Agent Core entre Claude (Agent SDK) e OpenRouter (LangChain).
+        function switchAgentEngine(engine) {
+            const claude = engine === 'claude';
+            const fc = document.getElementById('ai-fields-claude');
+            const fl = document.getElementById('ai-fields-langchain');
+            if (fc) fc.classList.toggle('hidden', !claude);
+            if (fl) fl.classList.toggle('hidden', claude);
+        }
+
         function openAIAgentModal(btn) {
             const locationId = btn.dataset.location;
             const companyName = btn.dataset.company;
@@ -726,6 +735,12 @@
             document.getElementById('ai_prompt').value = agentPrompt || 'Você é um assistente virtual prestativo.';
             document.getElementById('ai_model').value = agentModel || 'openai/gpt-4o';
             document.getElementById('ai_api_key').value = agentApiKey || '';
+            // Motor do agente (claude = Agent SDK tool-use · langchain = OpenRouter legado).
+            const engine = (btn.dataset.aiengine || 'langchain').toLowerCase() === 'claude' ? 'claude' : 'langchain';
+            document.getElementById('ai_engine').value = engine;
+            document.getElementById('ai_anthropic_model').value = btn.dataset.aianthropicmodel || '';
+            document.getElementById('ai_anthropic_api_key').value = btn.dataset.aianthropickey || '';
+            switchAgentEngine(engine);
             document.getElementById('ai_is_active').checked = String(isActive).toLowerCase() === 'true';
 
             document.getElementById('ai_elevenlabs_api_key').value = elevenlabsKey || '';

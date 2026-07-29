@@ -41,6 +41,10 @@ class AgentSettingsInput(BaseModel):
     prompt: str = Field(min_length=1)
     model: str = Field(default="openai/gpt-4o", max_length=100)
     api_key: Optional[str] = None
+    # Motor do agente: 'claude' (Agent SDK tool-use) | 'langchain' (OpenRouter legado).
+    agent_engine: str = Field(default="langchain", max_length=20)
+    anthropic_model: Optional[str] = Field(default=None, max_length=80)
+    anthropic_api_key: Optional[str] = None
     tts_provider: str = Field(default="elevenlabs", max_length=20)
     elevenlabs_api_key: Optional[str] = None
     elevenlabs_voice_id: Optional[str] = None
@@ -109,6 +113,12 @@ class AgentSettingsInput(BaseModel):
             return "elevenlabs"
         v = str(v).strip().lower()
         return v if v in ("elevenlabs", "fishaudio") else "elevenlabs"
+
+    @field_validator("agent_engine", mode="before")
+    @classmethod
+    def normalize_agent_engine(cls, v):
+        # Só 'claude' e 'langchain' existem; qualquer outra coisa cai no legado.
+        return "claude" if str(v or "").strip().lower() == "claude" else "langchain"
 
     @field_validator("fishaudio_model", mode="before")
     @classmethod

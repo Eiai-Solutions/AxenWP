@@ -1227,9 +1227,46 @@
                             </div>
 
                             <div class="group">
-                                <label
-                                    class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Modelo
-                                    LLM</label>
+                                <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Motor do agente</label>
+                                <select id="ai_engine" name="agent_engine" onchange="switchAgentEngine(this.value)"
+                                    title="Claude (Agent SDK): tool-use, qualifica e escala via ferramentas. OpenRouter: single-turn legado."
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
+                                    <option value="claude">Claude Agent SDK (tool-use)</option>
+                                    <option value="langchain">OpenRouter (single-turn, legado)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Campos Claude (Agent SDK) — motor tool-use, Anthropic direto -->
+                        <div id="ai-fields-claude" class="space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div class="group">
+                                    <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Modelo Anthropic</label>
+                                    <select id="ai_anthropic_model" name="anthropic_model"
+                                        class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
+                                        <option value="">Padrão (herda do admin)</option>
+                                        <option value="claude-sonnet-5">claude-sonnet-5</option>
+                                        <option value="claude-opus-4-8">claude-opus-4-8 (máxima qualidade)</option>
+                                        <option value="claude-haiku-4-5-20251001">claude-haiku-4.5 (rápido)</option>
+                                    </select>
+                                </div>
+                                <div class="group">
+                                    <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest flex justify-between">
+                                        <span>Chave Anthropic</span>
+                                        <span class="text-gray-600 normal-case font-normal text-[10px]">vazio = usa a do admin</span>
+                                    </label>
+                                    <input type="password" id="ai_anthropic_api_key" name="anthropic_api_key"
+                                        class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
+                                        placeholder="sk-ant-...">
+                                </div>
+                            </div>
+                            <p class="text-[10px] text-gray-600">Motor recomendado: o agente usa ferramentas (qualificar lead, escalar para humano) e prompt caching. As tools são ligadas automaticamente pela aba Qualificação.</p>
+                        </div>
+
+                        <!-- Campos OpenRouter (LangChain legado) -->
+                        <div id="ai-fields-langchain" class="space-y-4 hidden">
+                            <div class="group">
+                                <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Modelo LLM</label>
                                 <select id="ai_model" name="model"
                                     class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
                                     <option value="openai/gpt-4o">GPT-4o (OpenAI)</option>
@@ -1240,24 +1277,22 @@
                                     <option value="meta-llama/llama-3.1-70b-instruct">LLaMA 3.1 70B (Meta)</option>
                                 </select>
                             </div>
-                        </div>
-
-                        <div class="group">
-                            <label
-                                class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between items-center gap-2">
-                                <span class="group-focus-within:text-white">Chave API (OpenRouter)</span>
-                                <span class="flex items-center gap-3">
-                                    <button type="button" id="btn_inherit_keys" onclick="inheritKeysFromWhatsApp()"
-                                        class="hidden text-sky-400 hover:underline normal-case font-normal text-[10px]">
-                                        Usar chaves do WhatsApp
-                                    </button>
-                                    <a href="https://openrouter.ai/keys" target="_blank"
-                                        class="text-brand-red hover:underline">Obter Chave</a>
-                                </span>
-                            </label>
-                            <input type="password" id="ai_api_key" name="api_key"
-                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
-                                placeholder="sk-or-v1-xxxxxxxxxx...">
+                            <div class="group">
+                                <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest flex justify-between items-center gap-2">
+                                    <span class="group-focus-within:text-white">Chave API (OpenRouter)</span>
+                                    <span class="flex items-center gap-3">
+                                        <button type="button" id="btn_inherit_keys" onclick="inheritKeysFromWhatsApp()"
+                                            class="hidden text-sky-400 hover:underline normal-case font-normal text-[10px]">
+                                            Usar chaves do WhatsApp
+                                        </button>
+                                        <a href="https://openrouter.ai/keys" target="_blank"
+                                            class="text-brand-red hover:underline">Obter Chave</a>
+                                    </span>
+                                </label>
+                                <input type="password" id="ai_api_key" name="api_key"
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
+                                    placeholder="sk-or-v1-xxxxxxxxxx...">
+                            </div>
                         </div>
 
                         <div class="group">

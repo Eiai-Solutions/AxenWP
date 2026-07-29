@@ -28,6 +28,9 @@ async def save_agent_settings(
     prompt: str = Form(...),
     model: str = Form("openai/gpt-4o"),
     api_key: Optional[str] = Form(None),
+    agent_engine: str = Form("langchain"),
+    anthropic_model: Optional[str] = Form(None),
+    anthropic_api_key: Optional[str] = Form(None),
     tts_provider: str = Form("elevenlabs"),
     elevenlabs_api_key: Optional[str] = Form(None),
     elevenlabs_voice_id: Optional[str] = Form(None),
@@ -63,6 +66,9 @@ async def save_agent_settings(
             prompt=prompt,
             model=model,
             api_key=api_key,
+            agent_engine=agent_engine,
+            anthropic_model=anthropic_model,
+            anthropic_api_key=anthropic_api_key,
             tts_provider=tts_provider,
             elevenlabs_api_key=elevenlabs_api_key,
             elevenlabs_voice_id=elevenlabs_voice_id,
@@ -111,6 +117,11 @@ async def save_agent_settings(
         agent.prompt = validated.prompt
         agent.model = validated.model
         agent.api_key = validated.api_key
+        agent.agent_engine = validated.agent_engine
+        agent.anthropic_model = validated.anthropic_model
+        # Só sobrescreve a chave Anthropic se veio preenchida (senão herda a do admin).
+        if (anthropic_api_key or "").strip():
+            agent.anthropic_api_key = anthropic_api_key.strip()
         agent.tts_provider = validated.tts_provider
         agent.elevenlabs_api_key = validated.elevenlabs_api_key
         agent.elevenlabs_voice_id = validated.elevenlabs_voice_id
