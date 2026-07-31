@@ -7,11 +7,6 @@
     <title>Painel - MilloChat</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.ico">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
-        rel="stylesheet">
     <script>
         // Design DNA "Corrente" — editorial escuro-quente, verde MilloChat como
         // única cor viva. A escala `gray` e `white` são REMAPEADAS para tons de
@@ -22,9 +17,11 @@
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['"Hanken Grotesk"', 'sans-serif'],
-                        display: ['Fraunces', 'Georgia', 'serif'],
-                        mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+                        // Mesma stack do site MilloChat: o padrao do Tailwind,
+                        // ou seja, a fonte do sistema (SF no Mac, Segoe UI no Windows).
+                        sans: ['ui-sans-serif', 'system-ui', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
+                        display: ['ui-sans-serif', 'system-ui', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
+                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', '"Liberation Mono"', '"Courier New"', 'monospace'],
                     },
                     colors: {
                         // Corrente ESCURA (warm): grafite/tinta escura + tinta clara quente.
@@ -65,8 +62,8 @@
             }
         }
     </script>
-    <script src="/static/js/dashboard.js?v=millochat-3" defer></script>
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=millochat-3">
+    <script src="/static/js/dashboard.js?v=millochat-4" defer></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=millochat-4">
 </head>
 
 <body class="font-sans min-h-screen antialiased selection:bg-brand-primary selection:text-[#FDFBF6]">

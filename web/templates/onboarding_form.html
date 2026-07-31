@@ -7,18 +7,14 @@
     <title>{{ company_name }} - Cadastro do Agente IA</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.ico">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;600&display=swap"
-        rel="stylesheet">
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['"Space Grotesk"', 'sans-serif'],
-                        display: ['Outfit', 'sans-serif'],
+                        sans: ['ui-sans-serif', 'system-ui', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
+                        display: ['ui-sans-serif', 'system-ui', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
+                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', '"Liberation Mono"', '"Courier New"', 'monospace'],
                     },
                     colors: {
                         gray: {
@@ -27,10 +23,11 @@
                             950: '#030712',
                         },
                         brand: {
-                            red: '#e11d48',
-                            darkred: '#be123c',
-                            glow: 'rgba(225, 29, 72, 0.4)'
-                        }
+                            primary: '#22C35D',      // verde MilloChat
+                            primaryDark: '#1A9B4A',
+                            glow: 'rgba(34, 195, 93, 0.4)'
+                        },
+                        danger: '#E4593F'            // erro — nunca a marca
                     }
                 }
             }
@@ -39,7 +36,7 @@
     <style>
         body {
             background-color: #030712;
-            background-image: radial-gradient(circle at top right, rgba(225, 29, 72, 0.08), transparent 50%),
+            background-image: radial-gradient(circle at top right, rgba(34, 195, 93, 0.08), transparent 50%),
                 radial-gradient(circle at bottom left, rgba(168, 85, 247, 0.06), transparent 50%);
             min-height: 100vh;
         }
@@ -53,8 +50,8 @@
 
         .input-dark:focus {
             outline: none;
-            border-color: #e11d48;
-            box-shadow: 0 0 0 3px rgba(225, 29, 72, 0.15);
+            border-color: #22C35D;
+            box-shadow: 0 0 0 3px rgba(34, 195, 93, 0.15);
         }
 
         .input-dark::placeholder {
@@ -71,7 +68,7 @@
         }
 
         .step-indicator.active {
-            background: #e11d48;
+            background: #22C35D;
             color: white;
         }
 
@@ -95,12 +92,12 @@
         }
 
         .btn-brand {
-            background: linear-gradient(135deg, #e11d48, #be123c);
+            background: linear-gradient(135deg, #22C35D, #1A9B4A);
             transition: all 0.2s;
         }
 
         .btn-brand:hover {
-            box-shadow: 0 0 20px rgba(225, 29, 72, 0.3);
+            box-shadow: 0 0 20px rgba(34, 195, 93, 0.3);
             transform: translateY(-1px);
         }
 
@@ -123,8 +120,8 @@
         }
 
         .spinner {
-            border: 3px solid rgba(225, 29, 72, 0.2);
-            border-top: 3px solid #e11d48;
+            border: 3px solid rgba(34, 195, 93, 0.2);
+            border-top: 3px solid #22C35D;
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -443,9 +440,9 @@
 
         <!-- Error Container -->
         <div id="errorContainer" class="hidden max-w-lg mx-auto mt-10">
-            <div class="bg-gray-900/50 border border-red-500/30 rounded-2xl p-8 text-center">
-                <div class="w-20 h-20 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center mx-auto mb-6">
-                    <svg class="w-10 h-10 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div class="bg-gray-900/50 border border-danger/30 rounded-2xl p-8 text-center">
+                <div class="w-20 h-20 rounded-full bg-danger/10 border border-danger/30 flex items-center justify-center mx-auto mb-6">
+                    <svg class="w-10 h-10 text-danger" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                     </svg>
                 </div>
@@ -495,8 +492,8 @@
             for (const field of requiredFields) {
                 if (!field.value.trim()) {
                     field.focus();
-                    field.classList.add('border-red-500');
-                    setTimeout(() => field.classList.remove('border-red-500'), 2000);
+                    field.classList.add('border-danger');
+                    setTimeout(() => field.classList.remove('border-danger'), 2000);
                     valid = false;
                     break;
                 }

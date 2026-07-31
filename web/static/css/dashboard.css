@@ -89,7 +89,7 @@ body {
 
 /* Plaquetas mono (Location IDs, códigos de motor). */
 .plate {
-    font-family: 'IBM Plex Mono', ui-monospace, monospace;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
 }

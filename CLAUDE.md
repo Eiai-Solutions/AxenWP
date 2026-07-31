@@ -182,8 +182,19 @@ docker-compose up -d
 
 Identidade visual do painel (escolhida 2026-07; rebrand AxenWP→MilloChat em 2026-07-31 — mudou só a cor de marca, a estrutura editorial permanece). **Sempre siga este DNA ao mexer em UI** — não re-rolar. Registro: **produto/painel = clareza + contenção** (cards contidos, hairline, motion mínimo, densidade legível).
 
-- **Direção estética:** editorial-confiante, "livro-razão de operação" — grafite/tinta quente + off-white + hairlines + algarismos tabulares. Lê como um broadsheet financeiro que comanda os agentes de WhatsApp. **Escuro-quente** (variante ativa, escolhida pelo Luiz por ergonomia de control-room; a mesma estrutura editorial existe em variante clara/creme se um dia quiser inverter — é só trocar os tokens).
-- **Tipografia:** display **Fraunces** (serif editorial de alto contraste, 600, optical-sizing) para títulos/wordmark/numerais grandes · UI/tabela **Hanken Grotesk** (400–700) · dados/IDs/plaquetas **IBM Plex Mono** (400/500, tabular). **Banidas:** Inter, Roboto, Space Grotesk, Outfit.
+- **Direção estética:** "livro-razão de operação" — grafite/tinta quente + off-white + hairlines + algarismos tabulares. A estrutura (densidade, régua, contenção) carrega a identidade; a tipografia é neutra de propósito. **Escuro-quente** (variante ativa, escolhida pelo Luiz por ergonomia de control-room; a mesma estrutura editorial existe em variante clara/creme se um dia quiser inverter — é só trocar os tokens).
+- **Tipografia — fonte do SISTEMA (decisão do Luiz, 2026-07-31).** O painel usa a
+  mesma stack do site MilloChat, que é o default do Tailwind:
+  `ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"`
+  (SF no Mac, Segoe UI no Windows, Roboto no Android). `display` = a mesma stack
+  do `sans`; `mono` = default do Tailwind (`ui-monospace, SFMono-Regular, Menlo…`).
+  - **Não reintroduzir webfont** sem o Luiz pedir. Antes eram Fraunces + Hanken
+    Grotesk + IBM Plex Mono; ele inspecionou o site, viu `system-ui` e mandou
+    igualar. Registrado que isso troca uma decisão tipográfica por nenhuma e faz o
+    painel mudar de cara conforme o SO — foi decisão consciente dele.
+  - Sem `<link>` para fonts.googleapis em nenhum template: eram render-blocking
+    e agora não servem a nada.
+  - **Banidas** se um dia voltar a webfont: Inter, Roboto, Space Grotesk, Outfit.
 - **Cor:** o **verde MilloChat #22C35D** é a ÚNICA cor viva (marca, nav ativo, agente no ar, botão primário, toggle ativo, keyline). Herdado do site/logo do MilloChat (`hsl(142 70% 45%)`), com **8.09:1** sobre o fundo — o vermelho anterior tinha 4.02:1 e reprovava em AA. Token: `brand-primary` (+ `brand-primaryDark #1A9B4A` para hover/sombra).
   - **Botão primário:** fundo verde com **texto ESCURO** (`#0F1A13`, quase-preto levemente esverdeado) = **7.67:1** medido. Texto branco sobre o verde daria 2.33:1 e reprovaria — nunca reintroduzir `color: #FDFBF6` no `.btn-brand`.
   - **"No ar/conectado" usa o MESMO verde da marca** — num produto de WhatsApp, saudável e marca são a mesma ideia; dois verdes próximos só confundiriam.
