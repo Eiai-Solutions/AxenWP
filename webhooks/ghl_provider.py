@@ -1,6 +1,6 @@
 """
 Recebe webhooks do GoHighLevel (Outbound).
-Quando o usuário envia uma mensagem no CRM usando o Axen WP como provider,
+Quando o usuário envia uma mensagem no CRM usando o MilloChat como provider,
 este webhook recebe a mensagem e a repassa para a Z-API.
 """
 
@@ -78,7 +78,7 @@ async def process_outbound_message(payload: GHLOutboundPayload):
     if not getattr(tenant, 'is_active', True):
         logger.info(f"GHL Outbound abortado: Automação pausada/desativada para {location_id}.")
         await ghl_service.update_message_status(
-            location_id, payload.messageId, status="failed", error_message="Automação Axen WP pausada no painel."
+            location_id, payload.messageId, status="failed", error_message="Automação MilloChat pausada no painel."
         )
         return
 

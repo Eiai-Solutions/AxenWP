@@ -17,11 +17,11 @@ class Settings(BaseSettings):
         description="URI de callback OAuth",
     )
     ghl_conversation_provider_id: str = Field(
-        default="", description="ID do Conversation Provider Axen WP"
+        default="", description="ID do Conversation Provider MilloChat"
     )
 
     database_url: str = Field(
-        default="sqlite:///./data/axenwp.db",
+        default="sqlite:///./data/millochat.db",
         description="URL de conexão com o banco de dados (ex: postgresql://...)"
     )
 
@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     )
 
     # URL pública do servidor (usada para registrar webhooks externos como Telegram).
-    # Em produção atrás de proxy, defina explicitamente. Ex: https://axenwp.eiai.com.br
+    # Em produção atrás de proxy, defina explicitamente. Ex: https://millochat.com
     public_base_url: str = Field(default="", description="URL HTTPS pública do servidor")
 
     # Token de inspeção read-only — quando setado, libera /admin/inspect/* via header

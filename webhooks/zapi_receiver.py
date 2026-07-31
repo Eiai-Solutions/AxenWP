@@ -277,7 +277,7 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
     # seriam duas pontas atendendo o mesmo número.
     if active_whatsapp_provider(tenant) == WAHA:
         logger.info(f"[CHANNEL] Z-API Inbound ignorado: {location_id} usa WAHA como provedor.")
-        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "provider_inactive"})
+        metrics.inc("millochat_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "provider_inactive"})
         return
 
     pm = ZAPIChannel().parse_inbound(location_id, payload)
@@ -497,21 +497,21 @@ async def zapi_inbound_webhook(
     URL de Webhook que você vai colar no painel administrativo do Z-API:
     https://seu-servidor.com/webhook/zapi/inbound/{SEU_LOCATION_ID_DO_GHL}
 
-    Ex: https://axenwp.meudominio.com/webhook/zapi/inbound/HjiMUOsCCHCjtxzEf8PR
+    Ex: https://millochat.com/webhook/zapi/inbound/HjiMUOsCCHCjtxzEf8PR
     """
     if not is_valid_location_id(location_id):
         logger.warning(f"Z-API inbound: location_id rejeitado por validação ({location_id!r})")
-        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_location_id"})
+        metrics.inc("millochat_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_location_id"})
         return {"success": False, "error": "Invalid location_id"}
 
     try:
         payload = await request.json()
     except Exception:
         logger.error("Payload Z-API Inbound inválido.")
-        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_json"})
+        metrics.inc("millochat_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_json"})
         return {"success": False, "error": "Invalid JSON"}
 
-    metrics.inc("axenwp_webhooks_received_total", labels={"channel": "whatsapp"})
+    metrics.inc("millochat_webhooks_received_total", labels={"channel": "whatsapp"})
     # Envia pro processamento em background
     background_tasks.add_task(process_inbound_message, location_id, payload)
 

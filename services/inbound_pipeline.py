@@ -532,7 +532,7 @@ async def handle_inbound(adapter, tenant, pm: ParsedMessage) -> None:
                 f"[PIPELINE] Inbound de {pm.sender_id} não foi espelhado no CRM "
                 f"({pm.location_id}); seguindo com a IA mesmo assim."
             )
-            metrics.inc("axenwp_crm_mirror_failed_total", labels={"channel": pm.channel})
+            metrics.inc("millochat_crm_mirror_failed_total", labels={"channel": pm.channel})
 
     # Log completo (base do painel próprio) — depois dos filtros e da resolução de
     # contato, e ANTES do gate da IA, para registrar toda mensagem do lead mesmo

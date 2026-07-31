@@ -62,7 +62,7 @@ def _get_admin_password() -> str:
 
 def _make_session_token(password: str) -> str:
     """Deriva um token de sessão seguro a partir da senha (nunca expõe a senha no cookie)."""
-    return hmac.new(password.encode(), b"axenwp-admin-session", hashlib.sha256).hexdigest()
+    return hmac.new(password.encode(), b"millochat-admin-session", hashlib.sha256).hexdigest()
 
 
 def verify_admin(admin_session: Optional[str] = Cookie(None)) -> bool:

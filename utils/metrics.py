@@ -76,6 +76,6 @@ def prometheus_text() -> str:
                 lines.append(f"{name}{{{label_str}}} {count}")
             else:
                 lines.append(f"{name} {count}")
-    lines.append(f"# TYPE axenwp_uptime_seconds gauge")
-    lines.append(f"axenwp_uptime_seconds {int(time.time() - _started_at)}")
+    lines.append(f"# TYPE millochat_uptime_seconds gauge")
+    lines.append(f"millochat_uptime_seconds {int(time.time() - _started_at)}")
     return "\n".join(lines) + "\n"

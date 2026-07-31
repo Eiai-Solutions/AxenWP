@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Axen WP - Admin Login</title>
+    <title>MilloChat - Admin Login</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.ico">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -64,18 +64,18 @@
 </head>
 
 <body
-    class="flex items-center justify-center min-h-screen text-gray-300 antialiased selection:bg-brand-red selection:text-white">
+    class="flex items-center justify-center min-h-screen text-gray-300 antialiased selection:bg-brand-primary selection:text-white">
 
     <div
-        class="glass-panel p-10 rounded-2xl w-[420px] relative overflow-hidden transition-all duration-500 hover:border-brand-red/30">
+        class="glass-panel p-10 rounded-2xl w-[420px] relative overflow-hidden transition-all duration-500 hover:border-brand-primary/30">
         <!-- Decorative subtle accent -->
         <div
-            class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-brand-red to-transparent opacity-70">
+            class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-brand-primary to-transparent opacity-70">
         </div>
 
         <div class="mb-10 text-center">
-            <h1 class="font-display text-4xl font-extrabold tracking-tight text-white mb-2 uppercase">Axen<span
-                    class="text-brand-red">WP</span></h1>
+            <h1 class="font-display text-4xl font-extrabold tracking-tight text-white mb-2 uppercase">Millo<span
+                    class="text-brand-primary">Chat</span></h1>
             <p class="text-gray-400 text-sm tracking-widest uppercase opacity-80 font-semibold">Central Admin Gateway
             </p>
         </div>
@@ -83,7 +83,7 @@
         <form action="/admin/login" method="POST" class="space-y-6">
             {% if error %}
             <div
-                class="bg-brand-red/10 border border-brand-red/50 text-red-400 px-4 py-3 rounded-lg flex items-start gap-3 text-sm animate-[pulse_2s_ease-in-out_infinite]">
+                class="bg-brand-primary/10 border border-brand-primary/50 text-red-400 px-4 py-3 rounded-lg flex items-start gap-3 text-sm animate-[pulse_2s_ease-in-out_infinite]">
                 <svg class="h-5 w-5 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -94,7 +94,7 @@
 
             <div class="group">
                 <label for="password"
-                    class="block text-gray-400 text-xs font-bold mb-2 uppercase tracking-wider group-focus-within:text-brand-red transition-colors">Credential
+                    class="block text-gray-400 text-xs font-bold mb-2 uppercase tracking-wider group-focus-within:text-brand-primary transition-colors">Credential
                     Key</label>
                 <input type="password" id="password" name="password"
                     class="glow-input bg-gray-900 border border-gray-700 text-white rounded-lg w-full py-3 px-4 leading-tight focus:outline-none transition-all duration-300 placeholder-gray-600 font-mono tracking-widest"
@@ -102,7 +102,7 @@
             </div>
 
             <button type="submit"
-                class="btn-glow w-full bg-brand-red hover:bg-brand-darkred text-white font-bold py-3 px-4 rounded-lg focus:outline-none transition-all duration-300 flex justify-center items-center gap-2 mt-4 uppercase tracking-widest text-sm">
+                class="btn-glow w-full bg-brand-primary hover:bg-brand-primaryDark text-white font-bold py-3 px-4 rounded-lg focus:outline-none transition-all duration-300 flex justify-center items-center gap-2 mt-4 uppercase tracking-widest text-sm">
                 <span>Authorize</span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"
                     xmlns="http://www.w3.org/2000/svg">

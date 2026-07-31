@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel - Axen WP</title>
+    <title>Painel - MilloChat</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.ico">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,10 +13,11 @@
         href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
         rel="stylesheet">
     <script>
-        // Design DNA "Corrente" — editorial claro, vermelho Axen como única cor viva.
-        // A escala `gray` e `white` são REMAPEADAS para tons claros/tinta, então as
-        // classes utilitárias dark existentes (text-white, bg-gray-900, text-gray-400…)
-        // passam a renderizar a paleta Corrente sem reescrever cada uma.
+        // Design DNA "Corrente" — editorial escuro-quente, verde MilloChat como
+        // única cor viva. A escala `gray` e `white` são REMAPEADAS para tons de
+        // tinta, então as classes utilitárias dark existentes (text-white,
+        // bg-gray-900, text-gray-400…) renderizam a paleta sem reescrever cada uma.
+        // `danger` é vermelho SEMÂNTICO (erro/destrutivo) — nunca marca.
         tailwind.config = {
             theme: {
                 extend: {
@@ -39,31 +40,36 @@
                             950: '#14110E',  // paper (fundo near-black quente)
                         },
                         brand: {
-                            red: '#D8371B',      // vermelho Axen (única cor viva)
-                            darkred: '#B02C12',  // sombra do gradiente/keyline
+                            primary: '#22C35D',      // verde MilloChat — 8.09:1 sobre o fundo
+                            primaryDark: '#1A9B4A',  // hover/sombra do keyline
                             black: '#14110E',
                             surface: '#1C1815',
                         },
-                        // Verde -> moss, um pouco mais claro para legibilidade no escuro
-                        green: { 400: '#6DA45C', 500: '#6DA45C', 600: '#588A49' },
+                        // Vermelho semântico: erro, falha, ação destrutiva. Não é marca.
+                        // #E4593F em vez do antigo #D8371B — 5.20:1 contra 4.02:1 (reprovava).
+                        danger: '#E4593F',
+                        // "No ar/conectado" usa o MESMO verde da marca — num produto de
+                        // WhatsApp, saudável e marca são a mesma ideia; dois verdes
+                        // parecidos só confundiriam.
+                        green: { 400: '#22C35D', 500: '#22C35D', 600: '#1A9B4A' },
                         paper: '#14110E',
                         surface: '#1C1815',
                         ink: '#ECE4D6',
                         muted: '#A99E8C',
                         faint: '#746A5B',
                         hair: '#2E2820',
-                        moss: '#6DA45C',
+                        moss: '#22C35D',
                         ocre: '#CE9433',
                     }
                 }
             }
         }
     </script>
-    <script src="/static/js/dashboard.js?v=corrente-16" defer></script>
-    <link rel="stylesheet" href="/static/css/dashboard.css?v=corrente-16">
+    <script src="/static/js/dashboard.js?v=millochat-2" defer></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css?v=millochat-2">
 </head>
 
-<body class="font-sans min-h-screen antialiased selection:bg-brand-red selection:text-[#FDFBF6]">
+<body class="font-sans min-h-screen antialiased selection:bg-brand-primary selection:text-[#FDFBF6]">
 
     <!-- Top Navigation -->
     <nav class="border-b border-gray-800 bg-[#14110E]/85 backdrop-blur-xl sticky top-0 z-40">
@@ -71,21 +77,21 @@
             <div class="flex justify-between items-center h-16">
                 <div class="flex items-center gap-3">
                     <div
-                        class="axen-mark w-8 h-8 rounded-lg bg-brand-red flex items-center justify-center shadow-[0_6px_16px_-8px_rgba(149,38,15,0.6)]">
+                        class="millo-mark w-8 h-8 rounded-lg bg-brand-primary flex items-center justify-center shadow-[0_6px_16px_-8px_rgba(26,155,74,0.55)]">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                         </svg>
                     </div>
-                    <span class="font-display text-xl font-bold text-white tracking-widest uppercase">Axen<span
-                            class="text-brand-red">WP</span></span>
+                    <span class="font-display text-xl font-bold text-white tracking-widest uppercase">Millo<span
+                            class="text-brand-primary">Chat</span></span>
                     <span
-                        class="hidden md:inline-block ml-4 px-2 py-1 bg-gray-900 rounded-md text-[10px] uppercase tracking-widest border border-gray-800 text-gray-400 font-mono">GHL
-                        ↔ Z-API Engine</span>
+                        class="hidden md:inline-block ml-4 px-2 py-1 bg-gray-900 rounded-md text-[10px] uppercase tracking-widest border border-gray-800 text-gray-400 font-mono">WhatsApp
+                        ↔ CRM Engine</span>
                 </div>
                 <div class="flex items-center gap-6">
                     <button onclick="openSystemModal()"
-                        class="text-brand-red hover:text-white text-[10px] uppercase font-mono tracking-widest font-bold transition-colors flex items-center gap-2 border border-brand-red/30 bg-brand-red/10 px-3 py-1.5 rounded-lg shadow-[0_0_15px_rgba(225,29,72,0.1)]">
+                        class="text-brand-primary hover:text-white text-[10px] uppercase font-mono tracking-widest font-bold transition-colors flex items-center gap-2 border border-brand-primary/30 bg-brand-primary/10 px-3 py-1.5 rounded-lg shadow-[0_0_15px_rgba(34,195,93,0.10)]">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
@@ -124,7 +130,7 @@
 
         {% if error_msg %}
         <div
-            class="bg-brand-red/10 border border-brand-red/30 text-red-400 px-4 py-4 rounded-xl relative mb-8 flex items-start gap-3 backdrop-blur-sm shadow-lg">
+            class="bg-danger/10 border border-danger/30 text-danger px-4 py-4 rounded-xl relative mb-8 flex items-start gap-3 backdrop-blur-sm shadow-lg">
             <svg class="h-5 w-5 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                     d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
@@ -153,7 +159,7 @@
         <!-- Lista de instâncias — cards. Clicar abre as conexões/detalhes da empresa. -->
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 mb-12">
             {% for tenant in tenants %}
-            <div class="group relative glass-panel rounded-2xl p-5 cursor-pointer transition-all hover:border-brand-red/40 hover:-translate-y-0.5 {{ 'corrente' if tenant.is_active else '' }}"
+            <div class="group relative glass-panel rounded-2xl p-5 cursor-pointer transition-all hover:border-brand-primary/40 hover:-translate-y-0.5 {{ 'corrente' if tenant.is_active else '' }}"
                 onclick="openInstanceSettings('{{ tenant.location_id }}', '{{ tenant.company_name | forceescape }}', '{{ tenant.mode }}', '{{ tenant.client_id or '' }}', '{{ tenant.zapi_instance_id or '' }}', '{{ tenant.zapi_token or '' }}', '{{ tenant.zapi_client_token or '' }}', '{{ tenant.pit_token or '' }}', '{{ tenant.telegram_bot_token or '' }}', '{{ tenant.telegram_bot_username or '' }}')"
                 title="Abrir conexões e detalhes de {{ tenant.company_name }}"
                 data-location="{{ tenant.location_id }}"
@@ -191,7 +197,7 @@
                 <!-- Topo: identidade + toggle -->
                 <div class="flex items-start justify-between gap-3">
                     <div class="flex items-center gap-3 min-w-0">
-                        <div class="h-9 w-9 shrink-0 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center text-brand-red font-display font-bold">
+                        <div class="h-9 w-9 shrink-0 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center text-brand-primary font-display font-bold">
                             {{ tenant.company_name[0]|upper }}
                         </div>
                         <div class="min-w-0">
@@ -206,7 +212,7 @@
                         <form method="POST" action="/admin/tenant/{{ tenant.location_id }}/toggle" class="flex items-center">
                             <input type="hidden" name="is_active" value="{{ 'false' if tenant.is_active else 'true' }}">
                             <button type="submit"
-                                class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-brand-red focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors {{ 'bg-brand-red shadow-[0_4px_12px_-5px_rgba(216,55,27,0.55)]' if tenant.is_active else 'bg-[#3C352B]' }}"
+                                class="relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none focus:ring-2 focus:ring-brand-primary focus:ring-offset-2 focus:ring-offset-gray-900 transition-colors {{ 'bg-brand-primary shadow-[0_4px_12px_-5px_rgba(216,55,27,0.55)]' if tenant.is_active else 'bg-[#3C352B]' }}"
                                 role="switch" aria-checked="{{ 'true' if tenant.is_active else 'false' }}"
                                 title="{{ 'Pausar' if tenant.is_active else 'Ativar' }} esta instância">
                                 <span class="sr-only">Alternar instância</span>
@@ -247,7 +253,7 @@
                         {% endif %}
                         {% if tenant.zapi_connection_status == 'DISCONNECTED' %}
                         <button onclick="openQRModal('{{ tenant.location_id }}', '{{ tenant.company_name }}')"
-                            class="text-[10px] font-mono uppercase tracking-widest text-brand-red bg-brand-red/10 border border-brand-red/30 px-2 py-1 rounded-md hover:bg-brand-red/20 transition-colors"
+                            class="text-[10px] font-mono uppercase tracking-widest text-brand-primary bg-brand-primary/10 border border-brand-primary/30 px-2 py-1 rounded-md hover:bg-brand-primary/20 transition-colors"
                             title="WhatsApp desconectado — escanear QR">
                             Escanear QR
                         </button>

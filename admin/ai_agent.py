@@ -691,10 +691,10 @@ async def get_fishaudio_voices(api_key: str):
 
 # ── Helpers para chamadas OpenRouter ──
 
-def _openrouter_headers(api_key: str, title: str = "AxenWP") -> dict:
+def _openrouter_headers(api_key: str, title: str = "MilloChat") -> dict:
     return {
         "Authorization": f"Bearer {api_key}",
-        "HTTP-Referer": "https://axenwp.com",
+        "HTTP-Referer": "https://millochat.com",
         "X-Title": title,
     }
 
@@ -792,7 +792,7 @@ async def analyze_ai_prompt(payload: AnalyzeRequest):
             return {"success": False, "error": "Chave API do Administrador não configurada. Configure no menu superior (Admin Settings)."}
 
         model = settings.admin_openrouter_model or "openai/gpt-4o"
-        headers = _openrouter_headers(settings.admin_openrouter_key, "AxenWP Prompt Analyzer")
+        headers = _openrouter_headers(settings.admin_openrouter_key, "MilloChat Prompt Analyzer")
         _FALLBACK_MODEL = "openai/gpt-4o"
 
         async with httpx.AsyncClient(timeout=90.0) as client:
@@ -947,7 +947,7 @@ async def master_chat(payload: MasterChatRequest):
             return {"success": False, "error": "Chave API do Administrador não configurada."}
 
         model = settings.admin_openrouter_model or "openai/gpt-4o"
-        headers = _openrouter_headers(settings.admin_openrouter_key, "AxenWP Master Chat")
+        headers = _openrouter_headers(settings.admin_openrouter_key, "MilloChat Master Chat")
 
         # ── ETAPA 1: Gerar resposta conversacional + lista de mudanças ──
         system_prompt = (
@@ -1089,8 +1089,8 @@ async def test_ai_agent(location_id: str, request: Request):
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
-                    "HTTP-Referer": "https://axenwp.com",
-                    "X-Title": "AxenWP Agent Tester",
+                    "HTTP-Referer": "https://millochat.com",
+                    "X-Title": "MilloChat Agent Tester",
                 },
                 json={
                     "model": model,
@@ -1234,8 +1234,8 @@ async def improve_prompt(location_id: str, request: Request):
                 "https://openrouter.ai/api/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
-                    "HTTP-Referer": "https://axenwp.com",
-                    "X-Title": "AxenWP Prompt Optimizer",
+                    "HTTP-Referer": "https://millochat.com",
+                    "X-Title": "MilloChat Prompt Optimizer",
                 },
                 json={
                     "model": model,
@@ -1468,7 +1468,7 @@ async def _run_master(settings, form_data: dict) -> tuple[str, Optional[list]]:
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
             "https://openrouter.ai/api/v1/chat/completions",
-            headers=_openrouter_headers(settings.admin_openrouter_key, "AxenWP Prompt Generator"),
+            headers=_openrouter_headers(settings.admin_openrouter_key, "MilloChat Prompt Generator"),
             json={"model": model, "max_tokens": 6000, "messages": build_messages(form_data)},
         )
     if resp.status_code != 200:

@@ -1,10 +1,10 @@
-# AxenWP — Hub de Integração WhatsApp + GHL + Telegram
+# MilloChat — Hub de Integração WhatsApp + GHL + Telegram
 
 Backend FastAPI que conecta GoHighLevel CRM com WhatsApp (Z-API) e Telegram, multi-tenant, com agentes de IA por canal, qualificação automática de leads e geração de prompts via IA Mestre.
 
 ## Git e GitHub
 
-Repositório: `Eiai-Solutions/AxenWP` via SSH.
+Repositório: `Eiai-Solutions/AxenWP` via SSH (o repo mantém o nome antigo; o produto é MilloChat).
 - Operações git via SSH (chave já configurada).
 - Se adicionar remote novo: `git@github-eiai:Eiai-Solutions/<repo>.git`.
 - Nunca use URL HTTPS do GitHub para remotes.
@@ -177,19 +177,23 @@ docker-compose up -d
 - **Diagnostics**: novos endpoints de debug devem ir em `admin/diagnostics.py` (gated), não em `seed_joorney.py`.
 - **Validators na borda**: qualquer endpoint público novo passa por `is_valid_location_id`/`is_valid_form_token` antes de tocar o banco.
 
-## Design DNA — "Corrente" (painel admin)
+## Design DNA — "Corrente" (painel MilloChat)
 
-Identidade visual do painel (escolhida 2026-07). **Sempre siga este DNA ao mexer em UI** — não re-rolar. Registro: **produto/painel = clareza + contenção** (cards contidos, hairline, motion mínimo, densidade legível).
+Identidade visual do painel (escolhida 2026-07; rebrand AxenWP→MilloChat em 2026-07-31 — mudou só a cor de marca, a estrutura editorial permanece). **Sempre siga este DNA ao mexer em UI** — não re-rolar. Registro: **produto/painel = clareza + contenção** (cards contidos, hairline, motion mínimo, densidade legível).
 
 - **Direção estética:** editorial-confiante, "livro-razão de operação" — grafite/tinta quente + off-white + hairlines + algarismos tabulares. Lê como um broadsheet financeiro que comanda os agentes de WhatsApp. **Escuro-quente** (variante ativa, escolhida pelo Luiz por ergonomia de control-room; a mesma estrutura editorial existe em variante clara/creme se um dia quiser inverter — é só trocar os tokens).
 - **Tipografia:** display **Fraunces** (serif editorial de alto contraste, 600, optical-sizing) para títulos/wordmark/numerais grandes · UI/tabela **Hanken Grotesk** (400–700) · dados/IDs/plaquetas **IBM Plex Mono** (400/500, tabular). **Banidas:** Inter, Roboto, Space Grotesk, Outfit.
-- **Cor:** o **vermelho Axen #D8371B** é a ÚNICA cor viva (marca, nav ativo, agente no ar, botão primário `#BE2C13` p/ AA, toggle ativo, keyline). `brand-hue ~28deg vermilion` OKLCH(0.58 0.20 28). Status semânticos dessaturados: musgo **#4F7A47** (+tint #E9EFE1) = conectado/no ar · ocre **#B0741C** (+tint #F6ECD8) = QR/pendente · ponto oco neutro = inativo.
+- **Cor:** o **verde MilloChat #22C35D** é a ÚNICA cor viva (marca, nav ativo, agente no ar, botão primário, toggle ativo, keyline). Herdado do site/logo do MilloChat (`hsl(142 70% 45%)`), com **8.09:1** sobre o fundo — o vermelho anterior tinha 4.02:1 e reprovava em AA. Token: `brand-primary` (+ `brand-primaryDark #1A9B4A` para hover/sombra).
+  - **Botão primário:** fundo verde com **texto ESCURO** (`#0F1A13`, quase-preto levemente esverdeado) = **7.67:1** medido. Texto branco sobre o verde daria 2.33:1 e reprovaria — nunca reintroduzir `color: #FDFBF6` no `.btn-brand`.
+  - **"No ar/conectado" usa o MESMO verde da marca** — num produto de WhatsApp, saudável e marca são a mesma ideia; dois verdes próximos só confundiriam.
+  - **`danger #E4593F` é vermelho SEMÂNTICO** (erro, falha, ação destrutiva) — **nunca** marca. 5.20:1. Antes o mesmo token servia às duas coisas, e trocar a marca teria pintado erro de verde.
+  - Ocre **#CE9433** = QR/pendente · ponto oco neutro = inativo.
 - **Paleta (dark ativa):** bg **#14110E** · surface **#1C1815** (tile elevado #211C17) · tinta/texto **#ECE4D6** · muted **#A99E8C** · faint **#746A5B** · hairline **#2E2820** (forte #3C352B). Toggle inativo #3C352B, knob claro #ECE4D6. (Variante clara: bg #F4EEE3 · surface #FDFBF6 · ink #1B1714.)
 - **Forma:** radius contido — cards/tabela 11px, botões/chips 9px, plaquetas ID 6px, status pill 999px. **Bordas sempre hairline 1px** (a régua separa, não a sombra).
 - **Elevação:** flat-and-bordered; sombra só no foco (modal com scrim escuro). Nada de glass/blur pesado.
 - **Densidade:** cabeçalho arejado, tabela densa-legível (linhas ~56px, tabular-nums, labels caps com tracking).
-- **Motion:** mínimo. Único gesto vivo: pulso vermelho no ponto do agente que responde agora. transform/opacity só; respeita reduced-motion.
-- **Detalhe-assinatura — "a corrente":** keyline vermelho de 2px marca sempre o elemento vivo/ativo (nav atual, card selecionado, borda do agente no ar), ecoando o raio do Axen; reforçado por Location IDs em plaquetas mono.
+- **Motion:** mínimo. Único gesto vivo: pulso verde no ponto do agente que responde agora. transform/opacity só; respeita reduced-motion.
+- **Detalhe-assinatura — "a corrente":** keyline verde de 2px marca sempre o elemento vivo/ativo (nav atual, card selecionado, borda do agente no ar); reforçado por Location IDs em plaquetas mono.
 - **Tooltips:** todo controle interativo tem `title="..."` (stack é Tailwind CDN + JS vanilla, sem shadcn).
 
 Mockup de referência da direção: gerado na sessão de redesign; telas Instâncias + modal Nova Instância.

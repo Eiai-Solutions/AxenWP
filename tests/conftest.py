@@ -1,4 +1,4 @@
-"""Shared test fixtures for AxenWP."""
+"""Shared test fixtures for MilloChat."""
 
 import os
 import sys

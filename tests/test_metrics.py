@@ -82,7 +82,7 @@ class TestPrometheusFormat:
 
     def test_includes_uptime_gauge(self):
         text = metrics.prometheus_text()
-        assert "axenwp_uptime_seconds" in text
+        assert "millochat_uptime_seconds" in text
 
     def test_type_line_only_once_per_metric(self):
         metrics.inc("dup", labels={"x": "1"})

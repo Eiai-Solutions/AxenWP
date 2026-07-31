@@ -1,5 +1,5 @@
 """
-Ponto de entrada do servidor FastAPI do Axen WP.
+Ponto de entrada do servidor FastAPI do MilloChat.
 """
 
 from fastapi import FastAPI
@@ -95,7 +95,7 @@ async def lifespan(app: FastAPI):
 
     # Inicializa scheduler de token refresh a cada 12 horas (proteção)
     # E roda imediatamente na subida
-    logger.info("Axen WP Server iniciando...")
+    logger.info("MilloChat Server iniciando...")
     from webhooks.zapi_receiver import cleanup_stale_debounce_entries
     from webhooks.telegram_receiver import cleanup_stale_telegram_debounce
     from services.inbound_pipeline import cleanup_stale_entries as cleanup_pipeline_entries
@@ -130,7 +130,7 @@ async def lifespan(app: FastAPI):
 # App FastAPI
 # =============================================================================
 app = FastAPI(
-    title="Axen WP - WhatsApp Automation",
+    title="MilloChat - WhatsApp Automation",
     description="Hub de integração GHL Custom Conversation Provider e Z-API",
     version="1.0.0",
     lifespan=lifespan

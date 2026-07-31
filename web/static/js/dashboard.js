@@ -160,11 +160,11 @@
         function _statusRow(state, title, right) {
             const box = state === 'ok' ? 'bg-green-500/10 border-green-500/25'
                 : state === 'pending' ? 'bg-ocre/10 border-ocre/30'
-                    : (state === 'bad' || state === 'down') ? 'bg-brand-red/10 border-brand-red/30'
+                    : (state === 'bad' || state === 'down') ? 'bg-danger/10 border-danger/30'
                         : 'bg-[#211C17] border-gray-800';
             const dot = state === 'ok' ? 'bg-green-500'
                 : state === 'pending' ? 'bg-ocre'
-                    : (state === 'bad' || state === 'down') ? 'bg-brand-red' : 'bg-gray-700';
+                    : (state === 'bad' || state === 'down') ? 'bg-danger' : 'bg-gray-700';
             const txt = state === 'off' ? 'text-gray-400' : 'text-white';
             // title/right podem carregar dado vindo do provedor (nome de perfil,
             // status cru) — escapar antes de entrar no innerHTML.
@@ -286,7 +286,7 @@
             document.querySelectorAll('.instance-tab').forEach(b => {
                 const on = b.dataset.itab === tab;
                 b.classList.toggle('text-white', on);
-                b.classList.toggle('border-brand-red', on);
+                b.classList.toggle('border-brand-primary', on);
                 b.classList.toggle('text-gray-500', !on);
                 b.classList.toggle('border-transparent', !on);
             });
@@ -867,14 +867,14 @@
                         <div class="grid grid-cols-2 gap-2">
                             <label class="cursor-pointer">
                                 <input type="radio" name="form_agent_type" value="inbound" ${agentType==='inbound'?'checked':''} class="hidden peer" data-formkey="agent_type">
-                                <div class="peer-checked:border-brand-red peer-checked:bg-brand-red/5 border border-gray-700 rounded-lg p-3 transition-all">
+                                <div class="peer-checked:border-brand-primary peer-checked:bg-brand-primary/5 border border-gray-700 rounded-lg p-3 transition-all">
                                     <p class="text-sm font-bold text-white">📥 Inbound</p>
                                     <p class="text-[10px] text-gray-400 mt-0.5">Passivo — responde clientes</p>
                                 </div>
                             </label>
                             <label class="cursor-pointer">
                                 <input type="radio" name="form_agent_type" value="outbound" ${agentType==='outbound'?'checked':''} class="hidden peer" data-formkey="agent_type">
-                                <div class="peer-checked:border-brand-red peer-checked:bg-brand-red/5 border border-gray-700 rounded-lg p-3 transition-all">
+                                <div class="peer-checked:border-brand-primary peer-checked:bg-brand-primary/5 border border-gray-700 rounded-lg p-3 transition-all">
                                     <p class="text-sm font-bold text-white">📤 Outbound</p>
                                     <p class="text-[10px] text-gray-400 mt-0.5">Ativo — inicia contato</p>
                                 </div>
@@ -967,7 +967,7 @@
                     ? `<span onclick="event.stopPropagation();deleteChannel('${ch}')" class="ml-1 text-gray-600 hover:text-red-400 cursor-pointer" title="Remover canal">×</span>`
                     : '';
                 return `<button type="button" onclick="switchChannel('${ch}')"
-                    class="channel-tab flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider font-mono transition-colors ${isActive ? 'bg-brand-red/20 text-brand-red border border-brand-red/40' : 'text-gray-500 hover:text-white border border-transparent hover:border-gray-700'}">
+                    class="channel-tab flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider font-mono transition-colors ${isActive ? 'bg-brand-primary/20 text-brand-primary border border-brand-primary/40' : 'text-gray-500 hover:text-white border border-transparent hover:border-gray-700'}">
                     <span>${meta.icon}</span>
                     <span>${meta.label}</span>
                     ${closeBtn}
@@ -1213,14 +1213,14 @@
                     <div class="grid grid-cols-2 gap-2">
                         <label class="cursor-pointer">
                             <input type="radio" name="form_agent_type" value="inbound" ${agentType==='inbound'?'checked':''} class="hidden peer" data-formkey="agent_type">
-                            <div class="peer-checked:border-brand-red peer-checked:bg-brand-red/5 border border-gray-700 rounded-lg p-3 transition-all">
+                            <div class="peer-checked:border-brand-primary peer-checked:bg-brand-primary/5 border border-gray-700 rounded-lg p-3 transition-all">
                                 <p class="text-sm font-bold text-white">Inbound</p>
                                 <p class="text-[10px] text-gray-400 mt-0.5">Passivo — responde clientes</p>
                             </div>
                         </label>
                         <label class="cursor-pointer">
                             <input type="radio" name="form_agent_type" value="outbound" ${agentType==='outbound'?'checked':''} class="hidden peer" data-formkey="agent_type">
-                            <div class="peer-checked:border-brand-red peer-checked:bg-brand-red/5 border border-gray-700 rounded-lg p-3 transition-all">
+                            <div class="peer-checked:border-brand-primary peer-checked:bg-brand-primary/5 border border-gray-700 rounded-lg p-3 transition-all">
                                 <p class="text-sm font-bold text-white">Outbound</p>
                                 <p class="text-[10px] text-gray-400 mt-0.5">Ativo — inicia contato</p>
                             </div>
@@ -1458,7 +1458,7 @@
             row.className = 'grid grid-cols-12 gap-2 items-center bg-black/30 border border-gray-800 rounded-lg p-2.5';
             row.innerHTML = `
                 <input type="text" placeholder="${auto ? 'ex: Classificacao do Lead' : 'ex: Nome Completo'}" value="${label}"
-                    class="qual-field-label input-dark col-span-3 px-3 py-2 rounded-lg text-xs font-mono ${auto ? 'border-brand-red/30' : ''}" onchange="autoGenerateKey(this); serializeQualFields()">
+                    class="qual-field-label input-dark col-span-3 px-3 py-2 rounded-lg text-xs font-mono ${auto ? 'border-brand-primary/30' : ''}" onchange="autoGenerateKey(this); serializeQualFields()">
                 <input type="text" placeholder="ex: nome" value="${key}"
                     class="qual-field-key input-dark col-span-2 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()">
                 <select class="qual-ghl-field-select input-dark col-span-3 px-3 py-2 rounded-lg text-xs font-mono" onchange="serializeQualFields()" ${ghlFieldId ? `data-ghl-field="${ghlFieldId}"` : ''}>
@@ -1466,8 +1466,8 @@
                     ${_ghlFieldOptions(ghlFieldId)}
                 </select>
                 <label class="col-span-3 flex items-center justify-center gap-1.5 cursor-pointer group" title="IA analisa a conversa e preenche sozinha">
-                    <input type="checkbox" class="qual-field-auto w-3.5 h-3.5 text-brand-red bg-gray-900 border-gray-700 rounded focus:ring-brand-red" ${auto ? 'checked' : ''} onchange="toggleAutoField(this); serializeQualFields()">
-                    <span class="text-[10px] font-mono ${auto ? 'text-brand-red' : 'text-gray-600'} group-hover:text-gray-400 transition-colors">IA analisa</span>
+                    <input type="checkbox" class="qual-field-auto w-3.5 h-3.5 text-brand-primary bg-gray-900 border-gray-700 rounded focus:ring-brand-primary" ${auto ? 'checked' : ''} onchange="toggleAutoField(this); serializeQualFields()">
+                    <span class="text-[10px] font-mono ${auto ? 'text-brand-primary' : 'text-gray-600'} group-hover:text-gray-400 transition-colors">IA analisa</span>
                 </label>
                 <button type="button" onclick="removeQualField(this)"
                     class="col-span-1 p-2 text-gray-600 hover:text-red-400 transition-colors justify-self-center">
@@ -1484,13 +1484,13 @@
             const labelInput = row.querySelector('.qual-field-label');
             const autoLabel = checkbox.parentElement.querySelector('span');
             if (checkbox.checked) {
-                labelInput.classList.add('border-brand-red/30');
+                labelInput.classList.add('border-brand-primary/30');
                 labelInput.placeholder = 'ex: Classificacao do Lead';
-                autoLabel.classList.replace('text-gray-600', 'text-brand-red');
+                autoLabel.classList.replace('text-gray-600', 'text-brand-primary');
             } else {
-                labelInput.classList.remove('border-brand-red/30');
+                labelInput.classList.remove('border-brand-primary/30');
                 labelInput.placeholder = 'ex: Nome Completo';
-                autoLabel.classList.replace('text-brand-red', 'text-gray-600');
+                autoLabel.classList.replace('text-brand-primary', 'text-gray-600');
             }
         }
 
@@ -1614,9 +1614,9 @@
                 const confirmedValue = isQualified && typeof val === 'string' && val !== '' ? val : null;
                 const icon = isAuto ? (collected ? '&#129302;' : '&#9675;') : (collected ? '&#10003;' : '&#9675;');
                 return `<div class="flex items-start gap-2 py-0.5">
-                    <span class="${collected ? (isAuto ? 'text-brand-red' : 'text-green-400') : 'text-gray-600'} text-[10px] mt-0.5 shrink-0">${icon}</span>
+                    <span class="${collected ? (isAuto ? 'text-brand-primary' : 'text-green-400') : 'text-gray-600'} text-[10px] mt-0.5 shrink-0">${icon}</span>
                     <div class="min-w-0">
-                        <span class="text-[10px] font-mono ${collected ? 'text-gray-300' : 'text-gray-500'}">${_escapeHtml(f.label)}${isAuto ? ' <span class="text-[8px] text-brand-red/70">AUTO</span>' : ''}</span>
+                        <span class="text-[10px] font-mono ${collected ? 'text-gray-300' : 'text-gray-500'}">${_escapeHtml(f.label)}${isAuto ? ' <span class="text-[8px] text-brand-primary/70">AUTO</span>' : ''}</span>
                         ${confirmedValue ? `<p class="text-[9px] font-mono text-gray-500 truncate max-w-[160px]">${_escapeHtml(String(confirmedValue))}</p>` : ''}
                     </div>
                 </div>`;
@@ -2112,7 +2112,7 @@
                         <td class="px-4 py-3 text-right text-gray-400 font-mono">${(info.input_tokens || 0).toLocaleString()}</td>
                         <td class="px-4 py-3 text-right text-gray-400 font-mono">${(info.output_tokens || 0).toLocaleString()}</td>
                         <td class="px-4 py-3 text-right text-gray-400 font-mono">${(info.characters || 0).toLocaleString()}</td>
-                        <td class="px-4 py-3 text-right text-brand-red font-mono font-bold">$${info.cost_usd.toFixed(4)}</td>
+                        <td class="px-4 py-3 text-right text-brand-primary font-mono font-bold">$${info.cost_usd.toFixed(4)}</td>
                     </tr>`;
                 }
 
@@ -2128,7 +2128,7 @@
                     for (const [day, info] of dailyEntries) {
                         const heightPct = maxCalls > 0 ? Math.max((info.calls / maxCalls) * 100, 4) : 4;
                         const shortDay = day.slice(5); // MM-DD
-                        barsEl.innerHTML += `<div class="flex-1 bg-brand-red/60 hover:bg-brand-red rounded-t transition-colors cursor-default relative group" style="height: ${heightPct}%" title="${day}: ${info.calls} calls">
+                        barsEl.innerHTML += `<div class="flex-1 bg-brand-primary/60 hover:bg-brand-primary rounded-t transition-colors cursor-default relative group" style="height: ${heightPct}%" title="${day}: ${info.calls} calls">
                             <div class="absolute -top-6 left-1/2 -translate-x-1/2 bg-gray-900 text-[9px] text-white font-mono px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-gray-700">${info.calls}</div>
                         </div>`;
                         labelsEl.innerHTML += `<div class="flex-1 text-center text-[8px] text-gray-600 font-mono truncate">${shortDay}</div>`;
@@ -2145,7 +2145,7 @@
         async function openQRModal(locationId, companyName) {
             document.getElementById('qr_company_name').innerText = companyName;
             const qrContainer = document.getElementById('qr_image_container');
-            qrContainer.innerHTML = '<div class="animate-pulse w-48 h-48 bg-gray-800 rounded-xl flex items-center justify-center border border-gray-700 mx-auto"><span class="text-xs text-brand-red font-mono uppercase tracking-widest animate-bounce">Loading...</span></div>';
+            qrContainer.innerHTML = '<div class="animate-pulse w-48 h-48 bg-gray-800 rounded-xl flex items-center justify-center border border-gray-700 mx-auto"><span class="text-xs text-brand-primary font-mono uppercase tracking-widest animate-bounce">Loading...</span></div>';
             document.getElementById('qrModal').classList.remove('hidden');
 
             try {
@@ -2153,9 +2153,9 @@
                 const data = await response.json();
 
                 if (data.qrcode) {
-                    qrContainer.innerHTML = `<img src="${data.qrcode}" alt="Scan to connect" class="mx-auto rounded-xl w-64 h-64 border-2 border-brand-red/50 shadow-[0_0_30px_rgba(225,29,72,0.2)]">`;
+                    qrContainer.innerHTML = `<img src="${data.qrcode}" alt="Scan to connect" class="mx-auto rounded-xl w-64 h-64 border-2 border-brand-primary/50 shadow-[0_0_30px_rgba(225,29,72,0.2)]">`;
                 } else {
-                    qrContainer.innerHTML = `<div class="w-48 h-48 bg-gray-900 rounded-xl flex flex-col gap-2 items-center justify-center border border-brand-red/50 mx-auto p-4 text-center"><svg class="w-8 h-8 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><span class="text-xs text-gray-400 font-mono focus:outline-none focus:ring-1">${data.error || 'Failed to load code'}</span></div>`;
+                    qrContainer.innerHTML = `<div class="w-48 h-48 bg-gray-900 rounded-xl flex flex-col gap-2 items-center justify-center border border-danger/50 mx-auto p-4 text-center"><svg class="w-8 h-8 text-danger" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg><span class="text-xs text-gray-400 font-mono focus:outline-none focus:ring-1">${data.error || 'Failed to load code'}</span></div>`;
                 }
             } catch (err) {
                 qrContainer.innerHTML = '<div class="text-xs text-red-500 font-mono">Connection error</div>';
@@ -2358,14 +2358,14 @@
             if (targetContent) targetContent.classList.remove('hidden');
 
             document.querySelectorAll('.ai-tab-btn').forEach(el => {
-                el.classList.remove('text-brand-red', 'bg-brand-red/10', 'border-brand-red/30');
+                el.classList.remove('text-brand-primary', 'bg-brand-primary/10', 'border-brand-primary/30');
                 el.classList.add('text-gray-500', 'border-transparent');
             });
 
             const activeBtn = btn || document.getElementById('btn_ai_tab_' + tabName);
             if (activeBtn) {
                 activeBtn.classList.remove('text-gray-500', 'border-transparent');
-                activeBtn.classList.add('text-brand-red', 'bg-brand-red/10', 'border-brand-red/30');
+                activeBtn.classList.add('text-brand-primary', 'bg-brand-primary/10', 'border-brand-primary/30');
             }
 
             // Auto-refresh: start when history tab active, stop otherwise
@@ -2388,8 +2388,8 @@
             if (fo) fo.classList.toggle('hidden', anthropic);
             document.querySelectorAll('.ia-engine-opt').forEach(function (opt) {
                 const marcado = opt.querySelector('input[type=radio]').checked;
-                opt.classList.toggle('border-brand-red/50', marcado);
-                opt.classList.toggle('bg-brand-red/5', marcado);
+                opt.classList.toggle('border-brand-primary/50', marcado);
+                opt.classList.toggle('bg-brand-primary/5', marcado);
                 opt.classList.toggle('border-gray-800', !marcado);
             });
         }
@@ -2450,8 +2450,8 @@
             // Aplica o prompt no textarea (fica na aba Settings)
             const textarea = document.getElementById('ai_prompt');
             textarea.value = prompt;
-            textarea.classList.add('ring-2', 'ring-brand-red', 'ring-offset-2', 'ring-offset-gray-900');
-            setTimeout(() => textarea.classList.remove('ring-2', 'ring-brand-red', 'ring-offset-2', 'ring-offset-gray-900'), 1000);
+            textarea.classList.add('ring-2', 'ring-brand-primary', 'ring-offset-2', 'ring-offset-gray-900');
+            setTimeout(() => textarea.classList.remove('ring-2', 'ring-brand-primary', 'ring-offset-2', 'ring-offset-gray-900'), 1000);
 
             // Esconde o painel correto e mostra confirmação
             const panelId = ctx === 'tester' ? 'tester_analysis_result' : 'ai_analysis_result';
@@ -2496,8 +2496,8 @@
                     let transcriptHtml = '';
                     if (data.simulation_transcript) {
                         transcriptHtml = `
-                        <div class="mb-4 bg-brand-red/5 border border-brand-red/10 rounded-lg p-3">
-                            <p class="text-[10px] text-brand-red font-bold uppercase tracking-widest mb-2 flex items-center gap-1">
+                        <div class="mb-4 bg-brand-primary/5 border border-brand-primary/10 rounded-lg p-3">
+                            <p class="text-[10px] text-brand-primary font-bold uppercase tracking-widest mb-2 flex items-center gap-1">
                                 <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
                                 Prova Real (Simulação Lead vs Agente):
                             </p>
@@ -2511,10 +2511,10 @@
 
                     if (data.improved_prompt) showApplyBtn('settings');
                 } else {
-                    resultContent.innerHTML = `<span class="text-brand-red font-bold">${data.error}</span>`;
+                    resultContent.innerHTML = `<span class="text-danger font-bold">${data.error}</span>`;
                 }
             } catch (err) {
-                resultContent.innerHTML = `<span class="text-brand-red">Erro de conexão ao analisar o prompt.</span>`;
+                resultContent.innerHTML = `<span class="text-danger">Erro de conexão ao analisar o prompt.</span>`;
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '✨ Analisar Prompt';
@@ -2524,7 +2524,7 @@
         function masterChatHtml(ctx) {
             return `
             <div class="mt-5 pt-4 border-t border-gray-800">
-                <p class="text-[10px] text-brand-red font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <p class="text-[10px] text-brand-primary font-bold uppercase tracking-widest mb-3 flex items-center gap-1.5">
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"></path></svg>
                     Conversar com a IA Mestre
                 </p>
@@ -2536,7 +2536,7 @@
                         placeholder="Ex: o agente está sendo muito formal, precisa ser mais direto..."
                         onkeydown="if(event.key==='Enter'){event.preventDefault();sendMasterFeedback('${ctx}');}">
                     <button type="button" onclick="sendMasterFeedback('${ctx}')"
-                        class="bg-brand-red/20 hover:bg-brand-red text-brand-red hover:text-white border border-brand-red/40 transition-colors px-3 py-2 rounded-lg text-xs font-bold font-mono uppercase tracking-widest">
+                        class="bg-brand-primary/20 hover:bg-brand-primary text-brand-primary hover:text-white border border-brand-primary/40 transition-colors px-3 py-2 rounded-lg text-xs font-bold font-mono uppercase tracking-widest">
                         Enviar
                     </button>
                     <button type="button" id="btn_apply_master_${ctx}" onclick="applySuggestedPrompt('${ctx}')"
@@ -2557,7 +2557,7 @@
             input.disabled = true;
 
             // Show user message
-            messagesDiv.innerHTML += `<div class="flex justify-end"><div class="bg-brand-red/20 border border-brand-red/30 text-gray-200 text-[11px] font-mono py-2 px-3 rounded-xl rounded-tr-none max-w-[85%]">${msg}</div></div>`;
+            messagesDiv.innerHTML += `<div class="flex justify-end"><div class="bg-brand-primary/20 border border-brand-primary/30 text-gray-200 text-[11px] font-mono py-2 px-3 rounded-xl rounded-tr-none max-w-[85%]">${msg}</div></div>`;
 
             // Loading
             const loadingId = 'mcloading_' + Date.now();
@@ -2591,14 +2591,14 @@
                     if (data.updated_prompt) {
                         window.lastImprovedPrompt = data.updated_prompt;
                         showApplyBtn(ctx);
-                        messagesDiv.innerHTML += `<div class="flex justify-center mt-1"><span class="text-[10px] text-brand-red font-mono bg-brand-red/10 px-2 py-1 rounded">✓ Prompt revisado com base no seu feedback</span></div>`;
+                        messagesDiv.innerHTML += `<div class="flex justify-center mt-1"><span class="text-[10px] text-brand-primary font-mono bg-brand-primary/10 px-2 py-1 rounded">✓ Prompt revisado com base no seu feedback</span></div>`;
                     }
                 } else {
-                    messagesDiv.innerHTML += `<div class="text-[10px] text-brand-red font-mono text-center">${data.error}</div>`;
+                    messagesDiv.innerHTML += `<div class="text-[10px] text-danger font-mono text-center">${data.error}</div>`;
                 }
             } catch (e) {
                 document.getElementById(loadingId)?.remove();
-                messagesDiv.innerHTML += `<div class="text-[10px] text-brand-red font-mono text-center">Erro de conexão.</div>`;
+                messagesDiv.innerHTML += `<div class="text-[10px] text-danger font-mono text-center">Erro de conexão.</div>`;
             } finally {
                 input.disabled = false;
                 input.focus();
@@ -2610,7 +2610,7 @@
         function clearTestChat() {
             testHistory = [];
             const body = document.getElementById('test_chat_body');
-            body.innerHTML = '<div class="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 text-xs text-gray-400 font-mono italic">Chat resetado. Inicie uma nova conversa ou clique em <strong class="text-brand-red">Simular com IA Mestre</strong>.</div>';
+            body.innerHTML = '<div class="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 text-xs text-gray-400 font-mono italic">Chat resetado. Inicie uma nova conversa ou clique em <strong class="text-brand-primary">Simular com IA Mestre</strong>.</div>';
             document.getElementById('tester_analysis_result').classList.add('hidden');
         }
 
@@ -2636,7 +2636,7 @@
             btn.innerHTML = '<span class="animate-pulse">🤖 Simulando...</span>';
 
             body.innerHTML = `<div class="flex justify-center">
-                <span class="text-[10px] text-brand-red font-mono bg-brand-red/10 border border-brand-red/20 px-3 py-1.5 rounded-full animate-pulse">
+                <span class="text-[10px] text-brand-primary font-mono bg-brand-primary/10 border border-brand-primary/20 px-3 py-1.5 rounded-full animate-pulse">
                     IA Mestre gerando simulação...
                 </span>
             </div>`;
@@ -2652,7 +2652,7 @@
                 body.innerHTML = '';
 
                 if (!data.success) {
-                    body.innerHTML = `<div class="text-xs text-brand-red font-mono p-3">${data.error}</div>`;
+                    body.innerHTML = `<div class="text-xs text-danger font-mono p-3">${data.error}</div>`;
                     return;
                 }
 
@@ -2671,7 +2671,7 @@
                     for (const line of lines) {
                         if (line.startsWith('Lead:') || line.startsWith('lead:')) {
                             const text = line.replace(/^lead:/i, '').trim();
-                            body.innerHTML += `<div class="flex justify-end"><div class="bg-brand-red text-white text-xs py-2 px-3 rounded-2xl rounded-tr-none min-w-0 max-w-[85%]">${text}</div></div>`;
+                            body.innerHTML += `<div class="flex justify-end"><div class="bg-brand-primary text-white text-xs py-2 px-3 rounded-2xl rounded-tr-none min-w-0 max-w-[85%]">${text}</div></div>`;
                         } else if (line.startsWith('Agente:') || line.startsWith('agente:')) {
                             const text = line.replace(/^agente:/i, '').trim();
                             body.innerHTML += `<div class="flex justify-start"><div class="bg-gray-800 text-gray-200 text-xs py-2 px-3 rounded-2xl rounded-tl-none min-w-0 max-w-[85%] font-mono whitespace-pre-wrap">${text}</div></div>`;
@@ -2699,7 +2699,7 @@
                 analysisDiv.classList.remove('hidden');
 
             } catch (err) {
-                body.innerHTML = `<div class="text-xs text-brand-red font-mono p-3">Erro de conexão ao simular.</div>`;
+                body.innerHTML = `<div class="text-xs text-danger font-mono p-3">Erro de conexão ao simular.</div>`;
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = '🤖 Simular com IA Mestre';
@@ -2809,11 +2809,11 @@
             const body = document.getElementById('test_chat_body');
             let html = '';
             if (from === 'me') {
-                html = `<div class="flex justify-end"><div class="bg-brand-red text-white text-xs py-2 px-3 rounded-2xl rounded-tr-none min-w-0 max-w-[85%]">${text}</div></div>`;
+                html = `<div class="flex justify-end"><div class="bg-brand-primary text-white text-xs py-2 px-3 rounded-2xl rounded-tr-none min-w-0 max-w-[85%]">${text}</div></div>`;
             } else if (from === 'bot') {
                 html = `<div class="flex justify-start"><div class="bg-gray-800 text-gray-200 text-xs py-2 px-3 rounded-2xl rounded-tl-none min-w-0 max-w-[85%] font-mono whitespace-pre-wrap">${text}</div></div>`;
             } else {
-                html = `<div class="flex justify-center"><div class="text-[10px] text-brand-red font-mono uppercase bg-brand-red/10 px-2 py-1 rounded text-center">${text}</div></div>`;
+                html = `<div class="flex justify-center"><div class="text-[10px] text-brand-primary font-mono uppercase bg-brand-primary/10 px-2 py-1 rounded text-center">${text}</div></div>`;
             }
             body.innerHTML += html;
             body.scrollTop = body.scrollHeight;

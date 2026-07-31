@@ -16,7 +16,7 @@ config = context.config
 # Configura logging se o arquivo .ini existir.
 # disable_existing_loggers=False é obrigatório: as migrations rodam DENTRO do
 # lifespan do FastAPI, e o padrão do fileConfig (True) desliga todo logger já
-# criado — inclusive o "axenwp". Com o padrão, produção parava de logar
+# criado — inclusive o "millochat". Com o padrão, produção parava de logar
 # qualquer coisa logo após o startup, deixando o sistema cego para diagnóstico.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name, disable_existing_loggers=False)

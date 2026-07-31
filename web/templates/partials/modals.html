@@ -11,7 +11,7 @@
         <!-- Modal Content -->
         <div
             class="relative w-full max-w-xl max-h-[90vh] overflow-y-auto bg-gray-900 border border-gray-800 rounded-2xl shadow-[0_30px_70px_-30px_rgba(0,0,0,0.8)]">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-red to-brand-darkred"></div>
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-primary to-brand-primaryDark"></div>
 
             <div class="p-8">
                 <div class="flex justify-between items-start mb-6 border-b border-gray-800 pb-4">
@@ -32,8 +32,8 @@
                     <div class="bg-[#211C17] border border-gray-800 rounded-xl overflow-hidden">
                         <button type="button" onclick="toggleSettingsCard('ia')" title="Abrir para configurar a IA Mestre"
                             class="w-full flex items-center gap-3 p-4 text-left hover:bg-white/[0.02] transition-colors">
-                            <div class="w-9 h-9 rounded-lg bg-brand-red/10 border border-brand-red/25 flex items-center justify-center flex-shrink-0">
-                                <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <div class="w-9 h-9 rounded-lg bg-brand-primary/10 border border-brand-primary/25 flex items-center justify-center flex-shrink-0">
+                                <svg class="w-4 h-4 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
                                 </svg>
                             </div>
@@ -57,13 +57,13 @@
                             <!-- Motor da Mestre: Anthropic (estruturado, AgentSpec) vs OpenRouter (legado, prosa) -->
                             <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Motor</label>
                             <div class="grid grid-cols-2 gap-2 mb-4">
-                                <label class="ia-engine-opt flex flex-col gap-0.5 p-2.5 rounded-lg border cursor-pointer transition-colors {% if _ia_anthropic %}border-brand-red/50 bg-brand-red/5{% else %}border-gray-800{% endif %}"
+                                <label class="ia-engine-opt flex flex-col gap-0.5 p-2.5 rounded-lg border cursor-pointer transition-colors {% if _ia_anthropic %}border-brand-primary/50 bg-brand-primary/5{% else %}border-gray-800{% endif %}"
                                     title="Motor recomendado — gera um AgentSpec estruturado e auditável">
                                     <input type="radio" name="master_engine" value="anthropic" class="hidden" onchange="switchMestreEngine('anthropic')" {% if _ia_anthropic %}checked{% endif %}>
                                     <span class="text-xs font-bold text-white">Anthropic <span class="text-[9px] text-green-400 font-mono uppercase">recomendado</span></span>
                                     <span class="text-[9px] text-gray-500 font-mono uppercase tracking-widest">Estruturado (AgentSpec)</span>
                                 </label>
-                                <label class="ia-engine-opt flex flex-col gap-0.5 p-2.5 rounded-lg border cursor-pointer transition-colors {% if not _ia_anthropic %}border-brand-red/50 bg-brand-red/5{% else %}border-gray-800{% endif %}"
+                                <label class="ia-engine-opt flex flex-col gap-0.5 p-2.5 rounded-lg border cursor-pointer transition-colors {% if not _ia_anthropic %}border-brand-primary/50 bg-brand-primary/5{% else %}border-gray-800{% endif %}"
                                     title="Motor legado — gera prosa via OpenRouter">
                                     <input type="radio" name="master_engine" value="openrouter" class="hidden" onchange="switchMestreEngine('openrouter')" {% if not _ia_anthropic %}checked{% endif %}>
                                     <span class="text-xs font-bold text-white">OpenRouter</span>
@@ -135,7 +135,7 @@
                             <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest flex justify-between items-center">
                                 <span>Groq API Key</span>
                                 <a href="https://console.groq.com/keys" target="_blank" title="Criar uma chave gratuita no Groq"
-                                    class="text-brand-red hover:underline normal-case font-normal">Obter chave</a>
+                                    class="text-brand-primary hover:underline normal-case font-normal">Obter chave</a>
                             </label>
                             <input type="password" name="admin_groq_api_key"
                                 value="{{ system_settings.admin_groq_api_key if system_settings and system_settings.admin_groq_api_key else '' }}"
@@ -179,7 +179,7 @@
                             <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">URL do servidor</label>
                             <input type="text" name="admin_waha_url"
                                 value="{{ system_settings.admin_waha_url if system_settings and system_settings.admin_waha_url else '' }}"
-                                placeholder="https://axenwp-waha.xxxxx.easypanel.host"
+                                placeholder="https://waha.xxxxx.easypanel.host"
                                 title="URL HTTPS da sua instancia WAHA"
                                 class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600">
 
@@ -196,7 +196,7 @@
 
                             <div class="flex items-center gap-2 mt-3">
                                 <button type="button" onclick="testWahaConnection(this)"
-                                    title="Salve primeiro; testa se o AxenWP alcanca o servidor WAHA"
+                                    title="Salve primeiro; testa se o MilloChat alcanca o servidor WAHA"
                                     class="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-green-400 bg-green-500/10 border border-green-500/25 hover:bg-green-500/20 transition-colors font-mono">
                                     Testar conexao
                                 </button>
@@ -226,7 +226,7 @@
         <!-- Modal Content -->
         <div
             class="relative w-full max-w-2xl bg-gray-900 border border-gray-800 rounded-2xl shadow-[0_0_50px_rgba(225,29,72,0.15)] overflow-hidden">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-red to-brand-darkred"></div>
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-primary to-brand-primaryDark"></div>
 
             <div class="p-8">
                 <div class="flex justify-between items-start mb-6 border-b border-gray-800 pb-4">
@@ -235,7 +235,7 @@
                             Configuration</h3>
                         <p class="text-xs text-gray-500 font-mono mt-1 uppercase tracking-widest">Instancia: <span
                                 id="zapi_company_name"
-                                class="text-brand-red border-b border-brand-red/30 pb-0.5"></span></p>
+                                class="text-brand-primary border-b border-brand-primary/30 pb-0.5"></span></p>
                     </div>
                     <button onclick="closeZAPIModal()" class="text-gray-500 hover:text-white transition-colors">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -245,30 +245,30 @@
                     </button>
                 </div>
 
-                <div class="mb-8 bg-[#211C17] border border-brand-red/20 rounded-xl p-5 relative overflow-hidden group">
+                <div class="mb-8 bg-[#211C17] border border-brand-primary/20 rounded-xl p-5 relative overflow-hidden group">
                     <div
-                        class="absolute inset-0 bg-brand-red/5 mix-blend-overlay opacity-0 group-hover:opacity-100 transition-opacity">
+                        class="absolute inset-0 bg-brand-primary/5 mix-blend-overlay opacity-0 group-hover:opacity-100 transition-opacity">
                     </div>
                     <div class="flex items-start gap-4 relative z-10 w-full">
                         <div
-                            class="w-8 h-8 rounded-full bg-brand-red/10 flex items-center justify-center shrink-0 border border-brand-red/30 text-brand-red">
+                            class="w-8 h-8 rounded-full bg-brand-primary/10 flex items-center justify-center shrink-0 border border-brand-primary/30 text-brand-primary">
                             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
                             </svg>
                         </div>
                         <div class="min-w-0 flex-1 overflow-hidden">
-                            <p class="text-xs text-brand-red font-bold uppercase tracking-widest mb-1">Webhook de Entrada
+                            <p class="text-xs text-brand-primary font-bold uppercase tracking-widest mb-1">Webhook de Entrada
                             </p>
                             <p class="text-xs text-gray-400 mb-2">Copie para Z-API "Ao Receber Mensagem":</p>
                             <code id="zapi_webhook_instruction"
-                                class="block w-full bg-black border border-gray-800 p-3 rounded-lg text-xs text-gray-300 font-mono select-all overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent selection:bg-brand-red/30">https://{{ request.headers.host }}/webhook/zapi/inbound/ID</code>
+                                class="block w-full bg-black border border-gray-800 p-3 rounded-lg text-xs text-gray-300 font-mono select-all overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent selection:bg-brand-primary/30">https://{{ request.headers.host }}/webhook/zapi/inbound/ID</code>
 
-                            <p class="text-xs text-brand-red font-bold uppercase tracking-widest mt-5 mb-1">Status
+                            <p class="text-xs text-brand-primary font-bold uppercase tracking-widest mt-5 mb-1">Status
                                 Webhook</p>
                             <p class="text-xs text-gray-400 mb-2">Copie para Z-API "Ao Alterar Status da Mensagem":</p>
                             <code id="zapi_webhook_status"
-                                class="block w-full bg-black border border-gray-800 p-3 rounded-lg text-xs text-gray-300 font-mono select-all overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent selection:bg-brand-red/30">https://{{ request.headers.host }}/webhook/zapi/status/ID</code>
+                                class="block w-full bg-black border border-gray-800 p-3 rounded-lg text-xs text-gray-300 font-mono select-all overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent selection:bg-brand-primary/30">https://{{ request.headers.host }}/webhook/zapi/status/ID</code>
 
                             <p class="text-[10px] text-gray-500 mt-4 font-mono uppercase tracking-widest">Client-Token
                                 header required if specified below.</p>
@@ -325,7 +325,7 @@
 
         <div
             class="relative w-full max-w-md bg-gray-900 border border-gray-800 rounded-2xl shadow-[0_0_50px_rgba(225,29,72,0.15)] overflow-hidden">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-red to-brand-darkred"></div>
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-primary to-brand-primaryDark"></div>
 
             <div class="p-8">
                 <div class="flex justify-between items-start mb-6 border-b border-gray-800 pb-4">
@@ -345,11 +345,11 @@
                 <!-- Opção 1: Axen CRM -->
                 <div class="mb-4">
                     <button onclick="toggleCrmSection()"
-                        class="corrente w-full text-left p-4 rounded-xl border border-brand-red/25 bg-brand-red/[0.04] hover:border-brand-red/50 transition-all group">
+                        class="corrente w-full text-left p-4 rounded-xl border border-brand-primary/25 bg-brand-primary/[0.04] hover:border-brand-primary/50 transition-all group">
                         <div class="flex items-center gap-3">
-                            <span class="plate text-[11px] text-brand-red/70 w-5 text-center">01</span>
-                            <div class="w-10 h-10 rounded-lg bg-brand-red/10 border border-brand-red/25 flex items-center justify-center">
-                                <svg class="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <span class="plate text-[11px] text-brand-primary/70 w-5 text-center">01</span>
+                            <div class="w-10 h-10 rounded-lg bg-brand-primary/10 border border-brand-primary/25 flex items-center justify-center">
+                                <svg class="w-5 h-5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"></path>
                                 </svg>
@@ -357,7 +357,7 @@
                             <div class="flex-1">
                                 <div class="flex items-center gap-2">
                                     <p class="text-white font-bold text-sm uppercase tracking-wide">Axen CRM</p>
-                                    <span class="plate text-[9px] uppercase tracking-widest text-brand-red bg-brand-red/10 border border-brand-red/20 px-1.5 py-0.5 rounded">Recomendado</span>
+                                    <span class="plate text-[9px] uppercase tracking-widest text-brand-primary bg-brand-primary/10 border border-brand-primary/20 px-1.5 py-0.5 rounded">Recomendado</span>
                                 </div>
                                 <p class="text-gray-500 text-[10px] font-mono uppercase tracking-widest">Conectar ao GoHighLevel</p>
                             </div>
@@ -441,7 +441,7 @@
                 <!-- Opção 2: WhatsApp Only -->
                 <div class="mb-4">
                     <button onclick="closeNewCompanyModal(); openWhatsAppOnlyModal()"
-                        class="w-full text-left p-4 rounded-xl border border-gray-800 hover:border-brand-red/40 hover:bg-brand-red/[0.03] transition-all group">
+                        class="w-full text-left p-4 rounded-xl border border-gray-800 hover:border-brand-primary/40 hover:bg-brand-primary/[0.03] transition-all group">
                         <div class="flex items-center gap-3">
                             <span class="plate text-[11px] text-gray-500 w-5 text-center">02</span>
                             <div class="w-10 h-10 rounded-lg bg-[#211C17] border border-gray-800 flex items-center justify-center">
@@ -461,7 +461,7 @@
                 <!-- Opção 3: Onboarding (só link público para o cliente preencher) -->
                 <div>
                     <button onclick="toggleOnboardingSection()"
-                        class="w-full text-left p-4 rounded-xl border border-gray-800 hover:border-brand-red/40 hover:bg-brand-red/[0.03] transition-all group">
+                        class="w-full text-left p-4 rounded-xl border border-gray-800 hover:border-brand-primary/40 hover:bg-brand-primary/[0.03] transition-all group">
                         <div class="flex items-center gap-3">
                             <span class="plate text-[11px] text-gray-500 w-5 text-center">03</span>
                             <div class="w-10 h-10 rounded-lg bg-[#211C17] border border-gray-800 flex items-center justify-center">
@@ -638,14 +638,14 @@
         <div class="absolute inset-0 bg-black/70 backdrop-blur-sm" onclick="closeInstanceSettings()"></div>
 
         <div class="relative w-full max-w-2xl bg-gray-900 border border-gray-800 rounded-2xl shadow-[0_30px_70px_-30px_rgba(0,0,0,0.8)] overflow-hidden">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-red to-brand-darkred"></div>
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-primary to-brand-primaryDark"></div>
 
             <div class="p-7">
                 <!-- Cabeçalho -->
                 <div class="flex justify-between items-start mb-5">
                     <div>
                         <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight">Configuracoes da Instancia</h3>
-                        <p id="instance_settings_company" class="text-brand-red font-bold text-sm mt-0.5"></p>
+                        <p id="instance_settings_company" class="text-brand-primary font-bold text-sm mt-0.5"></p>
                     </div>
                     <button onclick="closeInstanceSettings()" title="Fechar" class="text-gray-500 hover:text-white transition-colors">
                         <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -695,14 +695,14 @@
                     <button id="chan_card_zapi" onclick="instanceAction('zapi')"
                         data-title="Credenciais e webhooks da Z-API (provedor legado)"
                         title="Credenciais e webhooks da Z-API (provedor legado)"
-                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-brand-red/40 rounded-xl transition-all group text-left disabled:hover:border-gray-800">
+                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-brand-primary/40 rounded-xl transition-all group text-left disabled:hover:border-gray-800">
                         <div class="w-10 h-10 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center flex-shrink-0">
                             <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path>
                             </svg>
                         </div>
                         <div class="flex-1">
-                            <p class="text-sm font-bold text-white group-hover:text-brand-red transition-colors">WhatsApp — Z-API</p>
+                            <p class="text-sm font-bold text-white group-hover:text-brand-primary transition-colors">WhatsApp — Z-API</p>
                             <p class="chan-desc text-[10px] text-gray-500 font-mono uppercase tracking-widest"
                                 data-default="Provedor legado — credenciais e webhooks">Provedor legado — credenciais e webhooks</p>
                         </div>
@@ -766,14 +766,14 @@
                     <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest mb-1">O cerebro que conversa e qualifica</p>
 
                     <button onclick="instanceAction('agent')" title="Prompt, modelo, voz e regras de qualificacao"
-                        class="corrente w-full flex items-center gap-4 p-4 bg-brand-red/[0.06] border border-brand-red/25 hover:border-brand-red/50 rounded-xl transition-all group text-left">
-                        <div class="w-10 h-10 rounded-lg bg-brand-red/10 border border-brand-red/25 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        class="corrente w-full flex items-center gap-4 p-4 bg-brand-primary/[0.06] border border-brand-primary/25 hover:border-brand-primary/50 rounded-xl transition-all group text-left">
+                        <div class="w-10 h-10 rounded-lg bg-brand-primary/10 border border-brand-primary/25 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
                             </svg>
                         </div>
                         <div class="flex-1">
-                            <p class="text-sm font-bold text-white group-hover:text-brand-red transition-colors">Configurar Agente IA</p>
+                            <p class="text-sm font-bold text-white group-hover:text-brand-primary transition-colors">Configurar Agente IA</p>
                             <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Prompt, modelo, voz, qualificacao</p>
                         </div>
                     </button>
@@ -784,14 +784,14 @@
                     <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest mb-1">O cliente preenche, a IA Mestre monta o agente</p>
 
                     <button onclick="instanceAction('form')" title="Gerar o link publico do formulario para o cliente"
-                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-brand-red/40 rounded-xl transition-all group text-left">
+                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-brand-primary/40 rounded-xl transition-all group text-left">
                         <div class="w-10 h-10 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center flex-shrink-0">
                             <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                             </svg>
                         </div>
                         <div class="flex-1">
-                            <p class="text-sm font-bold text-white group-hover:text-brand-red transition-colors">Formulario de Cadastro</p>
+                            <p class="text-sm font-bold text-white group-hover:text-brand-primary transition-colors">Formulario de Cadastro</p>
                             <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Gerar link do formulario publico</p>
                         </div>
                     </button>
@@ -802,14 +802,14 @@
                     <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest mb-1">Zona de perigo</p>
 
                     <button onclick="instanceAction('delete')" title="Remove permanentemente esta instancia"
-                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-brand-red/60 rounded-xl transition-all group text-left">
-                        <div class="w-10 h-10 rounded-lg bg-brand-red/10 border border-brand-red/25 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-5 h-5 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-gray-800 hover:border-brand-primary/60 rounded-xl transition-all group text-left">
+                        <div class="w-10 h-10 rounded-lg bg-brand-primary/10 border border-brand-primary/25 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
                             </svg>
                         </div>
                         <div class="flex-1">
-                            <p class="text-sm font-bold text-brand-red">Excluir Instancia</p>
+                            <p class="text-sm font-bold text-danger">Excluir Instancia</p>
                             <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Remover permanentemente esta instancia</p>
                         </div>
                     </button>
@@ -845,8 +845,8 @@
                 <span class="plate text-[10px] text-gray-400 font-mono ml-auto">{{ ghl_app_hint }}</span>
             </div>
             {% else %}
-            <div class="flex items-center gap-2 px-4 py-3 rounded-xl border bg-brand-red/10 border-brand-red/30 mb-4">
-                <span class="w-2 h-2 rounded-full bg-brand-red"></span>
+            <div class="flex items-center gap-2 px-4 py-3 rounded-xl border bg-brand-primary/10 border-brand-primary/30 mb-4">
+                <span class="w-2 h-2 rounded-full bg-brand-primary"></span>
                 <span class="text-sm font-bold text-white">Nenhum app configurado</span>
                 <span class="text-[10px] text-gray-400 font-mono uppercase tracking-widest ml-auto">informe a chave abaixo</span>
             </div>
@@ -995,7 +995,7 @@
                 </div>
                 <h3 class="font-display text-xl font-bold text-white uppercase tracking-tight mb-2">Excluir Instancia</h3>
                 <p class="text-sm text-gray-400 mb-1">Isso ira remover permanentemente</p>
-                <p class="text-brand-red font-bold text-lg mb-6" id="delete_company_name"></p>
+                <p class="text-danger font-bold text-lg mb-6" id="delete_company_name"></p>
                 <p class="text-[10px] text-gray-500 font-mono mb-8 leading-relaxed">
                     Todos os dados incluindo configuracao do agente IA, documentos, mapeamentos de contatos e historico de mensagens serao permanentemente excluidos.
                 </p>
@@ -1017,7 +1017,7 @@
     <!-- Modal Histórico do Prompt -->
     <div id="promptHistoryModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center p-4">
         <div class="absolute inset-0 bg-black/80 backdrop-blur-md" onclick="closePromptHistoryModal()"></div>
-        <div class="relative w-full max-w-3xl max-h-[85vh] bg-gray-900 border border-brand-red/30 rounded-2xl shadow-[0_0_50px_rgba(225,29,72,0.2)] overflow-hidden flex flex-col">
+        <div class="relative w-full max-w-3xl max-h-[85vh] bg-gray-900 border border-brand-primary/30 rounded-2xl shadow-[0_0_50px_rgba(225,29,72,0.2)] overflow-hidden flex flex-col">
             <div class="flex items-center justify-between p-5 border-b border-gray-800">
                 <div>
                     <h3 class="font-display text-lg font-bold text-white uppercase tracking-tight">Histórico do Prompt</h3>
@@ -1043,7 +1043,7 @@
                     </div>
                     <pre id="prompt_history_detail_content" class="text-xs text-gray-300 font-mono leading-relaxed whitespace-pre-wrap bg-[#211C17] border border-gray-800 rounded-lg p-4 max-h-[55vh] overflow-y-auto"></pre>
                     <button id="prompt_history_restore_btn" onclick="restorePromptVersion()"
-                        class="mt-4 w-full px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-brand-red hover:bg-brand-darkred transition-colors">
+                        class="mt-4 w-full px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-widest text-white bg-brand-primary hover:bg-brand-primaryDark transition-colors">
                         Restaurar esta versão
                     </button>
                 </div>
@@ -1057,12 +1057,12 @@
 
         <div
             class="relative w-full max-w-sm bg-gray-900 border border-gray-800 rounded-3xl shadow-[0_0_80px_rgba(225,29,72,0.2)] overflow-hidden">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-red to-brand-darkred"></div>
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-primary to-brand-primaryDark"></div>
 
             <div class="p-8 text-center">
                 <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight mb-2">Conectar Dispositivo</h3>
                 <p class="text-xs text-gray-500 font-mono mb-8 uppercase tracking-widest">Instancia: <span
-                        id="qr_company_name" class="text-brand-red"></span></p>
+                        id="qr_company_name" class="text-brand-primary"></span></p>
 
                 <div id="qr_image_container" class="mb-8 min-h-[12rem] flex items-center justify-center">
                     <!-- Base64 Image Injected Here -->
@@ -1112,16 +1112,16 @@
         <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeAIAgentModal()"></div>
 
         <div
-            class="relative w-full max-w-5xl bg-gray-900 border border-brand-red/30 rounded-2xl shadow-[0_0_50px_rgba(225,29,72,0.15)] overflow-hidden">
-            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-red to-brand-darkred"></div>
+            class="relative w-full max-w-5xl bg-gray-900 border border-brand-primary/30 rounded-2xl shadow-[0_0_50px_rgba(225,29,72,0.15)] overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-brand-primary to-brand-primaryDark"></div>
 
             <div
-                class="p-8 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-brand-red scrollbar-track-gray-900">
+                class="p-8 max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-brand-primary scrollbar-track-gray-900">
                 <div class="flex justify-between items-start mb-6 border-b border-gray-800 pb-4">
                     <div class="flex items-center gap-3">
                         <div
-                            class="w-10 h-10 rounded-lg bg-brand-red/10 flex items-center justify-center border border-brand-red/30">
-                            <svg class="h-6 w-6 text-brand-red" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            class="w-10 h-10 rounded-lg bg-brand-primary/10 flex items-center justify-center border border-brand-primary/30">
+                            <svg class="h-6 w-6 text-brand-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                     d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z">
                                 </path>
@@ -1131,7 +1131,7 @@
                             <h3 class="font-display text-2xl font-bold text-white uppercase tracking-tight glow-text">AI
                                 Agent Core</h3>
                             <p class="text-xs text-gray-500 font-mono mt-1 uppercase tracking-widest">Instancia: <span
-                                    id="ai_company_name" class="text-brand-red"></span></p>
+                                    id="ai_company_name" class="text-brand-primary"></span></p>
                         </div>
                     </div>
                     <button onclick="closeAIAgentModal()" class="text-gray-500 hover:text-white transition-colors">
@@ -1153,7 +1153,7 @@
                             <div id="channel_tabs_container" class="flex items-center gap-1.5"></div>
                         </div>
                         <button type="button" onclick="openAddChannelModal()"
-                            class="shrink-0 text-[10px] font-bold uppercase tracking-widest font-mono text-brand-red hover:text-white border border-brand-red/30 hover:border-brand-red rounded-lg px-3 py-1.5 transition-colors">
+                            class="shrink-0 text-[10px] font-bold uppercase tracking-widest font-mono text-brand-primary hover:text-white border border-brand-primary/30 hover:border-brand-primary rounded-lg px-3 py-1.5 transition-colors">
                             + Novo Canal
                         </button>
                     </div>
@@ -1163,7 +1163,7 @@
                         <nav class="md:w-44 md:shrink-0 flex md:flex-col gap-1 overflow-x-auto md:overflow-visible pb-2 md:pb-0 border-b md:border-b-0 md:border-r md:pr-4 border-gray-800 scrollbar-none">
                             <p class="hidden md:block text-[9px] font-bold text-gray-600 uppercase tracking-widest font-mono px-3 mb-1">Core</p>
                             <button type="button" id="btn_ai_tab_settings" onclick="switchAITab('settings', this)"
-                                class="ai-tab-btn shrink-0 inline-flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] font-semibold uppercase tracking-wider text-brand-red bg-brand-red/10 border border-brand-red/30 transition-all whitespace-nowrap md:w-full">
+                                class="ai-tab-btn shrink-0 inline-flex items-center gap-2.5 px-3 py-2 rounded-lg text-[11px] font-semibold uppercase tracking-wider text-brand-primary bg-brand-primary/10 border border-brand-primary/30 transition-all whitespace-nowrap md:w-full">
                                 <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
                                 Config
                             </button>
@@ -1212,7 +1212,7 @@
                             </div>
                             <div class="flex items-center">
                                 <input type="checkbox" id="ai_is_active" name="is_active" value="true"
-                                    class="w-5 h-5 text-brand-red bg-gray-900 border-gray-700 rounded focus:ring-brand-red focus:ring-2">
+                                    class="w-5 h-5 text-brand-primary bg-gray-900 border-gray-700 rounded focus:ring-brand-primary focus:ring-2">
                             </div>
                         </div>
 
@@ -1286,7 +1286,7 @@
                                             Usar chaves do WhatsApp
                                         </button>
                                         <a href="https://openrouter.ai/keys" target="_blank"
-                                            class="text-brand-red hover:underline">Obter Chave</a>
+                                            class="text-brand-primary hover:underline">Obter Chave</a>
                                     </span>
                                 </label>
                                 <input type="password" id="ai_api_key" name="api_key"
@@ -1298,11 +1298,11 @@
                         <div class="group">
                             <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors flex justify-between items-center">
                                 <span>Aguardar antes de responder (segundos)</span>
-                                <span id="debounce_display" class="text-brand-red font-mono text-xs normal-case">1.5s</span>
+                                <span id="debounce_display" class="text-brand-primary font-mono text-xs normal-case">1.5s</span>
                             </label>
                             <input type="range" id="ai_debounce_seconds" name="debounce_seconds"
                                 min="0.5" max="15" step="0.5" value="1.5"
-                                class="w-full accent-brand-red cursor-pointer"
+                                class="w-full accent-brand-primary cursor-pointer"
                                 oninput="document.getElementById('debounce_display').textContent = parseFloat(this.value).toFixed(1) + 's'">
                             <p class="text-[10px] text-gray-600 mt-1">Tempo que o bot espera apos a ultima mensagem do cliente antes de responder. Aumentar evita responder mensagens cortadas.</p>
                         </div>
@@ -1312,7 +1312,7 @@
                                 <label class="block text-gray-400 text-[10px] font-bold uppercase tracking-widest group-focus-within:text-white transition-colors">System
                                     Prompt (Cognitive Instructions)</label>
                                 <button type="button" onclick="openPromptHistoryModal()"
-                                    class="text-[10px] font-bold uppercase tracking-widest text-brand-red hover:text-white border border-brand-red/30 hover:border-brand-red rounded px-2 py-1 transition-colors flex items-center gap-1">
+                                    class="text-[10px] font-bold uppercase tracking-widest text-brand-primary hover:text-white border border-brand-primary/30 hover:border-brand-primary rounded px-2 py-1 transition-colors flex items-center gap-1">
                                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                                     Histórico
                                 </button>
@@ -1323,14 +1323,14 @@
 
                             <p class="text-[10px] text-gray-500 font-mono mt-2">Este prompt dita o comportamento exato,
                                 tom e restricoes do agente. Para otimizá-lo com base em conversas reais,
-                                use a aba <span class="text-brand-red">Testador</span>.</p>
+                                use a aba <span class="text-brand-primary">Testador</span>.</p>
                         </div>
 
                         <!-- Collapsible: Voz -->
                         <details class="group bg-black/30 border border-gray-800 rounded-xl overflow-hidden">
                             <summary class="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-800/30 transition-colors">
                                 <div class="flex items-center gap-3">
-                                    <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+                                    <svg class="w-4 h-4 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
                                     <span class="text-sm font-bold text-white uppercase tracking-wide">Voz (TTS / STT)</span>
                                 </div>
                                 <svg class="w-4 h-4 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
@@ -1342,7 +1342,7 @@
                         <details class="group bg-black/30 border border-gray-800 rounded-xl overflow-hidden">
                             <summary class="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-800/30 transition-colors">
                                 <div class="flex items-center gap-3">
-                                    <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+                                    <svg class="w-4 h-4 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
                                     <span class="text-sm font-bold text-white uppercase tracking-wide">Conhecimento (RAG)</span>
                                 </div>
                                 <svg class="w-4 h-4 text-gray-500 group-open:rotate-180 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
@@ -1356,7 +1356,7 @@
 
                         <div class="bg-[#211C17] border border-gray-800 p-4 rounded-xl">
                             <p class="text-sm font-bold text-white uppercase tracking-wide flex items-center gap-2">
-                                <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor"
+                                <svg class="w-4 h-4 text-brand-primary" fill="none" stroke="currentColor"
                                     viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                         d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z">
@@ -1366,11 +1366,11 @@
                             </p>
                             <div class="mt-2 space-y-1.5">
                                 <p class="text-[11px] text-gray-400 flex items-center gap-2">
-                                    <span class="text-brand-red font-bold">1.</span>
+                                    <span class="text-brand-primary font-bold">1.</span>
                                     Cliente envia <span class="text-white font-bold">texto</span> &rarr; agente responde com <span class="text-white font-bold">texto</span>
                                 </p>
                                 <p class="text-[11px] text-gray-400 flex items-center gap-2">
-                                    <span class="text-brand-red font-bold">2.</span>
+                                    <span class="text-brand-primary font-bold">2.</span>
                                     Cliente envia <span class="text-white font-bold">audio</span> &rarr; agente responde com <span class="text-white font-bold">audio</span>
                                 </p>
                                 <p class="text-[11px] text-gray-500 flex items-center gap-2 mt-1 pl-4 border-l-2 border-gray-800">
@@ -1385,7 +1385,7 @@
                             <p class="text-[11px] text-gray-400 leading-relaxed">
                                 <span class="text-white font-bold">Transcrição de áudio (STT)</span>
                                 usa a chave Groq configurada globalmente em
-                                <span class="text-brand-red font-mono">Config. Admin</span>.
+                                <span class="text-brand-primary font-mono">Config. Admin</span>.
                                 Não precisa configurar por agente.
                             </p>
                         </div>
@@ -1413,7 +1413,7 @@
                                 class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
                                 <span class="group-focus-within:text-white">ElevenLabs API Key (Voz da IA)</span>
                                 <a href="https://elevenlabs.io/" target="_blank"
-                                    class="text-brand-red hover:underline">Obter Chave</a>
+                                    class="text-brand-primary hover:underline">Obter Chave</a>
                             </label>
                             <div class="flex gap-3">
                                 <input type="password" id="ai_elevenlabs_api_key" name="elevenlabs_api_key"
@@ -1445,11 +1445,11 @@
                             <div>
                                 <label class="flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1.5">
                                     <span>Velocidade</span>
-                                    <span id="el_speed_display" class="text-brand-red font-mono text-xs normal-case">1.00x</span>
+                                    <span id="el_speed_display" class="text-brand-primary font-mono text-xs normal-case">1.00x</span>
                                 </label>
                                 <input type="range" id="ai_elevenlabs_speed" name="elevenlabs_speed"
                                     min="0.25" max="4.0" step="0.05" value="1.0"
-                                    class="w-full accent-brand-red cursor-pointer"
+                                    class="w-full accent-brand-primary cursor-pointer"
                                     oninput="document.getElementById('el_speed_display').textContent = parseFloat(this.value).toFixed(2) + 'x'">
                                 <div class="flex justify-between text-[9px] text-gray-600 mt-0.5 font-mono">
                                     <span>0.25x (lento)</span>
@@ -1461,11 +1461,11 @@
                             <div>
                                 <label class="flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1.5">
                                     <span>Estabilidade</span>
-                                    <span id="el_stability_display" class="text-brand-red font-mono text-xs normal-case">50%</span>
+                                    <span id="el_stability_display" class="text-brand-primary font-mono text-xs normal-case">50%</span>
                                 </label>
                                 <input type="range" id="ai_elevenlabs_stability" name="elevenlabs_stability"
                                     min="0" max="1" step="0.05" value="0.5"
-                                    class="w-full accent-brand-red cursor-pointer"
+                                    class="w-full accent-brand-primary cursor-pointer"
                                     oninput="document.getElementById('el_stability_display').textContent = (parseFloat(this.value) * 100).toFixed(0) + '%'">
                                 <div class="flex justify-between text-[9px] text-gray-600 mt-0.5 font-mono">
                                     <span>Expressivo</span>
@@ -1476,11 +1476,11 @@
                             <div>
                                 <label class="flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1.5">
                                     <span>Similaridade</span>
-                                    <span id="el_similarity_display" class="text-brand-red font-mono text-xs normal-case">75%</span>
+                                    <span id="el_similarity_display" class="text-brand-primary font-mono text-xs normal-case">75%</span>
                                 </label>
                                 <input type="range" id="ai_elevenlabs_similarity" name="elevenlabs_similarity"
                                     min="0" max="1" step="0.05" value="0.75"
-                                    class="w-full accent-brand-red cursor-pointer"
+                                    class="w-full accent-brand-primary cursor-pointer"
                                     oninput="document.getElementById('el_similarity_display').textContent = (parseFloat(this.value) * 100).toFixed(0) + '%'">
                                 <div class="flex justify-between text-[9px] text-gray-600 mt-0.5 font-mono">
                                     <span>Diverso</span>
@@ -1498,7 +1498,7 @@
                                     class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest transition-colors flex justify-between">
                                     <span class="group-focus-within:text-white">Fish Audio API Key</span>
                                     <a href="https://fish.audio/" target="_blank"
-                                        class="text-brand-red hover:underline">Obter Chave</a>
+                                        class="text-brand-primary hover:underline">Obter Chave</a>
                                 </label>
                                 <div class="flex gap-3">
                                     <input type="password" id="ai_fishaudio_api_key" name="fishaudio_api_key"
@@ -1541,11 +1541,11 @@
                                 <div>
                                     <label class="flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1.5">
                                         <span>Velocidade</span>
-                                        <span id="fish_speed_display" class="text-brand-red font-mono text-xs normal-case">1.00x</span>
+                                        <span id="fish_speed_display" class="text-brand-primary font-mono text-xs normal-case">1.00x</span>
                                     </label>
                                     <input type="range" id="ai_fishaudio_speed" name="fishaudio_speed"
                                         min="0.5" max="2.0" step="0.05" value="1.0"
-                                        class="w-full accent-brand-red cursor-pointer"
+                                        class="w-full accent-brand-primary cursor-pointer"
                                         oninput="document.getElementById('fish_speed_display').textContent = parseFloat(this.value).toFixed(2) + 'x'">
                                     <div class="flex justify-between text-[9px] text-gray-600 mt-0.5 font-mono">
                                         <span>0.5x (lento)</span>
@@ -1557,11 +1557,11 @@
                                 <div>
                                     <label class="flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1.5">
                                         <span>Temperature (consistência)</span>
-                                        <span id="fish_temp_display" class="text-brand-red font-mono text-xs normal-case">0.70</span>
+                                        <span id="fish_temp_display" class="text-brand-primary font-mono text-xs normal-case">0.70</span>
                                     </label>
                                     <input type="range" id="ai_fishaudio_temperature" name="fishaudio_temperature"
                                         min="0" max="1" step="0.05" value="0.7"
-                                        class="w-full accent-brand-red cursor-pointer"
+                                        class="w-full accent-brand-primary cursor-pointer"
                                         oninput="document.getElementById('fish_temp_display').textContent = parseFloat(this.value).toFixed(2)">
                                     <div class="flex justify-between text-[9px] text-gray-600 mt-0.5 font-mono">
                                         <span>Estável</span>
@@ -1572,11 +1572,11 @@
                                 <div>
                                     <label class="flex justify-between items-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-1.5">
                                         <span>Top-P (diversidade)</span>
-                                        <span id="fish_topp_display" class="text-brand-red font-mono text-xs normal-case">0.70</span>
+                                        <span id="fish_topp_display" class="text-brand-primary font-mono text-xs normal-case">0.70</span>
                                     </label>
                                     <input type="range" id="ai_fishaudio_top_p" name="fishaudio_top_p"
                                         min="0" max="1" step="0.05" value="0.7"
-                                        class="w-full accent-brand-red cursor-pointer"
+                                        class="w-full accent-brand-primary cursor-pointer"
                                         oninput="document.getElementById('fish_topp_display').textContent = parseFloat(this.value).toFixed(2)">
                                     <div class="flex justify-between text-[9px] text-gray-600 mt-0.5 font-mono">
                                         <span>Previsível</span>
@@ -1588,7 +1588,7 @@
                                     <span class="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Normalizar volume</span>
                                     <input type="checkbox" id="ai_fishaudio_normalize_loudness" name="fishaudio_normalize_loudness"
                                         value="true" checked
-                                        class="w-4 h-4 accent-brand-red cursor-pointer">
+                                        class="w-4 h-4 accent-brand-primary cursor-pointer">
                                 </label>
                                 <p class="text-[9px] text-gray-600 -mt-2 font-mono">Iguala o volume entre frases — recomendado ON.</p>
                             </div>
@@ -1618,10 +1618,10 @@
                         <div class="bg-[#211C17] border border-gray-800 rounded-xl flex flex-col h-[400px]">
                             <!-- Chat Header -->
                             <div class="p-4 border-b border-gray-800 flex justify-between items-center gap-2">
-                                <span class="text-[10px] font-bold text-brand-red uppercase tracking-widest font-mono shrink-0">Simulador de Chat</span>
+                                <span class="text-[10px] font-bold text-brand-primary uppercase tracking-widest font-mono shrink-0">Simulador de Chat</span>
                                 <div class="flex items-center gap-2">
                                     <button type="button" id="btn_master_simulate" onclick="runMasterSimulation()"
-                                        class="bg-brand-red/10 text-brand-red hover:bg-brand-red hover:text-white border border-brand-red/30 transition-colors px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest font-mono flex items-center gap-1.5">
+                                        class="bg-brand-primary/10 text-brand-primary hover:bg-brand-primary hover:text-white border border-brand-primary/30 transition-colors px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest font-mono flex items-center gap-1.5">
                                         🤖 Simular com IA Mestre
                                     </button>
                                     <button type="button" onclick="clearTestChat()"
@@ -1632,7 +1632,7 @@
                             <div id="test_chat_body"
                                 class="flex-1 p-4 space-y-3 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-800 scrollbar-track-transparent">
                                 <div class="bg-gray-800/50 border border-gray-700/50 rounded-lg p-3 text-xs text-gray-400 font-mono italic">
-                                    Inicie uma conversa manualmente ou clique em <strong class="text-brand-red">Simular com IA Mestre</strong> para ver uma simulação automática.
+                                    Inicie uma conversa manualmente ou clique em <strong class="text-brand-primary">Simular com IA Mestre</strong> para ver uma simulação automática.
                                 </div>
                             </div>
                             <!-- Chat Input -->
@@ -1643,7 +1643,7 @@
                                         placeholder="Digite uma mensagem para o Agente..."
                                         onkeydown="if(event.key === 'Enter') { event.preventDefault(); sendTestMessage(); }">
                                     <button type="button" onclick="sendTestMessage()"
-                                        class="bg-brand-red hover:bg-brand-darkred text-white p-2 rounded-lg transition-colors">
+                                        class="bg-brand-primary hover:bg-brand-primaryDark text-white p-2 rounded-lg transition-colors">
                                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                                 d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"></path>
@@ -1658,7 +1658,7 @@
                         <div class="mt-4 bg-[#211C17] border border-gray-800 rounded-xl p-4 space-y-3">
                             <div class="flex items-center justify-between">
                                 <h4 class="text-white text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                                    <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                                    <svg class="w-4 h-4 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
                                     Otimização do Prompt
                                 </h4>
                                 <span id="optimize_history_indicator" class="text-[9px] font-mono text-gray-500">Sem histórico</span>
@@ -1681,7 +1681,7 @@
                                     Diagnosticar
                                 </button>
                                 <button type="button" onclick="runOptimizePrompt('apply')"
-                                    class="flex-1 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white bg-brand-red hover:bg-brand-darkred transition-colors">
+                                    class="flex-1 px-3 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest text-white bg-brand-primary hover:bg-brand-primaryDark transition-colors">
                                     Aplicar Melhoria
                                 </button>
                             </div>
@@ -1691,15 +1691,15 @@
                         </div>
 
                         <!-- Resultado (diagnóstico textual) -->
-                        <div id="tester_analysis_result" class="hidden mt-4 bg-black/60 border border-brand-red/30 rounded-lg p-4 shadow-inner">
+                        <div id="tester_analysis_result" class="hidden mt-4 bg-black/60 border border-brand-primary/30 rounded-lg p-4 shadow-inner">
                             <h4 class="text-white text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2 border-b border-gray-800 pb-2">
-                                <svg class="w-4 h-4 text-brand-red" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg class="w-4 h-4 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
                                 </svg>
                                 <span id="tester_analysis_title">Diagnóstico</span>
                             </h4>
                             <div id="tester_analysis_content"
-                                class="text-xs text-gray-300 font-mono leading-relaxed max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-brand-red/50 scrollbar-track-transparent pr-2 whitespace-pre-wrap">
+                                class="text-xs text-gray-300 font-mono leading-relaxed max-h-80 overflow-y-auto scrollbar-thin scrollbar-thumb-brand-primary/50 scrollbar-track-transparent pr-2 whitespace-pre-wrap">
                             </div>
                         </div>
                     </div>
@@ -1741,7 +1741,7 @@
                                 </div>
                                 <div class="bg-[#211C17] border border-gray-800 rounded-xl p-4 text-center">
                                     <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Custo Total</p>
-                                    <p id="costs_total_cost" class="text-2xl font-display font-extrabold text-brand-red">$0.00</p>
+                                    <p id="costs_total_cost" class="text-2xl font-display font-extrabold text-brand-primary">$0.00</p>
                                 </div>
                                 <div class="bg-[#211C17] border border-gray-800 rounded-xl p-4 text-center">
                                     <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total de Tokens</p>
@@ -1797,7 +1797,7 @@
                             </div>
                             <label class="relative inline-flex items-center cursor-pointer">
                                 <input type="checkbox" id="ai_qual_enabled" name="qualification_enabled" value="true" class="sr-only peer">
-                                <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-brand-red transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                                <div class="w-11 h-6 bg-gray-700 rounded-full peer peer-checked:bg-brand-primary transition-colors after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
                             </label>
                         </div>
 
@@ -1836,7 +1836,7 @@
                                             Buscar Campos GHL
                                         </button>
                                         <button type="button" onclick="addQualField()"
-                                            class="px-3 py-1.5 bg-brand-red/20 hover:bg-brand-red/30 border border-brand-red/40 rounded-lg text-brand-red text-[10px] font-mono uppercase tracking-widest transition-colors whitespace-nowrap">
+                                            class="px-3 py-1.5 bg-brand-primary/20 hover:bg-brand-primary/30 border border-brand-primary/40 rounded-lg text-brand-primary text-[10px] font-mono uppercase tracking-widest transition-colors whitespace-nowrap">
                                             + Adicionar Campo
                                         </button>
                                     </div>
@@ -1944,7 +1944,7 @@
                             </button>
                             <p class="text-[10px] text-gray-600 font-mono text-center mt-3">
                                 Para gerar/melhorar o prompt usando esses dados + conversas reais,
-                                vá para a aba <span class="text-brand-red">Testador</span>.
+                                vá para a aba <span class="text-brand-primary">Testador</span>.
                             </p>
                         </div>
                     </div>

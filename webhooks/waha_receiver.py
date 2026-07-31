@@ -56,31 +56,31 @@ async def waha_webhook(
 ):
     if not is_valid_location_id(location_id):
         logger.warning(f"[WAHA] location_id rejeitado por validação ({location_id!r})")
-        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_location_id"})
+        metrics.inc("millochat_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_location_id"})
         return {"success": False, "error": "Invalid location_id"}
 
     raw = await request.body()
     if not _hmac_ok(raw, request.headers):
         logger.warning(f"[WAHA] HMAC inválido para {location_id}")
-        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_hmac"})
+        metrics.inc("millochat_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_hmac"})
         return {"success": False, "error": "Invalid signature"}
 
     try:
         payload = json.loads(raw)
     except Exception:
         logger.error("[WAHA] Payload inválido (JSON).")
-        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_json"})
+        metrics.inc("millochat_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_json"})
         return {"success": False, "error": "Invalid JSON"}
 
     evento = payload.get("event") or ""
-    metrics.inc("axenwp_webhooks_received_total", labels={"channel": "whatsapp"})
+    metrics.inc("millochat_webhooks_received_total", labels={"channel": "whatsapp"})
 
     if evento == "message":
         background_tasks.add_task(process_waha_message, location_id, payload)
     elif evento == "session.status":
         status = (payload.get("payload") or {}).get("status", "?")
         logger.info(f"[WAHA] Sessão {location_id}: {status}")
-        metrics.inc("axenwp_waha_session_status_total", labels={"status": str(status)})
+        metrics.inc("millochat_waha_session_status_total", labels={"status": str(status)})
     else:
         logger.debug(f"[WAHA] Evento ignorado: {evento or '(vazio)'}")
 
@@ -103,7 +103,7 @@ async def process_waha_message(location_id: str, payload: dict) -> None:
     # pode continuar conversando.
     if active_whatsapp_provider(tenant) != WAHA:
         logger.info(f"[CHANNEL] Inbound WAHA ignorado: {location_id} não usa WAHA como provedor.")
-        metrics.inc("axenwp_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "provider_inactive"})
+        metrics.inc("millochat_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "provider_inactive"})
         return
 
     pm = _channel.parse_inbound(location_id, payload)

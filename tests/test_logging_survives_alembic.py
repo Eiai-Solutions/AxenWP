@@ -17,7 +17,7 @@ def test_logger_do_app_continua_ativo_apos_o_fileConfig_do_alembic():
     # Mesma chamada que alembic/env.py faz no startup.
     fileConfig(ALEMBIC_INI, disable_existing_loggers=False)
 
-    assert logging.getLogger("axenwp").disabled is False
+    assert logging.getLogger("millochat").disabled is False
 
 
 def test_o_padrao_do_fileConfig_realmente_silenciaria(monkeypatch):
@@ -26,8 +26,8 @@ def test_o_padrao_do_fileConfig_realmente_silenciaria(monkeypatch):
 
     logger.disabled = False
     fileConfig(ALEMBIC_INI)  # padrão = disable_existing_loggers=True
-    assert logging.getLogger("axenwp").disabled is True
+    assert logging.getLogger("millochat").disabled is True
 
     # Restaura para não contaminar os outros testes.
     fileConfig(ALEMBIC_INI, disable_existing_loggers=False)
-    assert logging.getLogger("axenwp").disabled is False
+    assert logging.getLogger("millochat").disabled is False

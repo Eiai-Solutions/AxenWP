@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  axenwp-api:
+  millochat-api:
     build: .
-    container_name: axenwp_server
+    container_name: millochat_server
     restart: unless-stopped
     ports:
       - "8000:8000"

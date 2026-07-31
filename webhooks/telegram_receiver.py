@@ -61,7 +61,7 @@ async def receive_telegram_update(
     """Endpoint que o Telegram chama via setWebhook."""
     if not is_valid_location_id(location_id):
         metrics.inc(
-            "axenwp_webhook_rejected_total",
+            "millochat_webhook_rejected_total",
             labels={"channel": "telegram", "reason": "invalid_location_id"},
         )
         return {"ok": False, "error": "Invalid location_id"}
@@ -71,12 +71,12 @@ async def receive_telegram_update(
     except Exception as e:
         logger.error(f"Telegram webhook: payload inválido: {e}")
         metrics.inc(
-            "axenwp_webhook_rejected_total",
+            "millochat_webhook_rejected_total",
             labels={"channel": "telegram", "reason": "invalid_json"},
         )
         return {"ok": False}
 
-    metrics.inc("axenwp_webhooks_received_total", labels={"channel": "telegram"})
+    metrics.inc("millochat_webhooks_received_total", labels={"channel": "telegram"})
 
     msg = payload.get("message") or payload.get("edited_message")
     if not msg:

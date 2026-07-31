@@ -89,8 +89,8 @@ class AIEngine:
                     max_tokens=1000,
                     model_kwargs={
                         "extra_headers": {
-                            "HTTP-Referer": "https://axenwp.com",
-                            "X-Title": "AxenWP IA Engine",
+                            "HTTP-Referer": "https://millochat.com",
+                            "X-Title": "MilloChat IA Engine",
                         }
                     },
                 )
@@ -330,7 +330,7 @@ class AIEngine:
         escalate, escalate_reason = check_escalation(actual_message)
         if escalate:
             logger.warning(f"Escalação detectada ({escalate_reason}) para {user_phone}")
-            metrics.inc("axenwp_escalations_total", labels={"reason": escalate_reason or "unknown"})
+            metrics.inc("millochat_escalations_total", labels={"reason": escalate_reason or "unknown"})
 
         # 3. Carrega histórico da sessão.
         session_id = make_session_id(self.agent_config.location_id, user_phone)
@@ -377,10 +377,10 @@ class AIEngine:
         try:
             turn = await self.engine.run(ctx)
             ai_text = turn.text
-            metrics.inc("axenwp_ai_calls_total", labels={"model": self.agent_config.model})
+            metrics.inc("millochat_ai_calls_total", labels={"model": self.agent_config.model})
         except Exception as e:
             logger.error(f"Erro na chamada do LLM: {e}")
-            metrics.inc("axenwp_ai_calls_failed_total", labels={"model": self.agent_config.model})
+            metrics.inc("millochat_ai_calls_failed_total", labels={"model": self.agent_config.model})
             return None
 
         # 6. Guardrails de saída (emojis + placeholders + outbound).

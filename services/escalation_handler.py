@@ -51,7 +51,7 @@ async def handle_escalation(
 ) -> None:
     is_whatsapp_only = getattr(tenant, "mode", "ghl") == "whatsapp_only"
     logger.warning(f"[HANDOFF] Escalando {phone} @ {location_id} para humano: {reason!r}")
-    metrics.inc("axenwp_escalations_total", labels={"reason": "tool"})
+    metrics.inc("millochat_escalations_total", labels={"reason": "tool"})
 
     if is_whatsapp_only or not contact_id:
         # Sem CRM não há custom field para pausar. O kill-switch durável nesse modo

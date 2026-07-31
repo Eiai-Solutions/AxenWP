@@ -190,7 +190,7 @@ async def handle_qualification(
         db.commit()
         logger.info(f"Lead qualificado salvo: {phone} @ {location_id}")
         metrics.inc(
-            "axenwp_leads_qualified_total",
+            "millochat_leads_qualified_total",
             labels={"channel": channel, "ghl_opportunity": "yes" if opp_id else "no"},
         )
     except Exception as e:

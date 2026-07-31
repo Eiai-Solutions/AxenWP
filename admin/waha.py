@@ -2,7 +2,7 @@
 Gestão de conexões WhatsApp (WAHA) pelo painel.
 
 O painel do WAHA fica invisível: criar/conectar/desconectar número acontece no
-admin do AxenWP. Config do servidor WAHA é global (um servidor compartilhado);
+admin do MilloChat. Config do servidor WAHA é global (um servidor compartilhado);
 cada tenant vira uma sessão nomeada pelo seu location_id.
 
 Fluxo de conexão:

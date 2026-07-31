@@ -1,5 +1,5 @@
 """
-Logging configurado para o Axen WP.
+Logging configurado para o MilloChat.
 Formato padronizado com timestamp, nível e contexto do módulo.
 """
 
@@ -8,7 +8,7 @@ import sys
 import os
 
 
-def setup_logger(name: str = "axenwp") -> logging.Logger:
+def setup_logger(name: str = "millochat") -> logging.Logger:
     """Cria e retorna um logger configurado."""
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
 
