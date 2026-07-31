@@ -92,10 +92,20 @@
             {% endif %}
 
             <div class="group">
+                <label for="username"
+                    class="block text-gray-400 text-xs font-bold mb-2 uppercase tracking-wider group-focus-within:text-brand-primary transition-colors">Usuário</label>
+                <input type="text" id="username" name="username" autocomplete="username"
+                    autocapitalize="none" autocorrect="off" spellcheck="false" autofocus
+                    title="Nome de usuário do operador"
+                    class="glow-input bg-gray-900 border border-gray-700 text-white rounded-lg w-full py-3 px-4 leading-tight focus:outline-none transition-all duration-300 placeholder-gray-600 font-mono tracking-wider"
+                    placeholder="admin" required>
+            </div>
+
+            <div class="group">
                 <label for="password"
-                    class="block text-gray-400 text-xs font-bold mb-2 uppercase tracking-wider group-focus-within:text-brand-primary transition-colors">Credential
-                    Key</label>
-                <input type="password" id="password" name="password"
+                    class="block text-gray-400 text-xs font-bold mb-2 uppercase tracking-wider group-focus-within:text-brand-primary transition-colors">Senha</label>
+                <input type="password" id="password" name="password" autocomplete="current-password"
+                    title="Senha do operador"
                     class="glow-input bg-gray-900 border border-gray-700 text-white rounded-lg w-full py-3 px-4 leading-tight focus:outline-none transition-all duration-300 placeholder-gray-600 font-mono tracking-widest"
                     placeholder="••••••••" required>
             </div>
@@ -103,7 +113,7 @@
             <button type="submit"
                 title="Entrar no painel"
                 class="btn-glow w-full bg-brand-primary hover:bg-brand-primaryDark text-[#0F1A13] font-bold py-3 px-4 rounded-lg focus:outline-none transition-all duration-300 flex justify-center items-center gap-2 mt-4 uppercase tracking-widest text-sm">
-                <span>Authorize</span>
+                <span>Entrar</span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"
                     xmlns="http://www.w3.org/2000/svg">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3">

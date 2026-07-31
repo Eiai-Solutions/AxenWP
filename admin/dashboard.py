@@ -9,8 +9,7 @@ from fastapi import APIRouter, Request, Form, Depends, Cookie, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
-import hmac
-import hashlib
+import asyncio
 
 from utils.logger import logger
 from utils.config import settings as app_settings
@@ -21,10 +20,6 @@ from services.telegram_service import telegram_service
 
 router = APIRouter(prefix="/admin", tags=["Admin UI"])
 templates = Jinja2Templates(directory="web/templates")
-
-# Config da senha do Painel — lida via settings (env var ADMIN_PASSWORD)
-_WEAK_PASSWORDS = {"admin123", "admin", "password", "123456", ""}
-
 
 def _mask_app_id(client_id: str) -> str:
     """
@@ -41,34 +36,23 @@ def _mask_app_id(client_id: str) -> str:
     return f"{head}…-{suffix}" if suffix else f"{head}…"
 
 
-def _get_admin_password() -> str:
-    """Retorna a senha admin configurada. Falha se nao definida em producao."""
-    pw = app_settings.admin_password
-    if not pw and app_settings.debug:
-        logger.warning("ADMIN_PASSWORD nao definido — usando fallback 'admin123' (modo DEBUG).")
-        return "admin123"
-    if not pw:
-        raise RuntimeError(
-            "ADMIN_PASSWORD nao configurado. "
-            "Defina a variavel de ambiente ADMIN_PASSWORD antes de iniciar em producao."
-        )
-    if pw in _WEAK_PASSWORDS:
-        logger.warning(
-            "ADMIN_PASSWORD e uma senha fraca conhecida. "
-            "Troque por uma senha forte em producao."
-        )
-    return pw
-
-
-def _make_session_token(password: str) -> str:
-    """Deriva um token de sessão seguro a partir da senha (nunca expõe a senha no cookie)."""
-    return hmac.new(password.encode(), b"millochat-admin-session", hashlib.sha256).hexdigest()
-
-
 def verify_admin(admin_session: Optional[str] = Cookie(None)) -> bool:
-    """Valida se o cookie da sessão é um token HMAC válido."""
-    expected = _make_session_token(_get_admin_password())
-    return hmac.compare_digest(admin_session or "", expected)
+    """
+    Valida o cookie de sessão contra a conta do operador no banco.
+
+    O cookie carrega `usuario:token`, com o token derivado do hash da senha —
+    trocar a senha ou desativar a conta invalida a sessão sozinho.
+    """
+    from services.admin_auth import resolve_session
+
+    return resolve_session(admin_session) is not None
+
+
+def current_admin(admin_session: Optional[str] = Cookie(None)) -> Optional[str]:
+    """Username do operador logado (para exibir no painel e para auditoria)."""
+    from services.admin_auth import resolve_session
+
+    return resolve_session(admin_session)
 
 
 def require_admin(admin_session: Optional[str] = Cookie(None)) -> bool:
@@ -92,19 +76,31 @@ async def login_page(request: Request, error: str = None):
 
 
 @router.post("/login")
-async def do_login(password: str = Form(...)):
-    if password == _get_admin_password():
-        response = RedirectResponse(url="/admin/dashboard", status_code=303)
-        response.set_cookie(
-            key="admin_session",
-            value=_make_session_token(password),
-            httponly=True,
-            samesite="lax",
-            max_age=86400 * 30,
-        )
-        return response
+async def do_login(username: str = Form(...), password: str = Form(...)):
+    from services.admin_auth import authenticate, make_session_value
 
-    return RedirectResponse(url="/admin/login?error=Senha incorreta", status_code=303)
+    usuario = await asyncio.to_thread(authenticate, username, password)
+    if usuario is None:
+        # Mensagem única de propósito: dizer "usuário não existe" entregaria de
+        # graça quais contas existem.
+        logger.warning(f"[AUTH] Login recusado para '{(username or '')[:32]}'.")
+        return RedirectResponse(
+            url="/admin/login?error=Usuário ou senha incorretos", status_code=303
+        )
+
+    response = RedirectResponse(url="/admin/dashboard", status_code=303)
+    response.set_cookie(
+        key="admin_session",
+        value=make_session_value(usuario.username, usuario.password_hash),
+        httponly=True,
+        samesite="lax",
+        # Fora de DEBUG o painel só roda em HTTPS; sem `secure` o cookie de sessão
+        # vazaria em qualquer request HTTP acidental.
+        secure=not app_settings.debug,
+        max_age=86400 * 30,
+    )
+    logger.info(f"[AUTH] Operador '{usuario.username}' autenticado.")
+    return response
 
 
 @router.get("/logout")

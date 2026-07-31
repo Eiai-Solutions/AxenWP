@@ -397,3 +397,21 @@ class MediaBlob(Base):
     size = Column(Integer, nullable=False, default=0)
     data = Column(LargeBinary, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+class AdminUser(Base):
+    """
+    Operador do painel. Substitui a senha única compartilhada do `ADMIN_PASSWORD`.
+
+    `password_hash` guarda scrypt (ver services/admin_auth.py) — nunca a senha.
+    O token de sessão é derivado deste hash, então trocar a senha ou desativar o
+    usuário invalida as sessões vivas dele sem precisar de tabela de sessões.
+    """
+    __tablename__ = "admin_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(64), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_login_at = Column(DateTime, nullable=True)

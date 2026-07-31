@@ -90,6 +90,13 @@ async def lifespan(app: FastAPI):
         alembic_cfg = AlembicConfig(os.path.join(os.path.dirname(__file__), "alembic.ini"))
         alembic_command.upgrade(alembic_cfg, "head")
         logger.info("Migrações Alembic aplicadas com sucesso.")
+        # Garante que existe pelo menos um operador do painel. Sem isto, ligar o
+        # login por usuário trancaria o operador para fora do próprio painel.
+        try:
+            from services.admin_auth import bootstrap_admin_user
+            bootstrap_admin_user()
+        except Exception as e:
+            logger.error(f"Falha no bootstrap do operador admin: {e}", exc_info=True)
     except Exception as e:
         logger.error(f"Erro ao aplicar migrações Alembic: {e}", exc_info=True)
 

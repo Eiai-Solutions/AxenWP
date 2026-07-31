@@ -20,6 +20,11 @@ class Settings(BaseSettings):
         default="", description="ID do Conversation Provider MilloChat"
     )
 
+    admin_user: str = Field(
+        default="admin",
+        description="Nome de usuário do operador inicial do painel (bootstrap)"
+    )
+
     database_url: str = Field(
         default="sqlite:///./data/millochat.db",
         description="URL de conexão com o banco de dados (ex: postgresql://...)"
