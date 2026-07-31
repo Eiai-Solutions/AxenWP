@@ -95,7 +95,11 @@ Repositório: `Eiai-Solutions/AxenWP` via SSH (o repo mantém o nome antigo; o p
 - **Validação na borda**: regex em `utils/validators.py` rejeita location_id/form_token/phone malformados antes de queries.
 - **Buffers in-memory**: `deque(maxlen=N)` ou `OrderedDict` com cap. Cleanup periódico via APScheduler.
 - **Logging**: `[timestamp] | [level] | [module] | [message]`. Tags `[AUDIO]`, `[TTS-DECISION]`, `[MEMORY]` para grep rápido.
-- **Auth admin**: HMAC cookie sobre `ADMIN_PASSWORD`. Diagnostics adicionalmente gated por env.
+- **Auth admin**: contas em `admin_users` (usuário + senha, hash scrypt). Cookie = `usuario:HMAC(password_hash)`,
+  então trocar a senha ou desativar a conta derruba as sessões sozinho. Troca de senha pelo painel
+  (Config. Admin → Acesso ao painel); **trocar `ADMIN_PASSWORD` no env NÃO muda a senha de quem já existe**.
+  Resgate se ninguém mais entra: `UPDATE admin_users SET is_active=false;` + restart → o bootstrap reativa
+  e redefine pelo `ADMIN_PASSWORD`. Diagnostics adicionalmente gated por env.
 
 ## IA Mestre v2 — geração e melhoria de prompts
 
@@ -147,7 +151,8 @@ docker-compose up -d
 
 - `DATABASE_URL` — Supabase em prod (pooler, `sslmode=require`, role `millochat_app`), SQLite em dev.
   **Tem default de SQLite**: se sumir em produção o app recusa subir (antes subia num banco vazio dizendo "healthy")
-- `ADMIN_PASSWORD` — obrigatório fora de DEBUG
+- `ADMIN_PASSWORD` / `ADMIN_USER` — só para **criar o primeiro operador** (bootstrap no lifespan).
+  Depois disso a fonte da verdade é a tabela `admin_users`; mudar o env não altera senha existente
 - `GHL_CLIENT_ID` / `GHL_CLIENT_SECRET` / `GHL_REDIRECT_URI`
 - `PUBLIC_BASE_URL` — usado para registrar webhooks externos (Z-API/Telegram)
 - `ALLOWED_ORIGINS` — CORS (vazio fora de DEBUG bloqueia cross-origin)

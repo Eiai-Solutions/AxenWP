@@ -90,15 +90,19 @@ async def lifespan(app: FastAPI):
         alembic_cfg = AlembicConfig(os.path.join(os.path.dirname(__file__), "alembic.ini"))
         alembic_command.upgrade(alembic_cfg, "head")
         logger.info("Migrações Alembic aplicadas com sucesso.")
-        # Garante que existe pelo menos um operador do painel. Sem isto, ligar o
-        # login por usuário trancaria o operador para fora do próprio painel.
-        try:
-            from services.admin_auth import bootstrap_admin_user
-            bootstrap_admin_user()
-        except Exception as e:
-            logger.error(f"Falha no bootstrap do operador admin: {e}", exc_info=True)
     except Exception as e:
         logger.error(f"Erro ao aplicar migrações Alembic: {e}", exc_info=True)
+
+    # 3. Garante que existe pelo menos um operador do painel.
+    # FORA do try do Alembic de propósito: se a migration falhar, a exceção acima é
+    # engolida e o app sobe assim mesmo — se o bootstrap estivesse lá dentro, ele
+    # seria pulado e ninguém conseguiria entrar no painel. A tabela `admin_users`
+    # já foi garantida pelo `create_all` do passo 1, que não depende do Alembic.
+    try:
+        from services.admin_auth import bootstrap_admin_user
+        bootstrap_admin_user()
+    except Exception as e:
+        logger.error(f"Falha no bootstrap do operador admin: {e}", exc_info=True)
 
     # Inicializa scheduler de token refresh a cada 12 horas (proteção)
     # E roda imediatamente na subida

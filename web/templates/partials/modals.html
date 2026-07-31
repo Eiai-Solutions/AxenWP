@@ -214,6 +214,37 @@
                         </button>
                     </div>
                 </form>
+
+                <!-- Troca de senha do operador. Form separado: posta em outra rota. -->
+                <form action="/admin/senha" method="POST" class="mt-6 pt-5 border-t border-gray-800">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="text-[10px] font-bold uppercase tracking-widest text-gray-400 font-mono">Acesso ao painel</span>
+                        <span class="text-[10px] text-gray-500 font-mono normal-case">— troca a senha deste operador</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Senha atual</label>
+                            <input type="password" name="senha_atual" autocomplete="current-password" required
+                                title="Confirme a senha atual — cookie roubado nao troca senha"
+                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600"
+                                placeholder="••••••••">
+                        </div>
+                        <div>
+                            <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Nova senha</label>
+                            <input type="password" name="senha_nova" autocomplete="new-password" required minlength="8"
+                                title="Minimo de 8 caracteres"
+                                class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-600"
+                                placeholder="minimo 8 caracteres">
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between gap-3 mt-3">
+                        <span class="text-[10px] text-gray-500 font-mono">Trocar encerra as outras sessoes.</span>
+                        <button type="submit" title="Alterar a senha do operador logado"
+                            class="px-5 py-2 rounded-lg text-[10px] font-bold uppercase tracking-widest text-brand-primary bg-brand-primary/10 border border-brand-primary/30 hover:bg-brand-primary/20 transition-colors font-mono">
+                            Trocar senha
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>

@@ -207,3 +207,62 @@ def test_bootstrap_sem_senha_no_env_nao_cria_nem_explode(banco, monkeypatch):
     db = banco()
     assert db.query(AdminUser).count() == 0
     db.close()
+
+
+def test_bootstrap_recupera_acesso_quando_so_ha_conta_desativada(banco, monkeypatch):
+    """
+    Sem isto, o INSERT colidiria na unique de `username` e o painel ficaria sem
+    ninguém para entrar. Só vale com ZERO operadores ativos — é rota de recuperação.
+    """
+    from utils.config import settings
+    from services.admin_auth import authenticate, bootstrap_admin_user, hash_password
+    from data.models import AdminUser
+
+    db = banco()
+    db.add(AdminUser(username="admin", password_hash=hash_password("antiga"), is_active=False))
+    db.commit()
+    db.close()
+
+    monkeypatch.setattr(settings, "admin_user", "admin", raising=False)
+    monkeypatch.setattr(settings, "admin_password", "resgate", raising=False)
+    bootstrap_admin_user()
+
+    db = banco()
+    assert db.query(AdminUser).count() == 1, "criou conta duplicada em vez de reativar"
+    db.close()
+    assert authenticate("admin", "resgate") is not None
+
+
+def test_desativar_um_operador_nao_o_ressuscita_se_houver_outro_ativo(banco, monkeypatch):
+    """A recuperação não pode virar bypass do 'desativar usuário'."""
+    from utils.config import settings
+    from services.admin_auth import authenticate, bootstrap_admin_user, hash_password
+    from data.models import AdminUser
+
+    db = banco()
+    db.add(AdminUser(username="demitido", password_hash=hash_password("s"), is_active=False))
+    db.add(AdminUser(username="luiz", password_hash=hash_password("s"), is_active=True))
+    db.commit()
+    db.close()
+
+    monkeypatch.setattr(settings, "admin_user", "demitido", raising=False)
+    monkeypatch.setattr(settings, "admin_password", "s", raising=False)
+    bootstrap_admin_user()
+
+    assert authenticate("demitido", "s") is None, "conta desativada foi ressuscitada"
+
+
+def test_bootstrap_ignora_espaco_colado_na_senha_do_env(banco, monkeypatch):
+    """
+    Colar a senha no campo web do EasyPanel arrasta espaço/quebra de linha. Sem
+    strip, o hash seria de "senha \n" e o operador nunca entraria — e corrigir a
+    env depois não resolveria, porque o bootstrap não reexecuta com usuário ativo.
+    """
+    from utils.config import settings
+    from services.admin_auth import authenticate, bootstrap_admin_user
+
+    monkeypatch.setattr(settings, "admin_user", "admin", raising=False)
+    monkeypatch.setattr(settings, "admin_password", "  senha-com-espaco \n", raising=False)
+    bootstrap_admin_user()
+
+    assert authenticate("admin", "senha-com-espaco") is not None

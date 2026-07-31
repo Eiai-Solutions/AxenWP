@@ -13,6 +13,7 @@ import asyncio
 
 from utils.logger import logger
 from utils.config import settings as app_settings
+from utils.limiter import limiter
 from auth.token_manager import token_manager
 from services.channel_policy import ZAPI, active_whatsapp_provider
 from services.zapi_service import zapi_service
@@ -76,7 +77,13 @@ async def login_page(request: Request, error: str = None):
 
 
 @router.post("/login")
-async def do_login(username: str = Form(...), password: str = Form(...)):
+# O login era de graça (`password == env`); com scrypt cada tentativa custa ~37ms
+# e 16MB, e este é o único endpoint não autenticado do projeto sem limite. Sem
+# freio, um scanner prende os dois núcleos do VPS e as mensagens dos tenants —
+# que passam pelo MESMO processo — começam a expirar. Também é o único freio de
+# força bruta que existe hoje contra a conta do operador.
+@limiter.limit("10/minute")
+async def do_login(request: Request, username: str = Form(...), password: str = Form(...)):
     from services.admin_auth import authenticate, make_session_value
 
     usuario = await asyncio.to_thread(authenticate, username, password)
@@ -94,9 +101,11 @@ async def do_login(username: str = Form(...), password: str = Form(...)):
         value=make_session_value(usuario.username, usuario.password_hash),
         httponly=True,
         samesite="lax",
-        # Fora de DEBUG o painel só roda em HTTPS; sem `secure` o cookie de sessão
-        # vazaria em qualquer request HTTP acidental.
-        secure=not app_settings.debug,
+        # Derivado do esquema REAL da request, não de DEBUG. Com `secure` fixo em
+        # produção, abrir o painel por http:// (IP direto, certificado vencido)
+        # daria login 303 bem-sucedido cujo cookie o browser DESCARTA — loop mudo
+        # de volta para o login, com a senha certa e sem erro na tela.
+        secure=(request.headers.get("x-forwarded-proto", request.url.scheme) == "https"),
         max_age=86400 * 30,
     )
     logger.info(f"[AUTH] Operador '{usuario.username}' autenticado.")
@@ -107,6 +116,62 @@ async def do_login(username: str = Form(...), password: str = Form(...)):
 async def logout():
     response = RedirectResponse(url="/admin/login", status_code=303)
     response.delete_cookie("admin_session")
+    return response
+
+
+@router.post("/senha")
+@limiter.limit("5/minute")
+async def trocar_senha(
+    request: Request,
+    senha_atual: str = Form(...),
+    senha_nova: str = Form(...),
+    operador: Optional[str] = Depends(current_admin),
+):
+    """
+    Troca a senha do operador logado.
+
+    Existe porque, sem ela, a senha só sairia por UPDATE manual no banco: o env
+    deixou de ser a fonte da verdade de propósito, então trocar ADMIN_PASSWORD e
+    redeployar não muda nada. Rotacionar credencial não pode depender de SQL.
+
+    Pede a senha ATUAL mesmo já havendo sessão válida: um cookie roubado não pode
+    virar troca de senha, que trancaria o dono para fora da própria conta.
+    """
+    from services.admin_auth import authenticate, make_session_value, set_password
+
+    if not operador:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    if len(senha_nova or "") < 8:
+        return RedirectResponse(
+            url="/admin/dashboard?err=A nova senha precisa de pelo menos 8 caracteres.",
+            status_code=303,
+        )
+
+    if await asyncio.to_thread(authenticate, operador, senha_atual) is None:
+        logger.warning(f"[AUTH] Troca de senha recusada para '{operador}': senha atual errada.")
+        return RedirectResponse(url="/admin/dashboard?err=Senha atual incorreta.", status_code=303)
+
+    await asyncio.to_thread(set_password, operador, senha_nova)
+
+    # A troca invalida TODA sessão do usuário — inclusive esta. Reemitimos o
+    # cookie para quem acabou de trocar continuar logado; as outras morrem.
+    from services.admin_auth import _buscar_usuario_sync
+
+    atualizado = await asyncio.to_thread(_buscar_usuario_sync, operador)
+    response = RedirectResponse(
+        url="/admin/dashboard?msg=Senha alterada. As outras sessões foram encerradas.",
+        status_code=303,
+    )
+    if atualizado:
+        response.set_cookie(
+            key="admin_session",
+            value=make_session_value(atualizado.username, atualizado.password_hash),
+            httponly=True,
+            samesite="lax",
+            secure=(request.headers.get("x-forwarded-proto", request.url.scheme) == "https"),
+            max_age=86400 * 30,
+        )
     return response
 
 

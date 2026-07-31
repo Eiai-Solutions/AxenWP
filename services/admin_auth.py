@@ -109,7 +109,10 @@ def resolve_session(valor_cookie: Optional[str]) -> Optional[str]:
     """Devolve o username se o cookie for válido, senão None."""
     if not valor_cookie or ":" not in valor_cookie:
         return None
-    username, _, _token = valor_cookie.partition(":")
+    # rpartition: o token é hex e nunca contém ":", então o último separador é o
+    # certo. Com partition, um username com ":" gerava login 303 bem-sucedido cujo
+    # cookie nunca abria o painel — trancamento silencioso, sem erro nem log.
+    username, _, _token = valor_cookie.rpartition(":")
     if not username:
         return None
 
@@ -192,7 +195,11 @@ def bootstrap_admin_user() -> None:
         if db.query(AdminUser).filter(AdminUser.is_active.is_(True)).count() > 0:
             return
 
-        senha = settings.admin_password
+        # `.strip()` igual ao do username logo abaixo: colar a senha no campo web
+        # do EasyPanel arrasta espaço/quebra de linha com facilidade, e o hash
+        # ficaria de "senha " enquanto o operador digita "senha". Como o bootstrap
+        # não reexecuta com usuário já criado, corrigir a env depois não resolveria.
+        senha = (settings.admin_password or "").strip()
         if not senha:
             logger.error(
                 "[AUTH] Nenhum operador cadastrado e ADMIN_PASSWORD vazio — o painel "
@@ -208,6 +215,24 @@ def bootstrap_admin_user() -> None:
             )
 
         username = (settings.admin_user or "admin").strip()
+
+        # Pode existir uma conta com este nome, porém DESATIVADA — inserir de novo
+        # violaria a unique de `username` e deixaria o painel sem ninguém para
+        # entrar. Como só chegamos aqui com ZERO operadores ativos, o sistema já
+        # está inacessível: reativar pelo env é justamente a rota de recuperação
+        # (quem controla o deploy controla o env). Com qualquer operador ativo,
+        # nada disso roda — desativar um operador continua valendo.
+        existente = db.query(AdminUser).filter(AdminUser.username == username).first()
+        if existente is not None:
+            existente.is_active = True
+            existente.password_hash = hash_password(senha)
+            db.commit()
+            logger.warning(
+                f"[AUTH] Nenhum operador ativo: conta '{username}' reativada e senha "
+                "redefinida pelo ADMIN_PASSWORD (recuperação de acesso)."
+            )
+            return
+
         db.add(AdminUser(username=username, password_hash=hash_password(senha), is_active=True))
         db.commit()
         logger.info(f"[AUTH] Operador inicial '{username}' criado a partir do ADMIN_PASSWORD.")
