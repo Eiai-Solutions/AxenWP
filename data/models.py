@@ -9,6 +9,9 @@ class Tenant(Base):
 
     location_id = Column(String, primary_key=True, index=True)
     company_name = Column(String, index=True)
+    # Nullable: os tenants que já existem não têm dono ainda, e um tenant órfão
+    # simplesmente não é visível por nenhum cliente — falha fechada.
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     client_id = Column(String)
     client_secret = Column(String)
     access_token = Column(String)
@@ -413,5 +416,24 @@ class AdminUser(Base):
     username = Column(String(64), unique=True, nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    # 'operator' = equipe Eiai, vê tudo. 'client' = dono da conta, vê só a dele.
+    # Default 'operator' preserva as contas que já existem.
+    role = Column(String(20), default="operator", nullable=False)
+    # Só para role='client'. Operador não pertence a organização nenhuma.
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     last_login_at = Column(DateTime, nullable=True)
+
+
+class Organization(Base):
+    """
+    A empresa cliente. Um `Tenant` é um NÚMERO de WhatsApp, não uma empresa — a
+    mesma empresa pode ter comercial e suporte em números distintos, e quem paga
+    é ela. Por isso o vínculo do usuário é com a Organization, não com o tenant.
+    """
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(160), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

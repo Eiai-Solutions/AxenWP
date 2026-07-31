@@ -19,6 +19,12 @@ from services.channel_policy import ZAPI, active_whatsapp_provider
 from services.zapi_service import zapi_service
 from services.telegram_service import telegram_service
 
+# Duas portas de propósito:
+# `router_publico` só tem login/logout. Todo o resto vive em `router`, que já nasce
+# com `require_admin` — rota nova é fechada por CONSTRUÇÃO, não por lembrar de
+# checar. O padrão antigo (`verify_admin` devolvendo bool + `if not authenticated`
+# em cada rota) foi o que deixou 25 rotas abertas em admin/ai_agent.py.
+router_publico = APIRouter(prefix="/admin", tags=["Admin UI"])
 router = APIRouter(prefix="/admin", tags=["Admin UI"])
 templates = Jinja2Templates(directory="web/templates")
 
@@ -37,23 +43,31 @@ def _mask_app_id(client_id: str) -> str:
     return f"{head}…-{suffix}" if suffix else f"{head}…"
 
 
+def current_principal(admin_session: Optional[str] = Cookie(None)):
+    """O principal da request (username + papel + tenants alcançáveis), ou None."""
+    from services.admin_auth import resolve_principal
+
+    return resolve_principal(admin_session)
+
+
 def verify_admin(admin_session: Optional[str] = Cookie(None)) -> bool:
     """
-    Valida o cookie de sessão contra a conta do operador no banco.
+    Só é verdadeiro para OPERADOR — todo `/admin` é área da equipe.
 
-    O cookie carrega `usuario:token`, com o token derivado do hash da senha —
-    trocar a senha ou desativar a conta invalida a sessão sozinho.
+    Este é o ponto que impede o painel do cliente de virar vazamento: no instante
+    em que existir um `AdminUser` com role='client', ele passaria nas 86 rotas de
+    `/admin` se a checagem continuasse sendo apenas "o cookie resolve para algum
+    usuário ativo?". Entre elas, `GET /admin/agents/{loc}/agent`, que devolve
+    api_key, anthropic_api_key e o prompt em texto puro de QUALQUER tenant.
     """
-    from services.admin_auth import resolve_session
-
-    return resolve_session(admin_session) is not None
+    p = current_principal(admin_session)
+    return p is not None and p.is_operator
 
 
 def current_admin(admin_session: Optional[str] = Cookie(None)) -> Optional[str]:
     """Username do operador logado (para exibir no painel e para auditoria)."""
-    from services.admin_auth import resolve_session
-
-    return resolve_session(admin_session)
+    p = current_principal(admin_session)
+    return p.username if (p is not None and p.is_operator) else None
 
 
 def require_admin(admin_session: Optional[str] = Cookie(None)) -> bool:
@@ -66,17 +80,22 @@ def require_admin(admin_session: Optional[str] = Cookie(None)) -> bool:
     qualquer um com a URL. Usada como `dependencies=[Depends(require_admin)]` no
     APIRouter, a proteção passa a valer por construção — rota nova nasce fechada.
     """
-    if not verify_admin(admin_session):
+    p = current_principal(admin_session)
+    if p is None:
         raise HTTPException(status_code=401, detail="Não autenticado.")
+    if not p.is_operator:
+        # 403, não 401: ele ESTÁ autenticado, só não é da equipe. Devolver 401 aqui
+        # mandaria o cliente para a tela de login num loop sem explicação.
+        raise HTTPException(status_code=403, detail="Área restrita à equipe.")
     return True
 
 
-@router.get("/login", response_class=HTMLResponse)
+@router_publico.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = None):
     return templates.TemplateResponse("login.html", {"request": request, "error": error})
 
 
-@router.post("/login")
+@router_publico.post("/login")
 # O login era de graça (`password == env`); com scrypt cada tentativa custa ~37ms
 # e 16MB, e este é o único endpoint não autenticado do projeto sem limite. Sem
 # freio, um scanner prende os dois núcleos do VPS e as mensagens dos tenants —
@@ -112,7 +131,7 @@ async def do_login(request: Request, username: str = Form(...), password: str = 
     return response
 
 
-@router.get("/logout")
+@router_publico.get("/logout")
 async def logout():
     response = RedirectResponse(url="/admin/login", status_code=303)
     response.delete_cookie("admin_session")
@@ -989,3 +1008,8 @@ async def onboard_lite(
         logger.error(f"Erro ao criar tenant lite: {e}")
         return RedirectResponse(url=f"/admin/dashboard?err=Erro ao criar instância: {str(e)}", status_code=303)
 
+
+# Aplicado no fim do módulo, depois de `require_admin` estar definido: fecha TODAS
+# as rotas de `router` de uma vez. Vale também para as que ainda usam
+# `Depends(verify_admin)` internamente — a barreira do router recusa antes.
+router.dependencies.append(Depends(require_admin))

@@ -27,12 +27,17 @@ import hmac
 import os
 import re
 import secrets
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
 from data.database import SessionLocal
-from data.models import AdminUser
+from data.models import AdminUser, Organization, Tenant
 from utils.logger import logger
+
+# Papéis. 'operator' = equipe Eiai (vê tudo). 'client' = dono da conta.
+OPERADOR = "operator"
+CLIENTE = "client"
 
 # Parâmetros interativos padrão: ~16MB de memória por verificação.
 _SCRYPT_N = 16384
@@ -101,6 +106,82 @@ def _buscar_usuario_sync(username: str) -> Optional[AdminUser]:
             db.query(AdminUser)
             .filter(AdminUser.username == username, AdminUser.is_active.is_(True))
             .first()
+        )
+    finally:
+        db.close()
+
+
+@dataclass(frozen=True)
+class Principal:
+    """
+    Quem está pedindo, e o que ele alcança.
+
+    `locations` é a lista de `location_id` permitidos, lida do BANCO a cada
+    request — de propósito. Se o escopo viajasse no cookie, tirar um tenant de um
+    cliente só valeria depois que ele trocasse a senha, porque o token é HMAC
+    sobre (username, password_hash). Revogação precisa ser imediata.
+
+    Operador tem `locations` vazio e `is_operator=True`: ele não é escopado, e a
+    ausência de escopo NUNCA deve ser lida como "vazio = nenhum" nem como
+    "vazio = todos" por engano — sempre cheque `is_operator` explicitamente.
+    """
+
+    username: str
+    role: str
+    organization_id: Optional[int]
+    locations: tuple[str, ...]
+
+    @property
+    def is_operator(self) -> bool:
+        return self.role == OPERADOR
+
+    def alcanca(self, location_id: Optional[str]) -> bool:
+        """Única fonte da verdade sobre 'esse principal pode tocar neste tenant?'."""
+        if self.is_operator:
+            return True
+        return bool(location_id) and location_id in self.locations
+
+
+def _locations_da_org(db, organization_id: Optional[int]) -> tuple[str, ...]:
+    if organization_id is None:
+        return ()
+    linhas = (
+        db.query(Tenant.location_id)
+        .filter(Tenant.organization_id == organization_id)
+        .all()
+    )
+    return tuple(x[0] for x in linhas)
+
+
+def resolve_principal(valor_cookie: Optional[str]) -> Optional[Principal]:
+    """Valida o cookie e monta o principal. None = não autenticado."""
+    if not valor_cookie or ":" not in valor_cookie:
+        return None
+    username, _, _token = valor_cookie.rpartition(":")
+    if not username:
+        return None
+
+    db = SessionLocal()
+    try:
+        usuario = (
+            db.query(AdminUser)
+            .filter(AdminUser.username == username, AdminUser.is_active.is_(True))
+            .first()
+        )
+        if usuario is None:
+            return None
+
+        esperado = make_session_value(usuario.username, usuario.password_hash)
+        if not hmac.compare_digest(valor_cookie, esperado):
+            return None
+
+        papel = (usuario.role or OPERADOR).strip() or OPERADOR
+        org = usuario.organization_id
+        return Principal(
+            username=usuario.username,
+            role=papel,
+            organization_id=org,
+            locations=() if papel == OPERADOR else _locations_da_org(db, org),
         )
     finally:
         db.close()

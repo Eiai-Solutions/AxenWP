@@ -30,6 +30,7 @@ from webhooks.zapi_receiver import router as zapi_webhook_router
 from webhooks.telegram_receiver import router as telegram_webhook_router
 from webhooks.waha_receiver import router as waha_webhook_router
 from admin.dashboard import router as admin_router
+from admin.dashboard import router_publico as admin_router_publico
 from admin.ai_agent import router as admin_ai_agent_router
 from admin.seed_joorney import router as seed_joorney_router
 from admin.diagnostics import router as diagnostics_router
@@ -176,6 +177,7 @@ app.include_router(ghl_webhook_router)
 app.include_router(zapi_webhook_router)
 app.include_router(telegram_webhook_router)
 app.include_router(waha_webhook_router)
+app.include_router(admin_router_publico)  # login/logout — sem barreira, de propósito
 app.include_router(admin_router)
 app.include_router(admin_ai_agent_router)
 app.include_router(seed_joorney_router)

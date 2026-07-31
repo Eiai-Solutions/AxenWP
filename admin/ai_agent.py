@@ -22,6 +22,18 @@ from pydantic import BaseModel
 # rota nova nasce fechada, sem depender de ninguém lembrar.
 from admin.dashboard import require_admin  # noqa: E402
 
+def _like_prefix(prefix: str) -> str:
+    """
+    Escapa curingas para usar um prefixo literal em LIKE.
+
+    `location_id` CONTÉM underline (ex.: `wp_9fe4c6ef7915`), e `_` é curinga de um
+    caractere em SQL — sem escapar, o filtro de um tenant casa com o session_id de
+    outro cujo id difira só naquela posição. Vazamento silencioso entre tenants.
+    Use sempre com `escape="\\"`.
+    """
+    return prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 router = APIRouter(
     prefix="/admin/agents",
     tags=["admin_agents"],
@@ -451,7 +463,7 @@ async def get_conversations(location_id: str, offset: int = 0, limit: int = 20):
                 func.min(ChatHistory.created_at).label("first_msg"),
                 func.max(ChatHistory.created_at).label("last_msg"),
             )
-            .filter(ChatHistory.session_id.like(f"{prefix}%"))
+            .filter(ChatHistory.session_id.like(f"{_like_prefix(prefix)}%", escape="\\"))
             .group_by(ChatHistory.session_id)
             .order_by(desc("last_msg"))
             .offset(offset)
@@ -461,7 +473,7 @@ async def get_conversations(location_id: str, offset: int = 0, limit: int = 20):
         results = contacts_q.all()
         total = (
             db.query(func.count(func.distinct(ChatHistory.session_id)))
-            .filter(ChatHistory.session_id.like(f"{prefix}%"))
+            .filter(ChatHistory.session_id.like(f"{_like_prefix(prefix)}%", escape="\\"))
             .scalar()
         ) or 0
 
@@ -1195,7 +1207,7 @@ async def improve_prompt(location_id: str, request: Request):
             session_prefix = f"{location_id}_"
             rows = (
                 db.query(ChatHistory)
-                .filter(ChatHistory.session_id.like(f"{session_prefix}%"))
+                .filter(ChatHistory.session_id.like(f"{_like_prefix(session_prefix)}%", escape="\\"))
                 .order_by(ChatHistory.created_at.desc())
                 .limit(40)
                 .all()
