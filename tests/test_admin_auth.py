@@ -266,3 +266,99 @@ def test_bootstrap_ignora_espaco_colado_na_senha_do_env(banco, monkeypatch):
     bootstrap_admin_user()
 
     assert authenticate("admin", "senha-com-espaco") is not None
+
+
+# --------------------------------------------------------------------------- #
+# Gestão de operadores — a invariante é "nunca sobra zero ativo"
+# --------------------------------------------------------------------------- #
+def test_nao_da_para_desativar_o_ultimo_operador_ativo(banco):
+    """A trava principal: sem ela, um clique deixa o painel inacessível para sempre."""
+    from services.admin_auth import criar_usuario, definir_ativo, listar_usuarios
+
+    criar_usuario("luiz", "senha-longa-1")
+    ok, msg = definir_ativo("luiz", False, quem_pediu="outro")
+    assert ok is False
+    assert "último operador ativo" in msg
+    assert listar_usuarios()[0]["is_active"] is True
+
+
+def test_ninguem_desativa_a_propria_conta(banco):
+    from services.admin_auth import criar_usuario, definir_ativo
+
+    criar_usuario("luiz", "senha-longa-1")
+    criar_usuario("maria", "senha-longa-2")
+    ok, msg = definir_ativo("luiz", False, quem_pediu="luiz")
+    assert ok is False
+    assert "própria conta" in msg
+
+
+def test_desativar_funciona_quando_sobra_outro_ativo(banco):
+    from services.admin_auth import authenticate, criar_usuario, definir_ativo
+
+    criar_usuario("luiz", "senha-longa-1")
+    criar_usuario("maria", "senha-longa-2")
+    ok, _ = definir_ativo("maria", False, quem_pediu="luiz")
+    assert ok is True
+    assert authenticate("maria", "senha-longa-2") is None
+    assert authenticate("luiz", "senha-longa-1") is not None
+
+
+def test_reativar_devolve_o_acesso(banco):
+    from services.admin_auth import authenticate, criar_usuario, definir_ativo
+
+    criar_usuario("luiz", "senha-longa-1")
+    criar_usuario("maria", "senha-longa-2")
+    definir_ativo("maria", False, quem_pediu="luiz")
+    definir_ativo("maria", True, quem_pediu="luiz")
+    assert authenticate("maria", "senha-longa-2") is not None
+
+
+@pytest.mark.parametrize(
+    "nome", ["ab", "luiz:ops", "com espaco", "joão", "", "a" * 65, "usuario@x"]
+)
+def test_username_invalido_e_recusado(banco, nome):
+    """':' quebraria o parse do cookie; o resto evita nome que o operador erra ao digitar."""
+    from services.admin_auth import criar_usuario
+
+    ok, _ = criar_usuario(nome, "senha-longa-1")
+    assert ok is False
+
+
+def test_senha_curta_e_recusada_na_criacao(banco):
+    from services.admin_auth import criar_usuario
+
+    ok, msg = criar_usuario("luiz", "curta")
+    assert ok is False and "8 caracteres" in msg
+
+
+def test_nao_cria_operador_duplicado(banco):
+    from services.admin_auth import criar_usuario, listar_usuarios
+
+    assert criar_usuario("luiz", "senha-longa-1")[0] is True
+    ok, msg = criar_usuario("luiz", "outra-senha-1")
+    assert ok is False and "Já existe" in msg
+    assert len(listar_usuarios()) == 1
+
+
+def test_listar_nunca_devolve_o_hash(banco):
+    """O hash É a chave da sessão — vazá-lo no template seria entregar o painel."""
+    from services.admin_auth import criar_usuario, listar_usuarios
+
+    criar_usuario("luiz", "senha-longa-1")
+    for u in listar_usuarios():
+        assert "password_hash" not in u
+        assert not any("scrypt" in str(v) for v in u.values())
+
+
+def test_redefinir_senha_de_outro_derruba_a_sessao_dele(banco):
+    from services.admin_auth import (
+        criar_usuario, make_session_value, resolve_session, set_password, _buscar_usuario_sync,
+    )
+
+    criar_usuario("maria", "senha-longa-2")
+    u = _buscar_usuario_sync("maria")
+    cookie = make_session_value(u.username, u.password_hash)
+    assert resolve_session(cookie) == "maria"
+
+    set_password("maria", "senha-redefinida")
+    assert resolve_session(cookie) is None

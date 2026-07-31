@@ -215,6 +215,93 @@
                     </div>
                 </form>
 
+                <!-- Operadores do painel. Fora do form de config: postam em outras rotas. -->
+                <div class="mt-6 rounded-xl border border-gray-800 overflow-hidden">
+                    <button type="button" onclick="toggleSettingsCard('ops')"
+                        title="Gerenciar quem tem acesso ao painel"
+                        class="w-full flex items-center gap-3 p-4 hover:bg-gray-900/40 transition-colors text-left">
+                        <div class="w-8 h-8 rounded-lg bg-brand-primary/10 border border-brand-primary/25 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-4 h-4 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold text-white">Operadores do painel</p>
+                            <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest truncate">Quem pode entrar no MilloChat</p>
+                        </div>
+                        <span class="text-[10px] font-mono uppercase tracking-widest text-gray-400">{{ operadores|length }} conta{{ 's' if operadores|length != 1 else '' }}</span>
+                        <svg id="chev-ops" class="w-4 h-4 text-gray-500 transition-transform flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    </button>
+
+                    <div id="body-ops" class="hidden px-4 pb-4 border-t border-gray-800 pt-4 space-y-4">
+                        {% for op in operadores %}
+                        <div class="flex items-center gap-3 p-3 rounded-lg border {% if op.is_active %}border-gray-800{% else %}border-gray-800 opacity-50{% endif %}">
+                            <span class="w-1.5 h-1.5 rounded-full flex-shrink-0 {% if op.is_active %}bg-green-500{% else %}bg-gray-600{% endif %}"
+                                title="{{ 'Ativo' if op.is_active else 'Desativado' }}"></span>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-xs font-bold text-white font-mono truncate">
+                                    {{ op.username }}{% if op.username == operador_atual %}<span class="text-[9px] text-brand-primary ml-1.5 uppercase tracking-widest">voce</span>{% endif %}
+                                </p>
+                                <p class="text-[9px] text-gray-500 font-mono uppercase tracking-widest">
+                                    {% if op.last_login_at %}ultimo acesso {{ op.last_login_at.strftime('%d/%m/%Y %H:%M') }}{% else %}nunca acessou{% endif %}
+                                </p>
+                            </div>
+
+                            <form action="/admin/operadores/senha" method="POST" class="flex items-center gap-1.5"
+                                onsubmit="return confirm('Redefinir a senha de {{ op.username }}? Ele sera deslogado de todo lugar.')">
+                                <input type="hidden" name="alvo" value="{{ op.username }}">
+                                <input type="password" name="nova_senha" required minlength="8" placeholder="nova senha"
+                                    title="Redefinir a senha deste operador (minimo 8)"
+                                    class="input-dark w-28 py-1.5 px-2 rounded-md text-[10px] font-mono placeholder-gray-600">
+                                <button type="submit" title="Redefinir a senha deste operador"
+                                    class="px-2 py-1.5 rounded-md text-[9px] font-bold uppercase tracking-widest text-gray-400 border border-gray-700 hover:text-white hover:border-gray-600 transition-colors font-mono">
+                                    Redefinir
+                                </button>
+                            </form>
+
+                            {% if op.username != operador_atual %}
+                            <form action="/admin/operadores/ativo" method="POST"
+                                onsubmit="return confirm('{{ 'Reativar' if not op.is_active else 'Desativar' }} {{ op.username }}?')">
+                                <input type="hidden" name="alvo" value="{{ op.username }}">
+                                <input type="hidden" name="ativo" value="{{ 'true' if not op.is_active else 'false' }}">
+                                <button type="submit"
+                                    title="{{ 'Reativar o acesso deste operador' if not op.is_active else 'Revogar o acesso deste operador' }}"
+                                    class="px-2 py-1.5 rounded-md text-[9px] font-bold uppercase tracking-widest font-mono transition-colors {% if op.is_active %}text-danger border border-danger/30 hover:bg-danger/10{% else %}text-green-400 border border-green-500/30 hover:bg-green-500/10{% endif %}">
+                                    {{ 'Reativar' if not op.is_active else 'Desativar' }}
+                                </button>
+                            </form>
+                            {% else %}
+                            <span class="px-2 py-1.5 text-[9px] uppercase tracking-widest text-gray-600 font-mono"
+                                title="Voce nao pode desativar a propria conta">—</span>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+
+                        <form action="/admin/operadores" method="POST" class="pt-3 border-t border-gray-800">
+                            <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 font-mono mb-2">Novo operador</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <input type="text" name="novo_usuario" required pattern="[a-zA-Z0-9._-]{3,64}"
+                                    title="3-64 caracteres: letras, numeros, ponto, hifen ou underline"
+                                    placeholder="usuario"
+                                    class="input-dark w-full py-2 px-3 rounded-lg text-xs font-mono placeholder-gray-600">
+                                <input type="password" name="nova_senha" required minlength="8"
+                                    title="Senha inicial (minimo 8 caracteres)"
+                                    placeholder="senha (min. 8)"
+                                    class="input-dark w-full py-2 px-3 rounded-lg text-xs font-mono placeholder-gray-600">
+                            </div>
+                            <div class="flex justify-end mt-2">
+                                <button type="submit" title="Criar um novo operador do painel"
+                                    class="px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest text-brand-primary bg-brand-primary/10 border border-brand-primary/30 hover:bg-brand-primary/20 transition-colors font-mono">
+                                    Criar operador
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
                 <!-- Troca de senha do operador. Form separado: posta em outra rota. -->
                 <form action="/admin/senha" method="POST" class="mt-6 pt-5 border-t border-gray-800">
                     <div class="flex items-center gap-2 mb-3">

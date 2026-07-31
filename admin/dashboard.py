@@ -175,10 +175,105 @@ async def trocar_senha(
     return response
 
 
+@router.post("/operadores")
+@limiter.limit("20/minute")
+async def criar_operador(
+    request: Request,
+    novo_usuario: str = Form(...),
+    nova_senha: str = Form(...),
+    operador: Optional[str] = Depends(current_admin),
+):
+    """Cria outro operador do painel."""
+    from services.admin_auth import criar_usuario
+
+    if not operador:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    ok, msg = await asyncio.to_thread(criar_usuario, novo_usuario, nova_senha)
+    chave = "msg" if ok else "err"
+    return RedirectResponse(url=f"/admin/dashboard?{chave}={msg}", status_code=303)
+
+
+@router.post("/operadores/ativo")
+@limiter.limit("20/minute")
+async def alternar_operador(
+    request: Request,
+    alvo: str = Form(...),
+    ativo: str = Form(...),
+    operador: Optional[str] = Depends(current_admin),
+):
+    """
+    Ativa/desativa operador.
+
+    As travas contra ficar sem ninguém ativo moram em `definir_ativo`, não aqui —
+    a rota é só uma das portas, e a regra precisa valer para qualquer caminho.
+    """
+    from services.admin_auth import definir_ativo
+
+    if not operador:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    ok, msg = await asyncio.to_thread(
+        definir_ativo, alvo, str(ativo).lower() in ("1", "true", "on", "sim"), operador
+    )
+    chave = "msg" if ok else "err"
+    return RedirectResponse(url=f"/admin/dashboard?{chave}={msg}", status_code=303)
+
+
+@router.post("/operadores/senha")
+@limiter.limit("10/minute")
+async def redefinir_senha_de_operador(
+    request: Request,
+    alvo: str = Form(...),
+    nova_senha: str = Form(...),
+    operador: Optional[str] = Depends(current_admin),
+):
+    """
+    Redefine a senha de OUTRO operador (quem esqueceu a própria).
+
+    Não pede a senha atual porque quem redefine não a conhece — por isso é uma
+    rota separada de `/admin/senha`, que exige confirmação por ser a própria.
+    Como o token deriva do hash, o alvo é deslogado de todo lugar na hora.
+    """
+    from services.admin_auth import listar_usuarios, set_password
+
+    if not operador:
+        return RedirectResponse(url="/admin/login", status_code=303)
+
+    if len((nova_senha or "")) < 8:
+        return RedirectResponse(
+            url="/admin/dashboard?err=A senha precisa de pelo menos 8 caracteres.", status_code=303
+        )
+
+    existentes = {u["username"] for u in await asyncio.to_thread(listar_usuarios)}
+    if alvo not in existentes:
+        return RedirectResponse(url="/admin/dashboard?err=Operador não encontrado.", status_code=303)
+
+    await asyncio.to_thread(set_password, alvo, nova_senha)
+    logger.info(f"[AUTH] Senha de '{alvo}' redefinida por '{operador}'.")
+    return RedirectResponse(
+        url=f"/admin/dashboard?msg=Senha de '{alvo}' redefinida. As sessões dele foram encerradas.",
+        status_code=303,
+    )
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
-async def dashboard_page(request: Request, msg: str = None, err: str = None, authenticated: bool = Depends(verify_admin)):
+async def dashboard_page(
+    request: Request,
+    msg: str = None,
+    err: str = None,
+    authenticated: bool = Depends(verify_admin),
+    operador: Optional[str] = Depends(current_admin),
+):
     if not authenticated:
         return RedirectResponse(url="/admin/login", status_code=303)
+
+    from services.admin_auth import listar_usuarios
+    try:
+        operadores = await asyncio.to_thread(listar_usuarios)
+    except Exception as e:  # a lista nunca pode impedir o painel de abrir
+        logger.error(f"Falha ao listar operadores: {e}")
+        operadores = []
 
     tenants = token_manager.get_all_tenants()
     # Ordenar por data de criação ou nome da empresa
@@ -330,6 +425,8 @@ async def dashboard_page(request: Request, msg: str = None, err: str = None, aut
             "system_settings": system_settings,
             "ghl_app_configured": bool(ghl_client_id),
             "ghl_app_hint": _mask_app_id(ghl_client_id),
+            "operadores": operadores,
+            "operador_atual": operador,
         }
     )
 

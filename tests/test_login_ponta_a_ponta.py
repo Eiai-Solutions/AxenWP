@@ -30,6 +30,14 @@ def app_com_operador(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "admin_user", "luiz", raising=False)
     monkeypatch.setattr(settings, "admin_password", "senha-boa-do-env", raising=False)
     monkeypatch.setattr(settings, "debug", True, raising=False)  # cookie sem `secure` no TestClient
+
+    # O rate limit é por IP e o estado do slowapi persiste entre testes do mesmo
+    # processo: sem desligar, os logins destes testes estouram o 10/min e as
+    # falhas apareceriam como "senha errada". O limite em si é coberto por
+    # test_login_tem_rate_limit, que o religa de propósito.
+    from utils.limiter import limiter
+    monkeypatch.setattr(limiter, "enabled", False, raising=False)
+
     auth.bootstrap_admin_user()
 
     import main
@@ -193,3 +201,115 @@ def test_troca_de_senha_sem_sessao_nao_passa(app_com_operador):
         follow_redirects=False,
     )
     assert r.headers["location"] == "/admin/login"
+
+
+def _logar(c, usuario="luiz", senha="senha-boa-do-env"):
+    r = c.post("/admin/login", data={"username": usuario, "password": senha}, follow_redirects=False)
+    return r.cookies.get("admin_session")
+
+
+def test_cria_operador_pelo_painel_e_ele_consegue_entrar(app_com_operador):
+    c = app_com_operador
+    cookie = _logar(c)
+
+    r = c.post(
+        "/admin/operadores",
+        data={"novo_usuario": "maria", "nova_senha": "senha-da-maria"},
+        cookies={"admin_session": cookie},
+        follow_redirects=False,
+    )
+    assert "msg=" in r.headers["location"], r.headers.get("location")
+
+    novo = _logar(c, "maria", "senha-da-maria")
+    assert novo and novo.startswith("maria:")
+
+
+def test_rotas_de_operador_recusam_sem_sessao(app_com_operador):
+    c = app_com_operador
+    for url, dados in [
+        ("/admin/operadores", {"novo_usuario": "x1y", "nova_senha": "senha-longa-1"}),
+        ("/admin/operadores/ativo", {"alvo": "luiz", "ativo": "false"}),
+        ("/admin/operadores/senha", {"alvo": "luiz", "nova_senha": "senha-longa-1"}),
+    ]:
+        r = c.post(url, data=dados, follow_redirects=False)
+        assert r.headers["location"] == "/admin/login", f"{url} nao exigiu sessao"
+
+    from services.admin_auth import authenticate, listar_usuarios
+    assert [u["username"] for u in listar_usuarios()] == ["luiz"], "criou operador sem sessao"
+    assert authenticate("luiz", "senha-boa-do-env") is not None
+
+
+def test_painel_nao_deixa_ficar_sem_operador_ativo_pela_rota(app_com_operador):
+    """A trava vive no service, mas o caminho HTTP tem que respeitá-la."""
+    c = app_com_operador
+    cookie = _logar(c)
+
+    r = c.post(
+        "/admin/operadores/ativo",
+        data={"alvo": "luiz", "ativo": "false"},
+        cookies={"admin_session": cookie},
+        follow_redirects=False,
+    )
+    assert "err=" in r.headers["location"]
+
+    from services.admin_auth import authenticate
+    assert authenticate("luiz", "senha-boa-do-env") is not None, "operador se desativou"
+
+
+def test_redefinir_senha_de_outro_pelo_painel(app_com_operador):
+    c = app_com_operador
+    cookie = _logar(c)
+    c.post(
+        "/admin/operadores",
+        data={"novo_usuario": "maria", "nova_senha": "senha-da-maria"},
+        cookies={"admin_session": cookie},
+        follow_redirects=False,
+    )
+    r = c.post(
+        "/admin/operadores/senha",
+        data={"alvo": "maria", "nova_senha": "senha-nova-maria"},
+        cookies={"admin_session": cookie},
+        follow_redirects=False,
+    )
+    assert "msg=" in r.headers["location"]
+
+    from services.admin_auth import authenticate
+    assert authenticate("maria", "senha-nova-maria") is not None
+    assert authenticate("maria", "senha-da-maria") is None
+
+
+def test_redefinir_senha_de_operador_inexistente_nao_cria_nada(app_com_operador):
+    c = app_com_operador
+    cookie = _logar(c)
+    r = c.post(
+        "/admin/operadores/senha",
+        data={"alvo": "fantasma", "nova_senha": "senha-longa-1"},
+        cookies={"admin_session": cookie},
+        follow_redirects=False,
+    )
+    assert "err=" in r.headers["location"]
+    from services.admin_auth import listar_usuarios
+    assert [u["username"] for u in listar_usuarios()] == ["luiz"]
+
+
+def test_login_tem_rate_limit(app_com_operador, monkeypatch):
+    """
+    O limite é o único freio de força bruta E a proteção contra DoS: cada
+    tentativa custa ~37ms e 16MB de scrypt, no mesmo processo que atende os
+    webhooks dos tenants.
+    """
+    from utils.limiter import limiter
+
+    monkeypatch.setattr(limiter, "enabled", True, raising=False)
+    limiter.reset()
+
+    codigos = [
+        app_com_operador.post(
+            "/admin/login",
+            data={"username": "luiz", "password": "errada"},
+            follow_redirects=False,
+        ).status_code
+        for _ in range(14)
+    ]
+    assert 429 in codigos, f"login sem rate limit: {codigos}"
+    assert codigos.count(303) <= 10, f"passou do limite de 10/min: {codigos}"

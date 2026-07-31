@@ -25,6 +25,7 @@ import base64
 import hashlib
 import hmac
 import os
+import re
 import secrets
 from datetime import datetime, timezone
 from typing import Optional
@@ -159,6 +160,97 @@ def authenticate(username: str, senha: str) -> Optional[AdminUser]:
         db.close()
 
     return usuario
+
+
+# --------------------------------------------------------------------------- #
+# Gestão de operadores
+# --------------------------------------------------------------------------- #
+# Regras de nome: ":" quebraria o parse do cookie (`usuario:token`); os demais
+# limites evitam nome com espaço/acento que o operador digita errado no login.
+_USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,64}$")
+
+
+def listar_usuarios() -> list[dict]:
+    """Dados de exibição. Nunca devolve `password_hash` — ele É a chave da sessão."""
+    db = SessionLocal()
+    try:
+        return [
+            {
+                "username": u.username,
+                "is_active": bool(u.is_active),
+                "created_at": u.created_at,
+                "last_login_at": u.last_login_at,
+            }
+            for u in db.query(AdminUser).order_by(AdminUser.username).all()
+        ]
+    finally:
+        db.close()
+
+
+def _ativos_alem_de(db, username: str) -> int:
+    return (
+        db.query(AdminUser)
+        .filter(AdminUser.is_active.is_(True), AdminUser.username != username)
+        .count()
+    )
+
+
+def criar_usuario(username: str, senha: str) -> tuple[bool, str]:
+    """Cria operador. Devolve (ok, mensagem)."""
+    username = (username or "").strip()
+    senha = senha or ""
+
+    if not _USERNAME_RE.match(username):
+        return False, "Usuário deve ter 3-64 caracteres: letras, números, ponto, hífen ou _."
+    if len(senha) < 8:
+        return False, "A senha precisa de pelo menos 8 caracteres."
+
+    db = SessionLocal()
+    try:
+        if db.query(AdminUser).filter(AdminUser.username == username).first():
+            return False, f"Já existe um operador '{username}'."
+        db.add(AdminUser(username=username, password_hash=hash_password(senha), is_active=True))
+        db.commit()
+        logger.info(f"[AUTH] Operador '{username}' criado.")
+        return True, f"Operador '{username}' criado."
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[AUTH] Falha ao criar operador '{username}': {e}")
+        return False, "Não foi possível criar o operador."
+    finally:
+        db.close()
+
+
+def definir_ativo(username: str, ativo: bool, quem_pediu: str) -> tuple[bool, str]:
+    """
+    Ativa/desativa operador.
+
+    Duas travas contra o painel se trancar sozinho — este é o ponto onde um clique
+    distraído custa o acesso de todo mundo:
+      1. Ninguém se desativa (é o erro mais fácil de cometer e o mais irreversível).
+      2. Nunca sobra zero operador ativo.
+    """
+    username = (username or "").strip()
+
+    if not ativo and username == quem_pediu:
+        return False, "Você não pode desativar a própria conta."
+
+    db = SessionLocal()
+    try:
+        usuario = db.query(AdminUser).filter(AdminUser.username == username).first()
+        if usuario is None:
+            return False, "Operador não encontrado."
+
+        if not ativo and _ativos_alem_de(db, username) == 0:
+            return False, "Este é o último operador ativo — o painel ficaria inacessível."
+
+        usuario.is_active = bool(ativo)
+        db.commit()
+        acao = "reativado" if ativo else "desativado"
+        logger.info(f"[AUTH] Operador '{username}' {acao} por '{quem_pediu}'.")
+        return True, f"Operador '{username}' {acao}."
+    finally:
+        db.close()
 
 
 def set_password(username: str, nova_senha: str) -> bool:

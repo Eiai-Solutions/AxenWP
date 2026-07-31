@@ -2377,7 +2377,7 @@
         }
 
         // Cards de configuracao (System Settings) — fechados por padrao, abrem ao clicar.
-        const SETTINGS_CARDS = ['ia', 'stt', 'waha'];
+        const SETTINGS_CARDS = ['ia', 'stt', 'waha', 'ops'];
 
         // Alterna os campos da IA Mestre entre Anthropic (estruturado) e OpenRouter (legado).
         function switchMestreEngine(engine) {
