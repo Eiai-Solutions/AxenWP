@@ -25,6 +25,15 @@ class Settings(BaseSettings):
         description="Nome de usuário do operador inicial do painel (bootstrap)"
     )
 
+    admin_force_reset: bool = Field(
+        default=False,
+        description=(
+            "Resgate: no próximo boot, redefine a senha do ADMIN_USER com o "
+            "ADMIN_PASSWORD mesmo que a conta já exista e esteja ativa. "
+            "Desligue depois de entrar."
+        ),
+    )
+
     database_url: str = Field(
         default="sqlite:///./data/millochat.db",
         description="URL de conexão com o banco de dados (ex: postgresql://...)"

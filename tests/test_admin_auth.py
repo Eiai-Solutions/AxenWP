@@ -450,3 +450,70 @@ def test_falha_ao_criar_operador_nao_derrama_o_hash_no_log(banco, monkeypatch, c
     assert ok is False
     assert "scrypt$" not in caplog.text, f"hash vazou para o log: {caplog.text[:300]}"
     assert "parameters" not in caplog.text
+
+
+# --------------------------------------------------------------------------- #
+# ADMIN_FORCE_RESET — a rota de resgate
+# --------------------------------------------------------------------------- #
+def test_sem_force_reset_o_env_nao_sobrescreve_a_senha_do_banco(banco, monkeypatch):
+    """Comportamento normal: o painel é a fonte da verdade, não o env."""
+    from utils.config import settings
+    from services.admin_auth import authenticate, bootstrap_admin_user, criar_usuario
+
+    criar_usuario("admin", "senha-do-painel")
+    monkeypatch.setattr(settings, "admin_user", "admin", raising=False)
+    monkeypatch.setattr(settings, "admin_password", "senha-do-env", raising=False)
+    monkeypatch.setattr(settings, "admin_force_reset", False, raising=False)
+
+    bootstrap_admin_user()
+    assert authenticate("admin", "senha-do-painel") is not None
+    assert authenticate("admin", "senha-do-env") is None
+
+
+def test_force_reset_devolve_o_acesso_mesmo_com_a_conta_ativa(banco, monkeypatch):
+    """
+    O incidente real de 2026-07-31: trocar ADMIN_PASSWORD e redeployar não fazia
+    nada, porque a conta ativa fazia o bootstrap retornar cedo. Recuperar exigia
+    SQL em produção — justamente o que este módulo existe para evitar.
+    """
+    from utils.config import settings
+    from services.admin_auth import authenticate, bootstrap_admin_user, criar_usuario
+
+    criar_usuario("admin", "senha-esquecida")
+    monkeypatch.setattr(settings, "admin_user", "admin", raising=False)
+    monkeypatch.setattr(settings, "admin_password", "senha-de-resgate", raising=False)
+    monkeypatch.setattr(settings, "admin_force_reset", True, raising=False)
+
+    bootstrap_admin_user()
+    assert authenticate("admin", "senha-de-resgate") is not None
+    assert authenticate("admin", "senha-esquecida") is None
+
+
+def test_force_reset_reativa_conta_desativada(banco, monkeypatch):
+    from utils.config import settings
+    from services.admin_auth import authenticate, bootstrap_admin_user, criar_usuario, definir_ativo
+
+    criar_usuario("admin", "senha-longa-1")
+    criar_usuario("outro", "senha-longa-2")
+    definir_ativo("admin", False, quem_pediu="outro")
+    assert authenticate("admin", "senha-longa-1") is None
+
+    monkeypatch.setattr(settings, "admin_user", "admin", raising=False)
+    monkeypatch.setattr(settings, "admin_password", "senha-de-resgate", raising=False)
+    monkeypatch.setattr(settings, "admin_force_reset", True, raising=False)
+    bootstrap_admin_user()
+
+    assert authenticate("admin", "senha-de-resgate") is not None
+
+
+def test_force_reset_com_env_invalido_nao_quebra_nada(banco, monkeypatch):
+    from utils.config import settings
+    from services.admin_auth import authenticate, bootstrap_admin_user, criar_usuario
+
+    criar_usuario("admin", "senha-que-vale")
+    monkeypatch.setattr(settings, "admin_user", "admin", raising=False)
+    monkeypatch.setattr(settings, "admin_password", "", raising=False)
+    monkeypatch.setattr(settings, "admin_force_reset", True, raising=False)
+
+    bootstrap_admin_user()
+    assert authenticate("admin", "senha-que-vale") is not None

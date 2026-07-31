@@ -98,8 +98,11 @@ Repositório: `Eiai-Solutions/AxenWP` via SSH (o repo mantém o nome antigo; o p
 - **Auth admin**: contas em `admin_users` (usuário + senha, hash scrypt). Cookie = `usuario:HMAC(password_hash)`,
   então trocar a senha ou desativar a conta derruba as sessões sozinho. Troca de senha pelo painel
   (Config. Admin → Acesso ao painel); **trocar `ADMIN_PASSWORD` no env NÃO muda a senha de quem já existe**.
-  Resgate se ninguém mais entra: `UPDATE admin_users SET is_active=false;` + restart → o bootstrap reativa
-  e redefine pelo `ADMIN_PASSWORD`. Diagnostics adicionalmente gated por env.
+  **Resgate quando ninguém entra:** ligue `ADMIN_FORCE_RESET=true`, ajuste `ADMIN_PASSWORD`, redeploye —
+  o boot redefine a senha do `ADMIN_USER` e reativa a conta. **Desligue depois**, senão todo deploy
+  sobrescreve a senha e a troca pelo painel não sobrevive. (Sem essa flag, trocar `ADMIN_PASSWORD` e
+  redeployar não faz NADA com a conta ativa — foi o que trancou o painel em 2026-07-31.)
+  Diagnostics adicionalmente gated por env.
 
 ## IA Mestre v2 — geração e melhoria de prompts
 
@@ -153,6 +156,7 @@ docker-compose up -d
   **Tem default de SQLite**: se sumir em produção o app recusa subir (antes subia num banco vazio dizendo "healthy")
 - `ADMIN_PASSWORD` / `ADMIN_USER` — só para **criar o primeiro operador** (bootstrap no lifespan).
   Depois disso a fonte da verdade é a tabela `admin_users`; mudar o env não altera senha existente
+- `ADMIN_FORCE_RESET` — resgate de acesso (ver Convenções). Deixe `false` no dia a dia
 - `GHL_CLIENT_ID` / `GHL_CLIENT_SECRET` / `GHL_REDIRECT_URI`
 - `PUBLIC_BASE_URL` — usado para registrar webhooks externos (Z-API/Telegram)
 - `ALLOWED_ORIGINS` — CORS (vazio fora de DEBUG bloqueia cross-origin)

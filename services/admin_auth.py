@@ -359,7 +359,36 @@ def bootstrap_admin_user() -> None:
 
     db = SessionLocal()
     try:
-        if db.query(AdminUser).filter(AdminUser.is_active.is_(True)).count() > 0:
+        ativos = db.query(AdminUser).filter(AdminUser.is_active.is_(True)).count()
+
+        # Resgate explícito. Sem isto, "trocar ADMIN_PASSWORD e redeployar" — o
+        # reflexo natural de quem perdeu o acesso, e o que a documentação do
+        # projeto mandava fazer — NÃO surtia efeito nenhum: com a conta ativa o
+        # bootstrap retornava cedo e a senha do banco continuava valendo. Foi
+        # exatamente o que aconteceu em produção em 2026-07-31.
+        # É opt-in de propósito: ligado sempre, o env voltaria a sobrescrever o
+        # banco a cada deploy e a troca de senha pelo painel não sobreviveria.
+        if settings.admin_force_reset:
+            senha = (settings.admin_password or "").strip()
+            username = (settings.admin_user or "admin").strip()
+            if not senha or not _USERNAME_RE.match(username):
+                logger.error("[AUTH] ADMIN_FORCE_RESET ligado, mas ADMIN_USER/ADMIN_PASSWORD inválidos.")
+                return
+            usuario = db.query(AdminUser).filter(AdminUser.username == username).first()
+            if usuario is None:
+                db.add(AdminUser(username=username, password_hash=hash_password(senha), is_active=True))
+            else:
+                usuario.password_hash = hash_password(senha)
+                usuario.is_active = True
+            db.commit()
+            logger.warning(
+                f"[AUTH] ADMIN_FORCE_RESET: senha de '{username}' redefinida pelo env e conta "
+                "ativada. DESLIGUE a variável e reinicie — enquanto ela estiver ligada, todo "
+                "deploy sobrescreve a senha."
+            )
+            return
+
+        if ativos > 0:
             return
 
         # `.strip()` igual ao do username logo abaixo: colar a senha no campo web
