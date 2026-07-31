@@ -313,3 +313,44 @@ def test_login_tem_rate_limit(app_com_operador, monkeypatch):
     ]
     assert 429 in codigos, f"login sem rate limit: {codigos}"
     assert codigos.count(303) <= 10, f"passou do limite de 10/min: {codigos}"
+
+
+def test_nao_da_para_redefinir_a_PROPRIA_senha_pela_rota_de_outro(app_com_operador):
+    """
+    Bloqueador achado em revisão, com PoC. `/admin/senha` exige a senha ATUAL
+    justamente para que cookie roubado não tranque o dono. `/admin/operadores/senha`
+    aceitava `alvo` = você mesmo e pulava essa exigência: um typo trancava o painel
+    E o redeploy não recuperava (a conta segue ativa, o bootstrap não dispara).
+    """
+    c = app_com_operador
+    cookie = _logar(c)
+
+    r = c.post(
+        "/admin/operadores/senha",
+        data={"alvo": "luiz", "nova_senha": "senha-digitada-errada"},
+        cookies={"admin_session": cookie},
+        follow_redirects=False,
+    )
+    assert "err=" in r.headers["location"], "auto-alvo foi aceito"
+
+    from services.admin_auth import authenticate
+    assert authenticate("luiz", "senha-boa-do-env") is not None, "trancou o operador para fora"
+    assert authenticate("luiz", "senha-digitada-errada") is None
+
+
+def test_cookie_roubado_nao_vira_takeover_pela_rota_de_redefinir(app_com_operador):
+    """O mesmo furo pelo lado do atacante: cookie válido não pode trocar a senha do dono."""
+    c = app_com_operador
+    cookie = _logar(c)
+
+    r = c.post(
+        "/admin/operadores/senha",
+        data={"alvo": "luiz", "nova_senha": "senha-do-atacante"},
+        cookies={"admin_session": cookie},
+        follow_redirects=False,
+    )
+    assert "err=" in r.headers["location"]
+
+    from services.admin_auth import authenticate
+    assert authenticate("luiz", "senha-do-atacante") is None
+    assert authenticate("luiz", "senha-boa-do-env") is not None

@@ -235,26 +235,14 @@ async def redefinir_senha_de_operador(
     rota separada de `/admin/senha`, que exige confirmação por ser a própria.
     Como o token deriva do hash, o alvo é deslogado de todo lugar na hora.
     """
-    from services.admin_auth import listar_usuarios, set_password
+    from services.admin_auth import redefinir_senha_de_outro
 
     if not operador:
         return RedirectResponse(url="/admin/login", status_code=303)
 
-    if len((nova_senha or "")) < 8:
-        return RedirectResponse(
-            url="/admin/dashboard?err=A senha precisa de pelo menos 8 caracteres.", status_code=303
-        )
-
-    existentes = {u["username"] for u in await asyncio.to_thread(listar_usuarios)}
-    if alvo not in existentes:
-        return RedirectResponse(url="/admin/dashboard?err=Operador não encontrado.", status_code=303)
-
-    await asyncio.to_thread(set_password, alvo, nova_senha)
-    logger.info(f"[AUTH] Senha de '{alvo}' redefinida por '{operador}'.")
-    return RedirectResponse(
-        url=f"/admin/dashboard?msg=Senha de '{alvo}' redefinida. As sessões dele foram encerradas.",
-        status_code=303,
-    )
+    ok, msg = await asyncio.to_thread(redefinir_senha_de_outro, alvo, nova_senha, operador)
+    chave = "msg" if ok else "err"
+    return RedirectResponse(url=f"/admin/dashboard?{chave}={msg}", status_code=303)
 
 
 @router.get("/dashboard", response_class=HTMLResponse)

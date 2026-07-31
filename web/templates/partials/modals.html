@@ -250,10 +250,14 @@
                                 </p>
                             </div>
 
+                            {% if op.username != operador_atual %}
+                            <!-- Redefinir NAO aparece na propria linha: a troca da propria senha
+                                 passa por "Acesso ao painel", que confirma a senha atual. -->
                             <form action="/admin/operadores/senha" method="POST" class="flex items-center gap-1.5"
-                                onsubmit="return confirm('Redefinir a senha de {{ op.username }}? Ele sera deslogado de todo lugar.')">
+                                data-alvo="{{ op.username }}" onsubmit="return confirmarReset(this)">
                                 <input type="hidden" name="alvo" value="{{ op.username }}">
                                 <input type="password" name="nova_senha" required minlength="8" placeholder="nova senha"
+                                    autocomplete="new-password"
                                     title="Redefinir a senha deste operador (minimo 8)"
                                     class="input-dark w-28 py-1.5 px-2 rounded-md text-[10px] font-mono placeholder-gray-600">
                                 <button type="submit" title="Redefinir a senha deste operador"
@@ -262,9 +266,9 @@
                                 </button>
                             </form>
 
-                            {% if op.username != operador_atual %}
                             <form action="/admin/operadores/ativo" method="POST"
-                                onsubmit="return confirm('{{ 'Reativar' if not op.is_active else 'Desativar' }} {{ op.username }}?')">
+                                data-alvo="{{ op.username }}" data-acao="{{ 'Reativar' if not op.is_active else 'Desativar' }}"
+                                onsubmit="return confirmarAtivo(this)">
                                 <input type="hidden" name="alvo" value="{{ op.username }}">
                                 <input type="hidden" name="ativo" value="{{ 'true' if not op.is_active else 'false' }}">
                                 <button type="submit"
@@ -275,7 +279,7 @@
                             </form>
                             {% else %}
                             <span class="px-2 py-1.5 text-[9px] uppercase tracking-widest text-gray-600 font-mono"
-                                title="Voce nao pode desativar a propria conta">—</span>
+                                title="Sua propria conta: use 'Acesso ao painel' abaixo para trocar a senha">sua conta</span>
                             {% endif %}
                         </div>
                         {% endfor %}
@@ -284,10 +288,12 @@
                             <p class="text-[10px] font-bold uppercase tracking-widest text-gray-400 font-mono mb-2">Novo operador</p>
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 <input type="text" name="novo_usuario" required pattern="[a-zA-Z0-9._-]{3,64}"
+                                    autocomplete="off"
                                     title="3-64 caracteres: letras, numeros, ponto, hifen ou underline"
                                     placeholder="usuario"
                                     class="input-dark w-full py-2 px-3 rounded-lg text-xs font-mono placeholder-gray-600">
                                 <input type="password" name="nova_senha" required minlength="8"
+                                    autocomplete="new-password"
                                     title="Senha inicial (minimo 8 caracteres)"
                                     placeholder="senha (min. 8)"
                                     class="input-dark w-full py-2 px-3 rounded-lg text-xs font-mono placeholder-gray-600">

@@ -215,7 +215,9 @@ def criar_usuario(username: str, senha: str) -> tuple[bool, str]:
         return True, f"Operador '{username}' criado."
     except Exception as e:
         db.rollback()
-        logger.error(f"[AUTH] Falha ao criar operador '{username}': {e}")
+        # `{e}` cru do SQLAlchemy traz "[SQL: INSERT ...] [parameters: (...)]" —
+        # ou seja, o password_hash iria parar no log do EasyPanel.
+        logger.error(f"[AUTH] Falha ao criar operador '{username}': {type(e).__name__}")
         return False, "Não foi possível criar o operador."
     finally:
         db.close()
@@ -232,23 +234,92 @@ def definir_ativo(username: str, ativo: bool, quem_pediu: str) -> tuple[bool, st
     """
     username = (username or "").strip()
 
-    if not ativo and username == quem_pediu:
-        return False, "Você não pode desativar a própria conta."
-
     db = SessionLocal()
     try:
+        # Serializa desativações concorrentes. Sem o lock, dois operadores clicando
+        # "desativar" ao mesmo tempo veriam, cada um, o OUTRO como ativo (READ
+        # COMMITTED não enxerga a transação alheia ainda não commitada), os dois
+        # passariam na checagem e sobrariam ZERO ativos — trancamento total. A
+        # tabela tem punhado de linhas, então travar todas custa nada.
+        if not ativo and db.get_bind().dialect.name == "postgresql":
+            db.query(AdminUser).with_for_update().all()
+
         usuario = db.query(AdminUser).filter(AdminUser.username == username).first()
         if usuario is None:
             return False, "Operador não encontrado."
 
-        if not ativo and _ativos_alem_de(db, username) == 0:
+        # Compara o nome RESOLVIDO no banco, não o texto do formulário: se a
+        # coluna tiver collation case-insensitive, "ADMIN" acharia a linha de
+        # "admin" e passaria por uma comparação feita contra o input cru.
+        if not ativo and usuario.username == quem_pediu:
+            return False, "Você não pode desativar a própria conta."
+
+        if not ativo and _ativos_alem_de(db, usuario.username) == 0:
             return False, "Este é o último operador ativo — o painel ficaria inacessível."
 
         usuario.is_active = bool(ativo)
+        db.flush()
+
+        # Confere a invariante já com a mudança aplicada na transação. É a rede
+        # embaixo do lock: se por qualquer motivo sobrarem zero ativos, desfaz.
+        if db.query(AdminUser).filter(AdminUser.is_active.is_(True)).count() == 0:
+            db.rollback()
+            return False, "Este é o último operador ativo — o painel ficaria inacessível."
+
         db.commit()
         acao = "reativado" if ativo else "desativado"
-        logger.info(f"[AUTH] Operador '{username}' {acao} por '{quem_pediu}'.")
-        return True, f"Operador '{username}' {acao}."
+        logger.info(f"[AUTH] Operador '{usuario.username}' {acao} por '{quem_pediu}'.")
+        return True, f"Operador '{usuario.username}' {acao}."
+    except Exception as e:
+        # Sem isto, um soluço do pooler devolvia 500 cru no meio de uma ação de
+        # acesso: o operador não saberia se desativou o colega ou não, e reenviaria
+        # às cegas. `criar_usuario` já tratava; estas duas não.
+        db.rollback()
+        logger.error(f"[AUTH] Falha ao alterar '{username}': {type(e).__name__}")
+        return False, "Não foi possível concluir — tente de novo."
+    finally:
+        db.close()
+
+
+def redefinir_senha_de_outro(alvo: str, nova_senha: str, quem_pediu: str) -> tuple[bool, str]:
+    """
+    Redefine a senha de OUTRO operador.
+
+    A trava contra `alvo == quem_pediu` mora aqui, não na rota, pelo mesmo motivo
+    das travas de `definir_ativo`: a regra precisa valer por qualquer caminho.
+
+    Sem ela a rota furava a defesa que `/admin/senha` documenta — lá a troca da
+    própria senha exige a senha ATUAL, justamente para que um cookie roubado não
+    tranque o dono para fora. Redefinir "outro" apontando para si mesmo pulava
+    essa exigência, e um typo na própria senha era irreversível: a conta continua
+    ATIVA, então o bootstrap do próximo deploy não reseta nada e a recuperação
+    viraria UPDATE manual no banco.
+    """
+    alvo = (alvo or "").strip()
+
+    if alvo == (quem_pediu or "").strip():
+        return False, "Para trocar a SUA senha use 'Acesso ao painel' — ele confirma a senha atual."
+    if len(nova_senha or "") < 8:
+        return False, "A senha precisa de pelo menos 8 caracteres."
+
+    db = SessionLocal()
+    try:
+        usuario = db.query(AdminUser).filter(AdminUser.username == alvo).first()
+        if usuario is None:
+            return False, "Operador não encontrado."
+        # Compara o nome resolvido, não o texto do form: com collation
+        # case-insensitive, "ADMIN" acharia a linha de "admin" e escaparia.
+        if usuario.username == (quem_pediu or "").strip():
+            return False, "Para trocar a SUA senha use 'Acesso ao painel' — ele confirma a senha atual."
+
+        usuario.password_hash = hash_password(nova_senha)
+        db.commit()
+        logger.info(f"[AUTH] Senha de '{usuario.username}' redefinida por '{quem_pediu}'.")
+        return True, f"Senha de '{usuario.username}' redefinida. As sessões dele foram encerradas."
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[AUTH] Falha ao redefinir senha de '{alvo}': {type(e).__name__}")
+        return False, "Não foi possível concluir — tente de novo."
     finally:
         db.close()
 
@@ -264,6 +335,10 @@ def set_password(username: str, nova_senha: str) -> bool:
         db.commit()
         logger.info(f"[AUTH] Senha alterada para '{username}'; sessões antigas invalidadas.")
         return True
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[AUTH] Falha ao trocar senha de '{username}': {type(e).__name__}")
+        return False
     finally:
         db.close()
 
@@ -307,6 +382,12 @@ def bootstrap_admin_user() -> None:
             )
 
         username = (settings.admin_user or "admin").strip()
+        if not _USERNAME_RE.match(username):
+            logger.error(
+                f"[AUTH] ADMIN_USER '{username[:32]}' é inválido (use 3-64 de "
+                "[a-zA-Z0-9._-]). Nenhum operador criado."
+            )
+            return
 
         # Pode existir uma conta com este nome, porém DESATIVADA — inserir de novo
         # violaria a unique de `username` e deixaria o painel sem ninguém para

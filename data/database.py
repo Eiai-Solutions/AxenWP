@@ -62,7 +62,12 @@ else:
         "pool_timeout": 10,
     }
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args=connect_args, **engine_kwargs)
+# hide_parameters: sem isto, qualquer erro de statement do SQLAlchemy despeja
+# "[parameters: (...)]" no log — e os parâmetros incluem hash de senha, tokens
+# OAuth e chaves de LLM. O log do EasyPanel é visível a quem não tem o banco.
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL, connect_args=connect_args, hide_parameters=True, **engine_kwargs
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

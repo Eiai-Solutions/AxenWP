@@ -362,3 +362,91 @@ def test_redefinir_senha_de_outro_derruba_a_sessao_dele(banco):
 
     set_password("maria", "senha-redefinida")
     assert resolve_session(cookie) is None
+
+
+def test_auto_desativacao_e_barrada_pelo_nome_resolvido_no_banco(banco):
+    """
+    A trava compara o username vindo do BANCO, não o texto do form: com collation
+    case-insensitive, "ADMIN" acharia a linha de "admin" e escaparia de uma
+    comparação feita contra o input cru.
+    """
+    from services.admin_auth import criar_usuario, definir_ativo, listar_usuarios
+
+    criar_usuario("admin", "senha-longa-1")
+    criar_usuario("maria", "senha-longa-2")
+
+    # espaços em volta são normalizados e a trava continua valendo
+    ok, msg = definir_ativo("  admin  ", False, quem_pediu="admin")
+    assert ok is False and "própria conta" in msg
+    assert [u for u in listar_usuarios() if u["username"] == "admin"][0]["is_active"] is True
+
+
+def test_desativar_operador_inexistente_nao_altera_ninguem(banco):
+    from services.admin_auth import criar_usuario, definir_ativo, listar_usuarios
+
+    criar_usuario("luiz", "senha-longa-1")
+    ok, msg = definir_ativo("fantasma", False, quem_pediu="luiz")
+    assert ok is False and "não encontrado" in msg
+    assert all(u["is_active"] for u in listar_usuarios())
+
+
+def test_redefinir_a_propria_senha_pela_via_de_outro_e_recusado(banco):
+    from services.admin_auth import authenticate, criar_usuario, redefinir_senha_de_outro
+
+    criar_usuario("luiz", "senha-longa-1")
+    ok, msg = redefinir_senha_de_outro("luiz", "senha-nova-1", quem_pediu="luiz")
+    assert ok is False and "SUA senha" in msg
+    assert authenticate("luiz", "senha-longa-1") is not None
+
+
+def test_redefinir_senha_de_outro_funciona(banco):
+    from services.admin_auth import authenticate, criar_usuario, redefinir_senha_de_outro
+
+    criar_usuario("luiz", "senha-longa-1")
+    criar_usuario("maria", "senha-longa-2")
+    ok, _ = redefinir_senha_de_outro("maria", "senha-nova-2", quem_pediu="luiz")
+    assert ok is True
+    assert authenticate("maria", "senha-nova-2") is not None
+    assert authenticate("maria", "senha-longa-2") is None
+
+
+def test_bootstrap_recusa_ADMIN_USER_invalido(banco, monkeypatch):
+    """O env era o único caminho que escapava do regex que o resto do módulo aplica."""
+    from utils.config import settings
+    from services.admin_auth import bootstrap_admin_user, listar_usuarios
+
+    monkeypatch.setattr(settings, "admin_user", "luiz:ops", raising=False)
+    monkeypatch.setattr(settings, "admin_password", "senha-longa-1", raising=False)
+    bootstrap_admin_user()
+    assert listar_usuarios() == []
+
+
+def test_falha_ao_criar_operador_nao_derrama_o_hash_no_log(banco, monkeypatch, caplog):
+    """
+    A exceção crua do SQLAlchemy carrega "[parameters: (...)]" — com o hash dentro.
+    O log do EasyPanel é visível a quem não tem acesso ao banco.
+    """
+    import logging
+    import services.admin_auth as auth
+
+    original = auth.SessionLocal
+    HASH_FALSO = "scrypt$16384$8$1$c2FsdA==$ZGVyaXZhZG8="
+
+    def sessao_que_falha_no_commit():
+        db = original()
+        def commit_explode():
+            raise RuntimeError(
+                "(psycopg2.errors.UniqueViolation) duplicate key\n"
+                "[SQL: INSERT INTO admin_users ...]\n"
+                f"[parameters: ('luiz', '{HASH_FALSO}', 1)]"
+            )
+        db.commit = commit_explode
+        return db
+
+    monkeypatch.setattr(auth, "SessionLocal", sessao_que_falha_no_commit, raising=True)
+    with caplog.at_level(logging.ERROR):
+        ok, msg = auth.criar_usuario("luiz", "senha-longa-1")
+
+    assert ok is False
+    assert "scrypt$" not in caplog.text, f"hash vazou para o log: {caplog.text[:300]}"
+    assert "parameters" not in caplog.text

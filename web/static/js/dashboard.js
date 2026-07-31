@@ -2394,6 +2394,17 @@
             });
         }
 
+        // O nome do operador vem de data-* (contexto de atributo, onde o autoescape
+        // do Jinja realmente protege). Interpolado direto numa string JS, um nome com
+        // aspa simples quebraria o handler e a confirmacao sumiria em silencio.
+        function confirmarReset(form) {
+            return confirm('Redefinir a senha de ' + form.dataset.alvo + '? Ele sera deslogado de todo lugar.');
+        }
+
+        function confirmarAtivo(form) {
+            return confirm(form.dataset.acao + ' ' + form.dataset.alvo + '?');
+        }
+
         function toggleSettingsCard(id) {
             const body = document.getElementById('body-' + id);
             if (!body) return;
