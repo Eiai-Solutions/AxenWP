@@ -181,6 +181,12 @@ docker-compose up -d
 - **Não armazenar tokens em plain text fora do banco**. SystemSettings só admite chaves globais (Groq STT, OpenRouter Mestre).
 - **PIT vs OAuth**: PIT no `tenant.pit_token` (não expira); OAuth normal usa `access_token`+`refresh_token`. `get_valid_token` prioriza PIT se houver.
 - **Migrations idempotentes**: usam helpers `_column_exists`/`_table_exists`/`_index_exists`. Rodam no startup; testar localmente antes.
+  **Migration que falha agora DERRUBA o boot** (era engolida — o app subia com schema parcial e morria na
+  primeira query, com o erro apontando o sintoma e não a causa).
+  **Posse das tabelas:** todas em `public` pertencem ao role `millochat_app`, não ao `postgres`.
+  `ALTER TABLE` exige POSSE, não privilégio — com as tabelas do `postgres`, toda migration que altera
+  tabela existente falha com `must be owner of table X`. Objeto novo criado fora do app precisa de
+  `ALTER TABLE ... OWNER TO millochat_app`.
 - **httpx clients são singletons** (`ghl_service`, `zapi_service`, `telegram_service`). Não criar novos por request.
 - **AI agents nunca compartilham dados entre tenants**. Se o canal é alias (`linked_to_channel`), resolve no AIService antes de carregar engine.
 - **Snapshot de prompt** sempre que `agent.prompt` é escrito: `services/prompt_history.snapshot_prompt()`.

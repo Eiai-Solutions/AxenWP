@@ -92,7 +92,17 @@ async def lifespan(app: FastAPI):
         alembic_command.upgrade(alembic_cfg, "head")
         logger.info("Migrações Alembic aplicadas com sucesso.")
     except Exception as e:
-        logger.error(f"Erro ao aplicar migrações Alembic: {e}", exc_info=True)
+        # FATAL, e não engolido. Engolir não evitava a queda: o app subia com
+        # schema parcial e morria na primeira query, com um erro apontando para a
+        # coluna faltante em vez da migration que falhou — a causa ficava a dezenas
+        # de linhas de distância no log. Falhar aqui dá a mesma indisponibilidade
+        # com a causa na primeira linha.
+        logger.critical(
+            f"MIGRATION FALHOU — o app NÃO vai subir para não operar com schema "
+            f"parcial. Causa: {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        raise
 
     # 3. Garante que existe pelo menos um operador do painel.
     # FORA do try do Alembic de propósito: se a migration falhar, a exceção acima é
