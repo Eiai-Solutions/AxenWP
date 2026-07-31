@@ -14,7 +14,7 @@ Repositório: `Eiai-Solutions/AxenWP` via SSH (o repo mantém o nome antigo; o p
 - **Framework:** FastAPI 0.115 + Uvicorn (async)
 - **Linguagem:** Python 3.11
 - **ORM:** SQLAlchemy 2.0.35 + Alembic (migrations idempotentes)
-- **Database:** PostgreSQL (produção) / SQLite (dev)
+- **Database:** Supabase Postgres 17 (produção, `sa-east-1`, via pooler Supavisor) / SQLite (dev)
 - **HTTP:** httpx (async, clients compartilhados em singleton)
 - **Scheduler:** APScheduler 3.10
 - **LLM:** LangChain + OpenRouter (multi-provider). ElevenLabs TTS, Groq Whisper STT.
@@ -145,7 +145,8 @@ docker-compose up -d
 
 ## Variáveis de ambiente importantes
 
-- `DATABASE_URL` — Postgres em prod, SQLite em dev
+- `DATABASE_URL` — Supabase em prod (pooler, `sslmode=require`, role `millochat_app`), SQLite em dev.
+  **Tem default de SQLite**: se sumir em produção o app recusa subir (antes subia num banco vazio dizendo "healthy")
 - `ADMIN_PASSWORD` — obrigatório fora de DEBUG
 - `GHL_CLIENT_ID` / `GHL_CLIENT_SECRET` / `GHL_REDIRECT_URI`
 - `PUBLIC_BASE_URL` — usado para registrar webhooks externos (Z-API/Telegram)
