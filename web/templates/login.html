@@ -10,15 +10,15 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;600&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap"
         rel="stylesheet">
     <script>
         tailwind.config = {
             theme: {
                 extend: {
                     fontFamily: {
-                        sans: ['"Space Grotesk"', 'sans-serif'],
-                        display: ['Outfit', 'sans-serif'],
+                        sans: ['"Hanken Grotesk"', 'sans-serif'],
+                        display: ['Fraunces', 'serif'],
                     },
                     colors: {
                         gray: {
@@ -27,10 +27,11 @@
                             950: '#030712',
                         },
                         brand: {
-                            red: '#e11d48', // Rose 600
-                            darkred: '#be123c', // Rose 700
-                            glow: 'rgba(225, 29, 72, 0.4)'
-                        }
+                            primary: '#22C35D',      // verde MilloChat
+                            primaryDark: '#1A9B4A',
+                            glow: 'rgba(34, 195, 93, 0.4)'
+                        },
+                        danger: '#E4593F'            // erro — nunca a marca
                     }
                 }
             }
@@ -39,7 +40,7 @@
     <style>
         body {
             background-color: #030712;
-            background-image: radial-gradient(circle at top right, rgba(225, 29, 72, 0.15), transparent 40%),
+            background-image: radial-gradient(circle at top right, rgba(34, 195, 93, 0.13), transparent 40%),
                 radial-gradient(circle at bottom left, rgba(17, 24, 39, 1), transparent 40%);
         }
 
@@ -48,17 +49,17 @@
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.05);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(225, 29, 72, 0.1);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(34, 195, 93, 0.1);
         }
 
         .glow-input:focus {
-            box-shadow: 0 0 0 2px rgba(225, 29, 72, 0.5), 0 0 20px rgba(225, 29, 72, 0.2);
-            border-color: #e11d48;
+            box-shadow: 0 0 0 2px rgba(34, 195, 93, 0.5), 0 0 20px rgba(34, 195, 93, 0.2);
+            border-color: #22C35D;
         }
 
         .btn-glow:hover {
-            box-shadow: 0 0 25px rgba(225, 29, 72, 0.5);
-            text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+            box-shadow: 0 0 25px rgba(34, 195, 93, 0.5);
+            /* sem text-shadow branco: o texto do botão agora é escuro (contraste) */
         }
     </style>
 </head>
@@ -74,6 +75,8 @@
         </div>
 
         <div class="mb-10 text-center">
+            <img src="/static/millochat-logo.svg" alt="MilloChat" width="56" height="56"
+                class="mx-auto mb-4 drop-shadow-[0_8px_20px_rgba(34,195,93,0.35)]">
             <h1 class="font-display text-4xl font-extrabold tracking-tight text-white mb-2 uppercase">Millo<span
                     class="text-brand-primary">Chat</span></h1>
             <p class="text-gray-400 text-sm tracking-widest uppercase opacity-80 font-semibold">Central Admin Gateway
@@ -83,8 +86,8 @@
         <form action="/admin/login" method="POST" class="space-y-6">
             {% if error %}
             <div
-                class="bg-brand-primary/10 border border-brand-primary/50 text-red-400 px-4 py-3 rounded-lg flex items-start gap-3 text-sm animate-[pulse_2s_ease-in-out_infinite]">
-                <svg class="h-5 w-5 text-red-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                class="bg-danger/10 border border-danger/50 text-danger px-4 py-3 rounded-lg flex items-start gap-3 text-sm animate-[pulse_2s_ease-in-out_infinite]">
+                <svg class="h-5 w-5 text-danger shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                         d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
@@ -102,7 +105,8 @@
             </div>
 
             <button type="submit"
-                class="btn-glow w-full bg-brand-primary hover:bg-brand-primaryDark text-white font-bold py-3 px-4 rounded-lg focus:outline-none transition-all duration-300 flex justify-center items-center gap-2 mt-4 uppercase tracking-widest text-sm">
+                title="Entrar no painel"
+                class="btn-glow w-full bg-brand-primary hover:bg-brand-primaryDark text-[#0F1A13] font-bold py-3 px-4 rounded-lg focus:outline-none transition-all duration-300 flex justify-center items-center gap-2 mt-4 uppercase tracking-widest text-sm">
                 <span>Authorize</span>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"
                     xmlns="http://www.w3.org/2000/svg">

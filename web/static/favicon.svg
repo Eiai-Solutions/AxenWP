@@ -1,10 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="64" height="64">
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Marca MilloChat. Variante de FAVICON: mesma bolha e mesmo "M" do
+       millochat-logo.svg, porém a bolha ocupa toda a arte e os três pontinhos
+       (r=1.5) foram removidos — a 16px eles viram sujeira sub-pixel. -->
   <defs>
-    <linearGradient id="axenGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#e11d48" />
-      <stop offset="100%" stop-color="#be123c" />
+    <linearGradient id="millo" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:hsl(142, 70%, 45%);stop-opacity:1" />
+      <stop offset="100%" style="stop-color:hsl(142, 60%, 40%);stop-opacity:1" />
     </linearGradient>
   </defs>
-  <rect width="24" height="24" rx="6" fill="url(#axenGradient)" />
-  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" stroke="#ffffff" fill="none" d="M13 10V3L4 14h7v7l9-11h-7z" />
+
+  <rect x="2" y="4" width="60" height="45" rx="22" fill="url(#millo)"/>
+  <path d="M17 49 L12 61 L31 49 Z" fill="url(#millo)"/>
+
+  <!-- "M" reescalado a partir do path original (18..40 -> 14..47, 20..40 -> 14..40) -->
+  <path d="M14 14 L14 40 L20 40 L20 25 L29 35 L32 35 L41 25 L41 40 L47 40 L47 14 L41 14 L30.5 27 L20 14 Z"
+        fill="hsl(0, 0%, 98%)"/>
 </svg>
