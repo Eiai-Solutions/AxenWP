@@ -15,7 +15,18 @@ from services.ghl_service import ghl_service
 from datetime import datetime, timezone
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/admin/agents", tags=["admin_agents"])
+# TODAS as rotas deste router exigem admin. Era o único router sem barreira: 25
+# rotas, nenhuma checando o cookie, e o GET do agente devolvia api_key,
+# elevenlabs_api_key e o prompt inteiro em texto puro para quem tivesse a URL.
+# Aplicar no APIRouter (e não rota a rota) faz a proteção valer por construção —
+# rota nova nasce fechada, sem depender de ninguém lembrar.
+from admin.dashboard import require_admin  # noqa: E402
+
+router = APIRouter(
+    prefix="/admin/agents",
+    tags=["admin_agents"],
+    dependencies=[Depends(require_admin)],
+)
 logger = logging.getLogger(__name__)
 
 # Reutilizando o mesmo diretório de templates

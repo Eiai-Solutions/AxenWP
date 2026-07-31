@@ -5,7 +5,7 @@ Fornece interface baseada em cookies + jinja2 para gerenciar tenants.
 
 import uuid
 
-from fastapi import APIRouter, Request, Form, Depends, Cookie
+from fastapi import APIRouter, Request, Form, Depends, Cookie, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from typing import Optional
@@ -69,6 +69,21 @@ def verify_admin(admin_session: Optional[str] = Cookie(None)) -> bool:
     """Valida se o cookie da sessão é um token HMAC válido."""
     expected = _make_session_token(_get_admin_password())
     return hmac.compare_digest(admin_session or "", expected)
+
+
+def require_admin(admin_session: Optional[str] = Cookie(None)) -> bool:
+    """
+    Barreira de autenticação para routers inteiros — RECUSA em vez de devolver bool.
+
+    `verify_admin` só informa; quem esquece de checar o resultado deixa o endpoint
+    aberto. Foi o que aconteceu em `admin/ai_agent.py`: 25 rotas, nenhuma checando,
+    e o GET do agente devolvia api_key/elevenlabs_api_key/prompt em texto puro para
+    qualquer um com a URL. Usada como `dependencies=[Depends(require_admin)]` no
+    APIRouter, a proteção passa a valer por construção — rota nova nasce fechada.
+    """
+    if not verify_admin(admin_session):
+        raise HTTPException(status_code=401, detail="Não autenticado.")
+    return True
 
 
 @router.get("/login", response_class=HTMLResponse)
