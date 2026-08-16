@@ -163,7 +163,16 @@ async def conversar(token: str, mensagem: Optional[str],
             "submission_id": submission_id,
         }
 
-    estado = await avancar(estado, mensagem)
+    try:
+        estado = await avancar(estado, mensagem)
+    except EntrevistaIndisponivel:
+        # `avancar` muta o estado NO LUGAR, então aqui ele já tem os contadores do
+        # que foi gasto antes de estourar — inclusive buscas na web, que a Anthropic
+        # já cobrou. Sem este save o banco volta ao valor anterior e cada nova
+        # tentativa refaz as MESMAS buscas pagas: o teto de abuso nunca fecha, e o
+        # link é público e anônimo. Salvar também preserva o que a pessoa escreveu.
+        await asyncio.to_thread(_salvar_sync, token, estado, None)
+        raise
 
     nova_submission = None
     if estado.concluida and estado.form_data:

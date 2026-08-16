@@ -33,6 +33,7 @@ O QUE ESTA BLINDAGEM NÃO COBRE (saiba antes de confiar demais nela):
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import re
 import socket
@@ -44,6 +45,11 @@ import httpx
 from utils.logger import logger
 
 TIMEOUT = 12.0
+# Prazo TOTAL, que é coisa diferente. O `timeout` do httpx vale por operação
+# (conectar, ler um pedaço, escrever): um servidor que goteja um byte por vez
+# rearma o relógio a cada chunk e a leitura nunca termina. Sem teto de ponta a
+# ponta, a entrevista fica em "digitando..." para sempre e o request pendura.
+PRAZO_TOTAL = 25.0
 MAX_BYTES = 400_000       # páginas maiores não trazem mais sinal, só custo
 MAX_TEXTO = 6_000         # o que entra no contexto da Mestre
 MAX_REDIRECTS = 3
@@ -184,8 +190,20 @@ def _texto_da_pagina(html: str) -> str:
 
 
 async def ler_site(url: str) -> dict:
-    """Busca a página e devolve o texto. Cada redirect é revalidado."""
-    atual = _url_segura(url)
+    """Busca a página e devolve o texto, com prazo total. Cada redirect é revalidado."""
+    try:
+        async with asyncio.timeout(PRAZO_TOTAL):
+            return await _ler_site(url)
+    except TimeoutError:
+        raise PesquisaRecusada("O site demorou demais para responder.")
+
+
+async def _ler_site(url: str) -> dict:
+    # DNS resolve em THREAD. `socket.getaddrinfo` é síncrono e bloqueante: chamado
+    # daqui, ele congela o event loop INTEIRO enquanto não volta — e junto com ele
+    # todos os webhooks de WhatsApp em voo. Um anônimo mandando um domínio com DNS
+    # lento derrubaria o atendimento de clientes pagantes.
+    atual = await asyncio.to_thread(_url_segura, url)
     visitadas = []
 
     async with httpx.AsyncClient(
@@ -208,7 +226,9 @@ async def ler_site(url: str) -> dict:
                         # Revalida o salto: sem isto, um site legítimo
                         # redirecionaria para o alvo interno e a trava da
                         # primeira URL não valeria nada.
-                        atual = _url_segura(httpx.URL(atual).join(destino).__str__())
+                        atual = await asyncio.to_thread(
+                            _url_segura, httpx.URL(atual).join(destino).__str__()
+                        )
                         continue
 
                     if resp.status_code >= 400:

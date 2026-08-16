@@ -394,6 +394,65 @@ async def test_site_fora_do_ar_vira_recusa_e_nao_erro_de_rede(monkeypatch):
         await ler_site("empresa.com")
 
 
+# ── O event loop é compartilhado com os webhooks de WhatsApp ──
+
+@pytest.mark.asyncio
+async def test_dns_nao_bloqueia_o_event_loop(monkeypatch):
+    """
+    REGRESSÃO — `socket.getaddrinfo` é síncrono. Chamado direto de `ler_site`
+    (async), ele congela o event loop INTEIRO enquanto não volta, e junto com ele
+    todos os webhooks de Z-API/WAHA/Telegram em voo. Um anônimo mandando um
+    domínio de DNS lento derrubaria o atendimento de clientes pagantes.
+    """
+    import asyncio
+    import time
+
+    def dns_lento(host, port, *a, **k):
+        time.sleep(0.25)                      # bloqueante de propósito
+        return [(socket.AF_INET, None, None, "", ("200.100.50.10", port or 443))]
+
+    monkeypatch.setattr(pe.socket, "getaddrinfo", dns_lento, raising=True)
+    _instalar_http(monkeypatch, [FakeResp(content=b"<p>Padaria Aurora</p>")])
+
+    bateu = 0
+
+    async def batimento():
+        nonlocal bateu
+        while True:
+            bateu += 1
+            await asyncio.sleep(0.02)
+
+    pulso = asyncio.create_task(batimento())
+    await ler_site("empresa.com")
+    pulso.cancel()
+
+    assert bateu > 3, f"o loop ficou parado durante o DNS (so {bateu} batimentos)"
+
+
+@pytest.mark.asyncio
+async def test_site_que_goteja_bytes_esbarra_no_prazo_total(monkeypatch):
+    """
+    REGRESSÃO — o `timeout` do httpx vale por OPERAÇÃO. Um servidor que manda um
+    byte por vez rearma o relógio a cada chunk e a leitura nunca acaba: a tela
+    ficava em "digitando..." para sempre e o request pendurava.
+    """
+    import asyncio
+
+    _resolve_para(monkeypatch, "200.100.50.10")
+
+    class Gotejante(FakeResp):
+        async def aiter_bytes(self):
+            while True:                        # nunca termina, sempre "progredindo"
+                await asyncio.sleep(0.01)
+                yield b"a"
+
+    monkeypatch.setattr(pe, "PRAZO_TOTAL", 0.3, raising=True)
+    _instalar_http(monkeypatch, [Gotejante()])
+
+    with pytest.raises(PesquisaRecusada, match="demorou demais"):
+        await ler_site("empresa.com")
+
+
 # ── 4. A página é dado, nunca instrução ──
 
 def test_conteudo_de_pagina_chega_rotulado_como_dado():

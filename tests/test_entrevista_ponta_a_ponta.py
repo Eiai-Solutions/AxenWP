@@ -201,6 +201,40 @@ def test_teto_de_turnos_devolve_429_em_vez_de_gastar(ambiente, monkeypatch):
     assert "limite" in r.json()["error"].lower()
 
 
+def test_teto_estourado_no_meio_do_turno_persiste_o_que_ja_foi_gasto(ambiente, monkeypatch):
+    """
+    REGRESSÃO — o freio de gasto nunca fechava.
+
+    Quando o teto estoura DENTRO do loop, `avancar` levanta e o estado nunca era
+    salvo: o banco voltava ao valor anterior e cada nova tentativa refazia as
+    MESMAS buscas, que a Anthropic já tinha cobrado. Num link público e anônimo,
+    isso é conta aberta.
+    """
+    _roteirizar(monkeypatch, [FakeResp([_texto("Oi!")])])
+    token = _turno(ambiente.cliente, TOKEN_A).json()["token"]
+
+    # A resposta seguinte consome buscas e estoura o teto no meio do turno.
+    caro = FakeResp([_texto("procurando...")], stop_reason="pause_turn")
+    caro.usage = SimpleNamespace(
+        input_tokens=100, output_tokens=50, cache_read_input_tokens=0,
+        cache_creation_input_tokens=0,
+        server_tool_use=SimpleNamespace(web_search_requests=mi.MAX_BUSCAS_WEB),
+    )
+    _roteirizar(monkeypatch, [caro])
+
+    r = _turno(ambiente.cliente, TOKEN_A, token, "acha minha empresa")
+    assert r.status_code == 429
+    assert "pesquisas" in r.json()["error"].lower(), "mensagem culpa o teto errado"
+
+    db = ambiente.Session()
+    estado = mi.EstadoEntrevista.from_json(
+        db.query(AgentInterview).filter_by(token=token).first().estado
+    )
+    db.close()
+    assert estado.buscas_web >= mi.MAX_BUSCAS_WEB, \
+        "as buscas pagas sumiram do banco — a proxima tentativa paga de novo"
+
+
 def test_falha_da_mestre_nao_vaza_detalhe_interno(ambiente, monkeypatch):
     """Erro de infra não pode virar stack trace na tela de um anônimo."""
     import anthropic

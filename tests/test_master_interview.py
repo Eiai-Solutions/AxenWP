@@ -269,7 +269,81 @@ async def test_ferramenta_desconhecida_nao_quebra_o_loop(monkeypatch):
     assert "horario" in ultima_fala(estado).lower()
 
 
+# ── Turno truncado / vazio: nada inválido pode chegar ao banco ──
+
+@pytest.mark.asyncio
+async def test_max_tokens_no_meio_do_tool_use_nao_grava_orfao(monkeypatch):
+    """
+    REGRESSÃO — envenenava a entrevista para sempre.
+
+    `concluir_entrevista` manda os 14 campos de uma vez e é o candidato natural a
+    estourar os 1500 tokens. Aí a API devolve `stop_reason="max_tokens"` com o
+    bloco `tool_use` TRUNCADO, que nunca vai receber tool_result. Gravado assim, a
+    mensagem seguinte vira 400 ("tool_use ids found without tool_result") — e
+    continua virando, mesmo depois de recarregar a página.
+    """
+    _instalar(monkeypatch, [
+        FakeResp([_texto("Perfeito, vou montar seu agente."),
+                  _tool("t1", "concluir_entrevista", {"company_name": "Pizzaria do Ze"})],
+                 stop_reason="max_tokens"),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), "pode gerar")
+
+    blocos = estado.mensagens[-1]["content"]
+    assert all(b["type"] != "tool_use" for b in blocos), "tool_use truncado foi gravado"
+    assert any(b["type"] == "text" for b in blocos), "perdeu o texto junto"
+    assert estado.concluida is False
+
+    # E o estado revivido do banco continua mandável para a API.
+    revivido = EstadoEntrevista.from_json(estado.to_json())
+    assert revivido.mensagens[-1]["content"][0]["type"] == "text"
+
+
+@pytest.mark.asyncio
+async def test_turno_sem_conteudo_aproveitavel_nao_grava_mensagem_vazia(monkeypatch):
+    """
+    Recusa (ou só um tool_use truncado) deixaria `content: []`, que a API também
+    rejeita. Não gravar nada mantém o estado no ponto anterior, válido.
+    """
+    _instalar(monkeypatch, [FakeResp([], stop_reason="refusal")])
+    estado = EstadoEntrevista(
+        mensagens=[
+            {"role": "user", "content": "Vamos começar."},
+            {"role": "assistant", "content": [{"type": "text", "text": "Oi!"}]},
+        ],
+        turnos=1,
+    )
+    antes = list(estado.mensagens)
+
+    with pytest.raises(EntrevistaIndisponivel):
+        await avancar(estado, "responde ai")
+
+    assert estado.mensagens[-1]["role"] == "user", "última é a fala da pessoa"
+    assert all(m.get("content") for m in estado.mensagens), "gravou content vazio"
+    assert estado.mensagens[:2] == antes
+
+
+@pytest.mark.asyncio
+async def test_max_tokens_sem_tool_use_segue_normal(monkeypatch):
+    """Controle: truncar texto puro não é motivo para descartar nada."""
+    _instalar(monkeypatch, [FakeResp([_texto("Uma resposta long")], stop_reason="max_tokens")])
+
+    estado = await avancar(EstadoEntrevista(), "oi")
+
+    assert ultima_fala(estado) == "Uma resposta long"
+
+
 # ── Custo e tetos (o link público é anônimo e gasta a nossa chave) ──
+
+def test_a_mensagem_do_teto_diz_qual_teto_estourou():
+    """
+    "Limite de turnos atingido" quando quem estourou foi a busca web manda o
+    operador investigar a coisa errada.
+    """
+    assert "pesquisas" in EstadoEntrevista(buscas_web=mi.MAX_BUSCAS_WEB).motivo_do_teto
+    assert "conversa" in EstadoEntrevista(tokens_saida=mi.MAX_TOKENS_SAIDA).motivo_do_teto
+    assert "perguntas" in EstadoEntrevista(turnos=mi.MAX_TURNOS).motivo_do_teto
 
 @pytest.mark.asyncio
 async def test_prefixo_estavel_e_marcado_para_cache(monkeypatch):

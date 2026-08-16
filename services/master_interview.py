@@ -293,6 +293,14 @@ class EstadoEntrevista:
         )
 
     @property
+    def motivo_do_teto(self) -> str:
+        if self.buscas_web >= MAX_BUSCAS_WEB:
+            return "Esta entrevista já usou todas as pesquisas disponíveis."
+        if self.tokens_saida >= MAX_TOKENS_SAIDA:
+            return "Esta entrevista já usou todo o limite de conversa."
+        return "Esta entrevista atingiu o limite de perguntas."
+
+    @property
     def pode_pesquisar(self) -> bool:
         return self.pesquisas < MAX_PESQUISAS
 
@@ -439,7 +447,7 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
         return estado
     if estado.estourou_teto:
         raise EntrevistaIndisponivel(
-            "Esta entrevista atingiu o limite. Recomece ou preencha o formulário."
+            f"{estado.motivo_do_teto} Recomece ou preencha o formulário."
         )
 
     chave = _resolve_master_key()
@@ -502,9 +510,35 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
         # O turno do assistant entra INTEIRO (com o tool_use), e o tool_result vem
         # encostado logo depois — é o invariante que evita `tool_use` órfão virar
         # 400 em cascata quando o estado é recarregado do banco.
-        estado.mensagens.append(
-            {"role": "assistant", "content": [b.model_dump() for b in resp.content]}
-        )
+        #
+        # …MAS só quando o turno de fato terminou em tool_use. Se parou por
+        # `max_tokens` no meio de um bloco `tool_use`, esse bloco vem TRUNCADO e
+        # nunca vai receber tool_result — gravá-lo assim envenena a conversa: toda
+        # mensagem seguinte vira 400 ("tool_use ids were found without tool_result"),
+        # para sempre, inclusive depois de recarregar. O caminho mais provável para
+        # isso é justamente o fim da entrevista, quando `concluir_entrevista` manda
+        # os 14 campos de uma vez e estoura os 1500 tokens.
+        blocos = [b.model_dump() for b in resp.content]
+        if resp.stop_reason != "tool_use":
+            blocos = [b for b in blocos if b.get("type") != "tool_use"]
+
+        if not blocos:
+            # Nada aproveitável (recusa, ou só um tool_use truncado). Mensagem de
+            # content vazio a API também rejeita, então NÃO gravamos nada: o estado
+            # fica no ponto anterior, válido, e a pessoa pode simplesmente tentar de
+            # novo.
+            logger.warning(f"[ENTREVISTA] Turno sem conteúdo aproveitável (stop={resp.stop_reason}).")
+            raise EntrevistaIndisponivel(
+                "Não consegui formular a resposta agora. Mande sua última mensagem de novo."
+            )
+
+        estado.mensagens.append({"role": "assistant", "content": blocos})
+
+        if resp.stop_reason == "max_tokens":
+            logger.warning(
+                f"[ENTREVISTA] Resposta truncada em max_tokens ({_MAX_TOKENS}); "
+                f"blocos tool_use incompletos foram descartados."
+            )
 
         if resp.stop_reason == "pause_turn":
             # A busca server-side pode devolver um turno longo em pedaços. O jeito
@@ -513,7 +547,7 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
             # é o que impede isto de virar laço infinito.
             estado.turnos += 1
             if estado.estourou_teto:
-                raise EntrevistaIndisponivel("Limite de turnos atingido.")
+                raise EntrevistaIndisponivel(estado.motivo_do_teto)
             continue
 
         if resp.stop_reason != "tool_use":
@@ -584,7 +618,7 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
         estado.mensagens.append({"role": "user", "content": resultados})
         estado.turnos += 1
         if estado.estourou_teto:
-            raise EntrevistaIndisponivel("Limite de turnos atingido.")
+            raise EntrevistaIndisponivel(estado.motivo_do_teto)
 
 
 def ultima_fala(estado: EstadoEntrevista) -> str:
