@@ -330,9 +330,10 @@ def _mensagens_para_envio(mensagens: list[dict]) -> list[dict]:
     para `estado.mensagens` sujaria o JSON que vai ao banco e espalharia marcas
     pelo histórico a cada turno.
 
-    Ressalva honesta: o cache expira em 5 minutos. Numa entrevista em que a pessoa
-    demora para responder, paga-se a escrita (1,25x) sem a leitura. Vale porque o
-    caso comum é alguém respondendo em sequência, não deixando a aba parada.
+    MEDIDO em produção: com uma busca na web no histórico, o turno seguinte leu
+    19.291 tokens do cache. A ressalva continua valendo — o cache expira em 5
+    minutos, e numa entrevista em que a pessoa demora paga-se a escrita (1,25x) sem
+    a leitura. Vale porque o caso comum é alguém respondendo em sequência.
     """
     if not mensagens:
         return mensagens
@@ -462,6 +463,10 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
         # sempre. Chamar a API aqui reenviaria a conversa terminando no assistant, e
         # a API recusa: "does not support assistant message prefill". Era 502 em todo
         # reload de entrevista em andamento.
+        #
+        # O "does not support" não é capricho: medido em produção, o modelo responde
+        # com blocos `thinking`. Modelo com extended thinking NÃO aceita prefill de
+        # assistant — daí a regra ser dura em vez de a API só ignorar o último turno.
         #
         # Devolver o estado como está é o comportamento certo (o chamador já monta o
         # histórico a partir dele) e ainda não gasta token.
