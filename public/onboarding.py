@@ -127,3 +127,75 @@ async def submit_onboarding_form(
         return JSONResponse({"success": False, "error": "Erro interno. Tente novamente."})
     finally:
         db.close()
+
+
+# --------------------------------------------------------------------------- #
+# Entrevista com a IA Mestre — a porta principal; o formulário acima é o atalho
+# --------------------------------------------------------------------------- #
+@router.get("/{form_token}/entrevista", response_class=HTMLResponse)
+async def pagina_entrevista(request: Request, form_token: str):
+    """Tela da conversa. O agente sai daqui sem o cliente preencher formulário."""
+    if not is_valid_form_token(form_token):
+        return HTMLResponse(content="<h1>Link invalido.</h1>", status_code=400)
+
+    from services.interview_session import resolver_tenant
+
+    location_id = await resolver_tenant(form_token)
+    if not location_id:
+        return HTMLResponse(content="<h1>Link invalido ou expirado.</h1>", status_code=404)
+
+    db = SessionLocal()
+    try:
+        tenant = db.query(Tenant).filter(Tenant.form_token == form_token).first()
+        nome = tenant.company_name if tenant else ""
+    finally:
+        db.close()
+
+    return templates.TemplateResponse("entrevista.html", {
+        "request": request, "form_token": form_token, "company_name": nome,
+    })
+
+
+@router.post("/{form_token}/entrevista/mensagem")
+# Teto por IP. Esta rota é ANÔNIMA e cada turno gasta a NOSSA chave Anthropic —
+# sem freio, uma aba esquecida (ou um curioso) vira conta aberta. Os tetos de
+# turno e de token por entrevista moram em `master_interview`; este é o de fora.
+@limiter.limit("20/minute")
+async def turno_entrevista(request: Request, form_token: str):
+    if not is_valid_form_token(form_token):
+        return JSONResponse({"success": False, "error": "Token inválido."}, status_code=400)
+
+    from services.interview_session import (
+        EntrevistaIndisponivel, SessaoInvalida, conversar, iniciar, resolver_tenant,
+    )
+
+    location_id = await resolver_tenant(form_token)
+    if not location_id:
+        return JSONResponse({"success": False, "error": "Link invalido."}, status_code=404)
+
+    try:
+        corpo = await request.json()
+    except Exception:
+        corpo = {}
+
+    token = (corpo.get("token") or "").strip()
+    mensagem = (corpo.get("mensagem") or "").strip()
+
+    try:
+        if not token:
+            resultado = await iniciar(location_id)
+        else:
+            resultado = await conversar(token, mensagem or None, location_id_esperado=location_id)
+    except EntrevistaIndisponivel as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=429)
+    except SessaoInvalida as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=404)
+    except Exception as e:
+        logger.error(f"[ENTREVISTA] Falha no turno de {location_id}: {type(e).__name__}: {e}")
+        return JSONResponse(
+            {"success": False, "error": "Não consegui continuar agora. Tente de novo."},
+            status_code=502,
+        )
+
+    # `iniciar` devolve o token novo; nos turnos seguintes ele volta como veio.
+    return JSONResponse({"success": True, **resultado, "token": resultado.get("token") or token})

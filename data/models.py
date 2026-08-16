@@ -437,3 +437,35 @@ class Organization(Base):
     name = Column(String(160), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AgentInterview(Base):
+    """
+    Uma entrevista da IA Mestre em andamento.
+
+    Existe porque a conversa atravessa vários requests (e, no link público, um
+    navegador anônimo que pode fechar a aba e voltar): o estado do loop de
+    tool-use precisa sobreviver fora da memória do processo.
+
+    Quando conclui, vira uma `OnboardingSubmission` — a MESMA coisa que o
+    formulário produz. Daí para frente o caminho é o que já existia e já é
+    testado: o operador revisa e manda gerar o agente.
+    """
+    __tablename__ = "agent_interviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # Identificador da sessão; é o que anda na URL. Opaco de propósito.
+    token = Column(String(64), unique=True, nullable=False, index=True)
+    tenant_location_id = Column(
+        String, ForeignKey("tenants.location_id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    # Estado serializado do loop (mensagens + contadores). Ver services/master_interview.
+    estado = Column(Text, nullable=True)
+    # 'open' = em andamento · 'concluded' = virou submission
+    status = Column(String(20), default="open", server_default="open", nullable=False)
+    submission_id = Column(Integer, nullable=True)
+    # Gasto acumulado — o link público é anônimo e queima a NOSSA chave.
+    tokens_saida = Column(Integer, default=0, server_default="0", nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

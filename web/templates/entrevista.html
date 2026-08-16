@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Criar meu agente - MilloChat</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.ico">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['ui-sans-serif', 'system-ui', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"', '"Noto Color Emoji"'],
+                        mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', '"Liberation Mono"', '"Courier New"', 'monospace'],
+                    },
+                    colors: {
+                        gray: { 800: '#2E2820', 700: '#3C352B', 500: '#746A5B', 400: '#A99E8C', 900: '#1C1815', 950: '#14110E' },
+                        brand: { primary: '#22C35D', primaryDark: '#1A9B4A' },
+                        danger: '#E4593F',
+                        ink: '#ECE4D6',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #14110E; }
+        .bolha-mestre { background: #1C1815; border: 1px solid #2E2820; }
+        .bolha-usuario { background: rgba(34, 195, 93, 0.10); border: 1px solid rgba(34, 195, 93, 0.30); }
+        .input-dark { background: #16130F; border: 1px solid #3C352B; color: #ECE4D6; }
+        .input-dark:focus { outline: none; border-color: #22C35D; box-shadow: 0 0 0 3px rgba(34,195,93,.18); }
+        /* Três pontinhos enquanto a Mestre pensa. transform/opacity só. */
+        @keyframes pisca { 0%, 80%, 100% { opacity: .25 } 40% { opacity: 1 } }
+        .ponto { animation: pisca 1.4s infinite both; }
+        .ponto:nth-child(2) { animation-delay: .2s }
+        .ponto:nth-child(3) { animation-delay: .4s }
+        @media (prefers-reduced-motion: reduce) { .ponto { animation: none; opacity: .6 } }
+    </style>
+</head>
+
+<body class="font-sans text-ink min-h-screen flex flex-col">
+
+    <header class="border-b border-gray-800 bg-[#14110E]/90 backdrop-blur sticky top-0 z-10">
+        <div class="max-w-3xl mx-auto px-4 py-3 flex items-center gap-3">
+            <img src="/static/millochat-logo.svg" alt="MilloChat" width="28" height="28" class="w-7 h-7">
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold leading-tight">Vamos criar o seu agente</p>
+                <p class="text-[10px] text-gray-400 font-mono uppercase tracking-widest truncate">
+                    {% if company_name %}{{ company_name }}{% else %}Uma conversa rápida{% endif %}
+                </p>
+            </div>
+            <a href="/form/{{ form_token }}" title="Preencher o formulário em vez de conversar"
+                class="text-[10px] font-mono uppercase tracking-widest text-gray-400 hover:text-ink transition-colors border border-gray-700 rounded-lg px-3 py-1.5">
+                Usar formulário
+            </a>
+        </div>
+    </header>
+
+    <main class="flex-1 w-full max-w-3xl mx-auto px-4 py-6">
+        <div id="conversa" class="space-y-4" aria-live="polite"></div>
+
+        <div id="pensando" class="hidden items-center gap-2 mt-4 text-gray-400 text-sm">
+            <span class="ponto w-1.5 h-1.5 rounded-full bg-brand-primary inline-block"></span>
+            <span class="ponto w-1.5 h-1.5 rounded-full bg-brand-primary inline-block"></span>
+            <span class="ponto w-1.5 h-1.5 rounded-full bg-brand-primary inline-block"></span>
+        </div>
+
+        <div id="erro" class="hidden mt-4 bg-danger/10 border border-danger/50 text-danger px-4 py-3 rounded-lg text-sm"></div>
+
+        <!-- Fim da entrevista -->
+        <div id="concluido" class="hidden mt-6 rounded-xl border border-brand-primary/40 bg-brand-primary/5 p-5">
+            <p class="text-sm font-bold mb-1">Pronto, já tenho o que preciso.</p>
+            <p class="text-xs text-gray-400 leading-relaxed">
+                Suas respostas foram enviadas. O agente vai ser montado a partir delas e você
+                poderá revisar tudo antes de entrar no ar.
+            </p>
+        </div>
+    </main>
+
+    <footer class="border-t border-gray-800">
+        <div class="max-w-3xl mx-auto px-4 py-3">
+            <form id="form-msg" class="flex items-end gap-2">
+                <textarea id="campo" rows="1" required
+                    placeholder="Escreva sua resposta…" title="Sua resposta para a Mestre"
+                    class="input-dark flex-1 rounded-lg py-3 px-4 text-sm resize-none max-h-40"></textarea>
+                <button id="enviar" type="submit" title="Enviar resposta"
+                    class="bg-brand-primary hover:bg-brand-primaryDark text-[#0F1A13] font-bold rounded-lg px-5 py-3 text-sm uppercase tracking-widest transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+                    Enviar
+                </button>
+            </form>
+            <p class="text-[10px] text-gray-400 font-mono mt-2">
+                Responda com naturalidade. Se não souber algo, é só dizer — dá para pular.
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        const FORM_TOKEN = {{ form_token | tojson }};
+        const CHAVE = 'millochat_entrevista_' + FORM_TOKEN;
+
+        const $conversa = document.getElementById('conversa');
+        const $pensando = document.getElementById('pensando');
+        const $erro = document.getElementById('erro');
+        const $concluido = document.getElementById('concluido');
+        const $form = document.getElementById('form-msg');
+        const $campo = document.getElementById('campo');
+        const $enviar = document.getElementById('enviar');
+
+        // O token da sessão vive no localStorage: fechar a aba e voltar continua a
+        // conversa em vez de recomeçar do zero e gastar tokens de novo.
+        let token = localStorage.getItem(CHAVE) || '';
+
+        function bolha(de, texto) {
+            const div = document.createElement('div');
+            const meu = de === 'usuario';
+            div.className = 'flex ' + (meu ? 'justify-end' : 'justify-start');
+            const balao = document.createElement('div');
+            balao.className = (meu ? 'bolha-usuario' : 'bolha-mestre') +
+                ' rounded-xl px-4 py-3 text-sm leading-relaxed max-w-[85%] whitespace-pre-wrap';
+            balao.textContent = texto;
+            div.appendChild(balao);
+            $conversa.appendChild(div);
+        }
+
+        function render(historico) {
+            $conversa.innerHTML = '';
+            (historico || []).forEach(m => bolha(m.de, m.texto));
+            window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+        }
+
+        function ocupado(v) {
+            $enviar.disabled = v;
+            $campo.disabled = v;
+            $pensando.classList.toggle('hidden', !v);
+            $pensando.classList.toggle('flex', v);
+        }
+
+        function falhou(msg) {
+            $erro.textContent = msg;
+            $erro.classList.remove('hidden');
+        }
+
+        function encerrar() {
+            $concluido.classList.remove('hidden');
+            $form.classList.add('hidden');
+        }
+
+        async function turno(mensagem) {
+            ocupado(true);
+            $erro.classList.add('hidden');
+            try {
+                const r = await fetch(`/form/${encodeURIComponent(FORM_TOKEN)}/entrevista/mensagem`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, mensagem: mensagem || '' }),
+                });
+                const d = await r.json();
+                if (!d.success) {
+                    // 429 = teto de gasto/turnos. Mensagem do servidor é a útil aqui.
+                    falhou(d.error || 'Não consegui continuar agora.');
+                    return;
+                }
+                if (d.token && d.token !== token) {
+                    token = d.token;
+                    localStorage.setItem(CHAVE, token);
+                }
+                render(d.historico);
+                if (d.concluida) encerrar();
+            } catch (e) {
+                falhou('Falha de conexão. Verifique a internet e tente de novo.');
+            } finally {
+                ocupado(false);
+                $campo.focus();
+            }
+        }
+
+        $form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const texto = $campo.value.trim();
+            if (!texto) return;
+            bolha('usuario', texto);   // eco otimista: a conversa não "trava" esperando
+            $campo.value = '';
+            $campo.style.height = 'auto';
+            turno(texto);
+        });
+
+        // Enter envia, Shift+Enter quebra linha — convenção de caixa de chat.
+        $campo.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                $form.requestSubmit();
+            }
+        });
+        $campo.addEventListener('input', () => {
+            $campo.style.height = 'auto';
+            $campo.style.height = Math.min($campo.scrollHeight, 160) + 'px';
+        });
+
+        turno(null);  // abre a conversa (ou reabre a que já existe)
+        $campo.focus();
+    </script>
+</body>
+
+</html>
