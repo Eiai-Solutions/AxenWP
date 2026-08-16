@@ -81,10 +81,42 @@ garantindo que a chave da API não aparece no corpo da resposta.
 
 ## A Mestre pesquisa antes de perguntar (2026-08-16)
 
-Com o site ou o CNPJ, ela chega sabendo do negócio e pergunta só o que falta —
-`consultar_cnpj` (BrasilAPI, sem chave) e `ler_site`, no mesmo loop de tool-use.
-Não é atalho de UX só: o que ela já leu não vira pergunta, e o contexto do agente
-sai mais rico do que sairia de 15 respostas curtas.
+Com o **nome**, o CNPJ ou o site, ela chega sabendo do negócio e pergunta só o que
+falta. Não é atalho de UX só: o que ela já leu não vira pergunta, e o contexto do
+agente sai mais rico do que sairia de 15 respostas curtas.
+
+São três ferramentas de **duas naturezas**, e confundi-las é o erro a evitar:
+
+| | executa onde | risco a tratar |
+|---|---|---|
+| `ler_site`, `consultar_cnpj` | **aqui**, no nosso container | SSRF (abaixo) |
+| `web_search` | na API da Anthropic | custo: **cobrada por request** |
+
+`web_search` não tem SSRF a blindar — a requisição não sai da nossa rede. Em troca
+tem teto próprio: `max_uses=3` por chamada (fica no bloco de tools, que é cacheado —
+variar por turno invalidaria o cache) e `MAX_BUSCAS_WEB=10` por entrevista, checado
+do nosso lado. Sem o segundo, 40 turnos × 3 usos seriam 120 buscas pagas por aba
+aberta de um anônimo. Versão `web_search_20260318`, confirmada em
+`tool_union_param.py` como **API estável, sem header beta**. `user_location: BR`
+porque sem isso "Padaria Aurora" traz padaria em Portugal antes da do cliente.
+
+**O risco da busca por nome é acertar a empresa errada.** Existem dezenas de
+"Padaria Aurora" no Brasil, e agente construído sobre a empresa errada é pior que
+agente genérico — parece confiante e está errado. O prompt manda confirmar o achado
+antes de tratar como verdade, e usar cidade/estado para separar homônimas.
+
+Dois detalhes que caíram como consequência:
+
+- **`estourou_teto` ganhou `buscas_web`**, e a checagem é no INÍCIO de `avancar`.
+  Assim o turno que estourou ainda é salvo com o contador certo; levantar no meio
+  perderia a conversa e o contador junto — e a busca seria refeita para sempre.
+- **`pause_turn`**: a busca server-side devolve turno longo em pedaços. Tratar isso
+  como fim entregaria resposta cortada no meio.
+- **Histórico ficou pesado.** O resultado da busca volta inteiro e é reenviado a cada
+  turno (`response_inclusion: excluded` só vale para resultado consumido por
+  `code_execution`, não é o nosso caso). Daí o **breakpoint de cache móvel** no fim
+  da conversa — aplicado numa CÓPIA, para a marca de transporte não vazar para o
+  JSON do banco. Não medido em produção; o TTL de 5 min do cache é a ressalva.
 
 **A consequência que dominou o desenho:** esta entrevista é PÚBLICA e ANÔNIMA, então
 "leia esta URL" é uma primitiva de SSRF entregue a um estranho. Verificado por
@@ -141,8 +173,10 @@ verdade e olhar o que voltou sujo.
   é o furo conhecido.
 - **Site que é SPA.** React/Next sem SSR devolvem casca vazia; `millochat.com.br`
   rende só "MilloChat". Limite de ler HTML sem executar JS, não erro.
-- **Pesquisa só pelo NOME da empresa.** Não existe: o projeto não tem API de busca.
-  CNPJ e site funcionam; com nome solto a Mestre pede um dos dois.
+- **Verificação contra a API real.** Os testes usam cliente falso, então passariam
+  mesmo com o tipo de ferramenta errado. Que `web_search_20260318` está na união
+  estável é evidência do SDK, não de runtime — falta uma entrevista de verdade
+  buscando por nome para fechar isso.
 
 ## Detalhes que valem lembrar
 
