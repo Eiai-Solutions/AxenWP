@@ -102,3 +102,15 @@
 - **Diagnóstico que vale repetir:** a entrevista que estourou foi criada 17:58, quase uma hora antes do deploy das 18:52, e tinha `buscas_web=None` — escrita pelo código antigo. Foi isso que separou "bug meu" de "bug preexistente exposto pelo deploy". Ler a linha no banco custou menos que teorizar.
 - **Verificado em produção:** `web_search_20260318` executa (blocos `server_tool_use` + `web_search_tool_result`, `buscas_web=1`), e o breakpoint de cache móvel — antes anotado como "não medido" — leu **19.291 tokens do cache** no turno seguinte à busca.
 - Pendente: `interview_session.carregar_para_exibir` existe para reabrir sem gastar LLM e segue sem endpoint que a chame.
+
+## [2026-08-16] fix | Varredura adversarial: 17 achados, 7 corrigidos
+Depois do bug de reabrir (classe "caminho sem teste"), rodei uma varredura adversarial de 23 agentes na área — 18 achados brutos, 17 confirmados por refutação. Sete eram meus, do mesmo dia, e quebravam produção:
+
+- **`socket.getaddrinfo` síncrono congelava o event loop INTEIRO** enquanto o DNS não voltava — e junto os webhooks de Z-API/WAHA/Telegram em voo. Um anônimo mandando domínio de DNS lento derrubava atendimento de cliente pagante. Resolve em thread. Verificado em produção: 29 batimentos do loop durante uma leitura de 0,65s.
+- **`ler_site` sem prazo TOTAL.** O `timeout` do httpx vale por operação: servidor que goteja um byte rearma o relógio a cada chunk e a leitura nunca acaba. O teste de regressão PENDURA sem o fix — foi assim que confirmei que tem dentes.
+- **`stop_reason="max_tokens"` no meio de um `tool_use`** gravava o bloco truncado no banco; ele nunca receberia tool_result, então toda mensagem seguinte virava 400 **para sempre**. O caminho mais provável era o FIM da entrevista, quando `concluir_entrevista` manda os 14 campos e estoura os 1500 tokens.
+- **Teto estourado dentro do loop levantava antes de salvar** — as buscas que a Anthropic JÁ COBROU sumiam do banco e cada tentativa refazia as mesmas. Num link público e anônimo o freio de gasto nunca fechava.
+
+**O padrão que liga os quatro (e o de reabrir):** todos são caminhos que nenhum teste exercitava, não erros visíveis lendo a função. `max_tokens`, `pause_turn`, reabrir, DNS lento, servidor gotejante — o código estava certo para o caminho coberto.
+
+**Pendentes, reportados e não corrigidos** (wizard e formulário público, mudança maior): publicar por cima apaga a qualificação de agente que já atende; o checkbox "Qualificar leads" nunca liga; as portas "Conversar com a Mestre"/"Preencher formulário" não devolvem nada ao rascunho (a porta *recomendada* não fecha o ciclo); rascunho travado em canal que sumiu; abas do formulário pulam validação e matam o botão em silêncio; erro no submit apaga as 14 respostas; token morto preso no localStorage sem como recomeçar.
