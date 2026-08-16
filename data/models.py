@@ -471,3 +471,51 @@ class AgentInterview(Base):
     tokens_saida = Column(Integer, default=0, server_default="0", nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class AgentDraft(Base):
+    """
+    Agente em construção pelo wizard. Vive FORA de `ai_agents`, de propósito.
+
+    Se agente pela metade morasse na tabela real, bastaria uma query esquecer o
+    filtro de status para o runtime começar a atender com ele — a mesma classe de
+    bug que `require_admin` e o teste de inventário existem para fechar. Aqui o
+    runtime literalmente não enxerga: ele nem consulta esta tabela.
+
+    O rascunho salva a cada etapa porque a etapa de identidade pode levar minutos
+    (a entrevista com a Mestre); perder isso num refresh faria a pessoa não voltar.
+    Vira `AIAgent` só no publicar, quando `agent_wizard.pode_publicar` autoriza.
+    """
+    __tablename__ = "agent_drafts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    location_id = Column(
+        String, ForeignKey("tenants.location_id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    # Quem abriu. O painel é da EQUIPE: sem dono, o "+" de um operador devolvia o
+    # rascunho meio preenchido do outro, e salvar era last-write-wins silencioso.
+    criado_por = Column(String(64), nullable=True, index=True)
+    # Etapa em que a pessoa parou — para reabrir onde estava.
+    etapa_atual = Column(String(32), default="canal", server_default="canal", nullable=False)
+    channel = Column(String(20), nullable=True)
+
+    # Por qual das três portas a identidade veio (ver agent_wizard.IDENTIDADE).
+    origem = Column(String(20), nullable=True)
+    interview_token = Column(String(64), nullable=True)
+    submission_id = Column(Integer, nullable=True)
+
+    agent_name = Column(String(120), nullable=True)
+    prompt = Column(Text, nullable=True)
+    spec = Column(JSON, nullable=True)
+
+    qualificar = Column(Boolean, default=False, nullable=False)
+    qualification_fields = Column(JSON, nullable=True)
+    qualification_pipeline_id = Column(String, nullable=True)
+    qualification_stage_id = Column(String, nullable=True)
+
+    # 'rascunho' | 'publicado'. Publicado fica como histórico do que gerou o agente.
+    status = Column(String(20), default="rascunho", server_default="rascunho", nullable=False)
+    agent_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

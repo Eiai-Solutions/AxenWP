@@ -11,6 +11,7 @@ import json
 from data.database import get_db, SessionLocal
 from data.models import Tenant, AIAgent, SystemSettings, ChatHistory, QualifiedLead, OnboardingSubmission
 from auth.token_manager import token_manager
+from utils.validators import is_valid_location_id
 from services.ghl_service import ghl_service
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -1668,3 +1669,81 @@ async def restore_prompt_version(history_id: int):
     if not result:
         return {"success": False, "error": "Não foi possível restaurar."}
     return result
+
+
+# --------------------------------------------------------------------------- #
+# Wizard de criação — o botão "+"
+#
+# Este router já nasce com `require_admin`, então as rotas abaixo são de operador
+# por construção. O escopo por tenant é reforçado no service: `location_id` vem
+# do path e é comparado com o dono do rascunho, para id sequencial não abrir
+# porta de outra instância.
+# --------------------------------------------------------------------------- #
+@router.post("/{location_id}/wizard/abrir")
+async def wizard_abrir(location_id: str, request: Request):
+    """
+    Abre (ou retoma) o rascunho DESTE operador nesta instância.
+
+    O dono vem do cookie, não do corpo: quem abre é quem está logado.
+    """
+    from admin.dashboard import current_admin
+    from services.draft_service import abrir
+
+    if not is_valid_location_id(location_id):
+        return {"success": False, "error": "location_id inválido."}
+    operador = current_admin(request.cookies.get("admin_session"))
+    try:
+        return {"success": True, **await abrir(location_id, operador)}
+    except Exception as e:
+        logger.error(f"[WIZARD] Falha ao abrir rascunho de {location_id}: {type(e).__name__}")
+        return {"success": False, "error": "Não foi possível abrir o assistente."}
+
+
+@router.get("/{location_id}/wizard/{draft_id}")
+async def wizard_estado(location_id: str, draft_id: int):
+    from services.draft_service import RascunhoInvalido, estado
+
+    if not is_valid_location_id(location_id):
+        return {"success": False, "error": "location_id inválido."}
+    try:
+        return {"success": True, **await estado(draft_id, location_id)}
+    except RascunhoInvalido as e:
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/{location_id}/wizard/{draft_id}/etapa")
+async def wizard_salvar_etapa(location_id: str, draft_id: int, request: Request):
+    """Salva o que a pessoa preencheu. Incremental: sair e voltar não perde nada."""
+    from services.draft_service import RascunhoInvalido, salvar
+
+    if not is_valid_location_id(location_id):
+        return {"success": False, "error": "location_id inválido."}
+    try:
+        mudancas = await request.json()
+    except Exception:
+        mudancas = {}
+    try:
+        return {"success": True, **await salvar(draft_id, location_id, mudancas or {})}
+    except RascunhoInvalido as e:
+        return {"success": False, "error": str(e)}
+
+
+@router.post("/{location_id}/wizard/{draft_id}/publicar")
+async def wizard_publicar(location_id: str, draft_id: int):
+    """
+    Cria o agente de verdade. Até aqui ele não existia para o runtime.
+
+    O guard é reavaliado no service — a tela pode estar desatualizada, e publicar
+    agente sem prompt o põe atendendo lead com nada a dizer.
+    """
+    from services.draft_service import RascunhoInvalido, publicar
+
+    if not is_valid_location_id(location_id):
+        return {"success": False, "error": "location_id inválido."}
+    try:
+        return {"success": True, **await publicar(draft_id, location_id)}
+    except RascunhoInvalido as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.error(f"[WIZARD] Falha ao publicar {draft_id} de {location_id}: {type(e).__name__}")
+        return {"success": False, "error": "Não foi possível publicar o agente."}

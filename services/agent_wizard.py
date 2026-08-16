@@ -179,11 +179,26 @@ def pode_publicar(rascunho: dict, etapas: list[Etapa]) -> tuple[bool, Optional[s
     Mora aqui, e não na rota, pelo mesmo motivo das outras barreiras do projeto:
     a regra precisa valer por qualquer caminho.
     """
-    ids = {e.id for e in etapas}
+    # Lista vazia = tenant não resolvido. Falha FECHADA: sem as etapas não há guard
+    # nenhum, e o de canal sumiria junto.
+    if not etapas:
+        return False, "Instância não encontrada."
+
     if any(e.variante == "bloqueado" for e in etapas):
         return False, "Nenhum canal conectado nesta instância."
-    if CANAL in ids and not rascunho.get("channel"):
+
+    canal = rascunho.get("channel")
+    if not canal:
         return False, "Escolha o canal do agente."
+
+    # O canal precisa ser um dos que o tenant REALMENTE tem. Sem isto dava para
+    # publicar em canal sem transporte — painel verde, nenhuma mensagem chegando —
+    # ou apontar o publish para o slot do agente que atende hoje.
+    etapa_canal = next((e for e in etapas if e.id == CANAL), None)
+    permitidos = {c["canal"] for c in (etapa_canal.dados.get("canais") or [])} if etapa_canal else set()
+    if permitidos and canal not in permitidos:
+        return False, f"O canal '{canal}' não está conectado nesta instância."
+
     if not (rascunho.get("prompt") or "").strip():
         return False, "O agente ainda não tem prompt — conclua a etapa de identidade."
     return True, None
