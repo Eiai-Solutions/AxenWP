@@ -45,6 +45,11 @@ def _uso(inp=500, out=60, cache_read=0):
     )
 
 
+async def _async(valor):
+    """Embrulha um valor num awaitable — para trocar as pesquisas por lambdas."""
+    return valor
+
+
 class FakeResp:
     def __init__(self, content, stop_reason="end_turn", usage=None):
         self.content = content
@@ -286,6 +291,268 @@ async def test_estado_sobrevive_a_serializacao_com_o_par_tool_encostado(monkeypa
 def test_estado_ilegivel_nao_derruba_recomeça_limpo():
     assert EstadoEntrevista.from_json("{isso não é json").mensagens == []
     assert EstadoEntrevista.from_json(None).turnos == 0
+
+
+def test_contador_de_pesquisas_sobrevive_ao_banco():
+    """
+    O teto precisa valer na entrevista INTEIRA. Se `pesquisas` não atravessar a
+    serialização, o contador zera a cada request e o teto deixa de existir.
+    """
+    revivido = EstadoEntrevista.from_json(EstadoEntrevista(pesquisas=4).to_json())
+
+    assert revivido.pesquisas == 4
+    assert revivido.pode_pesquisar is True
+    assert EstadoEntrevista(pesquisas=mi.MAX_PESQUISAS).pode_pesquisar is False
+
+
+# ── Pesquisa da empresa ──
+
+@pytest.mark.asyncio
+async def test_a_mestre_le_o_site_e_o_conteudo_chega_rotulado(monkeypatch):
+    """
+    O ponto da pesquisa: chegar sabendo. E o conteúdo precisa entrar como DADO —
+    página é escrita por terceiro e quem lê é um LLM.
+    """
+    async def fake_site(url):
+        assert url == "padariaaurora.com.br"
+        return {"url_final": "https://padariaaurora.com.br/",
+                "texto": "Padaria Aurora. Paes artesanais e bolos por encomenda.",
+                "truncado": False, "saltos": []}
+    monkeypatch.setattr(mi, "ler_site", fake_site, raising=True)
+
+    _instalar(monkeypatch, [
+        FakeResp([_tool("t1", "ler_site", {"url": "padariaaurora.com.br"})],
+                 stop_reason="tool_use"),
+        FakeResp([_texto("Vi que voces fazem paes artesanais. Quem e o cliente tipico?")]),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), "meu site e padariaaurora.com.br")
+
+    assert estado.pesquisas == 1
+    assert "cliente tipico" in ultima_fala(estado).lower()
+
+    resultado = estado.mensagens[-2]["content"][0]
+    assert resultado["type"] == "tool_result"
+    assert resultado.get("is_error") is not True
+    assert resultado["content"].startswith("[CONTEÚDO DA PÁGINA")
+    assert "Paes artesanais" in resultado["content"]
+
+
+@pytest.mark.asyncio
+async def test_a_mestre_consulta_o_cnpj(monkeypatch):
+    async def fake_cnpj(cnpj):
+        return {"razao_social": "PADARIA AURORA LTDA", "cidade": "SAO PAULO", "uf": "SP"}
+    monkeypatch.setattr(mi, "consultar_cnpj", fake_cnpj, raising=True)
+
+    _instalar(monkeypatch, [
+        FakeResp([_tool("t1", "consultar_cnpj", {"cnpj": "11.222.333/0001-81"})],
+                 stop_reason="tool_use"),
+        FakeResp([_texto("Achei: Padaria Aurora, em Sao Paulo. O que voces vendem mais?")]),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), "meu cnpj e 11.222.333/0001-81")
+
+    assert estado.pesquisas == 1
+    assert "PADARIA AURORA LTDA" in estado.mensagens[-2]["content"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_site_fora_do_ar_nao_derruba_a_entrevista(monkeypatch):
+    """
+    Do outro lado tem um dono de negócio, não um operador. Site quebrado vira
+    meia frase e a conversa segue — nunca uma exceção na cara dele.
+    """
+    async def fake_site(url):
+        raise mi.PesquisaRecusada("O site respondeu 503.")
+    monkeypatch.setattr(mi, "ler_site", fake_site, raising=True)
+
+    _instalar(monkeypatch, [
+        FakeResp([_tool("t1", "ler_site", {"url": "empresa.com"})], stop_reason="tool_use"),
+        FakeResp([_texto("Nao consegui abrir o site. Me conta: o que voces vendem?")]),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), "olha meu site: empresa.com")
+
+    assert estado.concluida is False
+    assert "vendem" in ultima_fala(estado).lower()
+    resultado = estado.mensagens[-2]["content"][0]
+    assert resultado["is_error"] is True and "503" in resultado["content"]
+
+
+@pytest.mark.asyncio
+async def test_erro_inesperado_na_pesquisa_tambem_e_contido(monkeypatch):
+    """Qualquer exceção — não só `PesquisaRecusada` — vira tool_result."""
+    async def explode(url):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(mi, "ler_site", explode, raising=True)
+
+    _instalar(monkeypatch, [
+        FakeResp([_tool("t1", "ler_site", {"url": "empresa.com"})], stop_reason="tool_use"),
+        FakeResp([_texto("Vamos seguir. O que voces vendem?")]),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), "empresa.com")
+
+    assert estado.mensagens[-2]["content"][0]["is_error"] is True
+    assert "boom" not in estado.mensagens[-2]["content"][0]["content"], "vazou stacktrace"
+
+
+@pytest.mark.asyncio
+async def test_teto_de_pesquisas_impede_a_chamada(monkeypatch):
+    """
+    O link é público e anônimo: sem teto, ele é um proxy HTTP aberto rodando na
+    NOSSA infra e gastando a NOSSA chave.
+    """
+    chamou = []
+    async def fake_site(url):
+        chamou.append(url)
+        return {"url_final": url, "texto": "x", "truncado": False, "saltos": []}
+    monkeypatch.setattr(mi, "ler_site", fake_site, raising=True)
+
+    _instalar(monkeypatch, [
+        FakeResp([_tool("t1", "ler_site", {"url": "a.com"})], stop_reason="tool_use"),
+        FakeResp([_texto("Certo, vamos continuar sem o site.")]),
+    ])
+    estado = EstadoEntrevista(pesquisas=mi.MAX_PESQUISAS)
+
+    estado = await avancar(estado, "olha esse tambem")
+
+    assert chamou == [], "pesquisou depois do teto"
+    assert estado.pesquisas == mi.MAX_PESQUISAS, "contador passou do teto"
+    resultado = estado.mensagens[-2]["content"][0]
+    assert resultado["is_error"] is True and "Limite de pesquisas" in resultado["content"]
+
+
+@pytest.mark.asyncio
+async def test_tentativa_que_falha_tambem_consome_o_teto(monkeypatch):
+    """Senão um site quebrado em loop custa rede infinita de graça."""
+    async def fake_site(url):
+        raise mi.PesquisaRecusada("nao rolou")
+    monkeypatch.setattr(mi, "ler_site", fake_site, raising=True)
+
+    _instalar(monkeypatch, [
+        FakeResp([_tool("t1", "ler_site", {"url": "a.com"})], stop_reason="tool_use"),
+        FakeResp([_texto("segue o baile")]),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), "a.com")
+    assert estado.pesquisas == 1
+
+
+@pytest.mark.asyncio
+async def test_lista_de_tools_e_constante_mesmo_com_o_teto_estourado(monkeypatch):
+    """
+    Tirar as ferramentas do request quando o teto estoura invalidaria o prefixo
+    cacheado E deixaria o histórico com `tool_use` de ferramenta não declarada —
+    400 no meio da entrevista. O teto mora no dispatch, não na lista.
+    """
+    cliente = _instalar(monkeypatch, [
+        FakeResp([_tool("t1", "ler_site", {"url": "a.com"})], stop_reason="tool_use"),
+        FakeResp([_texto("ok")]),
+    ])
+
+    await avancar(EstadoEntrevista(pesquisas=mi.MAX_PESQUISAS), "a.com")
+
+    nomes = [[t["name"] for t in c["tools"]] for c in cliente.chamadas]
+    assert nomes[0] == nomes[1] == ["concluir_entrevista", "ler_site", "consultar_cnpj"]
+
+
+@pytest.mark.asyncio
+async def test_duas_pesquisas_no_mesmo_turno(monkeypatch):
+    """CNPJ e site juntos — o caso comum de quem manda os dois de uma vez."""
+    monkeypatch.setattr(mi, "consultar_cnpj",
+                        lambda c: _async({"razao_social": "AURORA LTDA"}), raising=True)
+    monkeypatch.setattr(mi, "ler_site",
+                        lambda u: _async({"url_final": u, "texto": "Paes", "truncado": False}),
+                        raising=True)
+
+    _instalar(monkeypatch, [
+        FakeResp([_tool("t1", "consultar_cnpj", {"cnpj": "11.222.333/0001-81"}),
+                  _tool("t2", "ler_site", {"url": "aurora.com"})], stop_reason="tool_use"),
+        FakeResp([_texto("Peguei tudo. Qual o horario de atendimento?")]),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), "cnpj 11.222.333/0001-81, site aurora.com")
+
+    assert estado.pesquisas == 2
+    ids = [r["tool_use_id"] for r in estado.mensagens[-2]["content"]]
+    assert ids == ["t1", "t2"], "tool_result fora de ordem ou faltando — vira 400"
+
+
+@pytest.mark.asyncio
+async def test_duas_pesquisas_rodam_ao_mesmo_tempo(monkeypatch):
+    """
+    Em série são dois timeouts empilhados (24s) com a pessoa olhando o
+    "digitando...". As duas precisam estar no ar juntas.
+    """
+    import asyncio
+
+    em_voo, pico = 0, 0
+
+    async def lenta(*a, **k):
+        nonlocal em_voo, pico
+        em_voo += 1
+        pico = max(pico, em_voo)
+        await asyncio.sleep(0.02)
+        em_voo -= 1
+        return {"url_final": "x", "texto": "y", "truncado": False}
+
+    monkeypatch.setattr(mi, "ler_site", lenta, raising=True)
+    monkeypatch.setattr(mi, "consultar_cnpj", lenta, raising=True)
+    _instalar(monkeypatch, [
+        FakeResp([_tool("t1", "consultar_cnpj", {"cnpj": "1"}),
+                  _tool("t2", "ler_site", {"url": "a.com"})], stop_reason="tool_use"),
+        FakeResp([_texto("ok")]),
+    ])
+
+    await avancar(EstadoEntrevista(), "cnpj e site")
+
+    assert pico == 2, f"as pesquisas rodaram em série (pico={pico})"
+
+
+@pytest.mark.asyncio
+async def test_concluir_junto_com_pesquisa_nao_deixa_coroutine_solta(monkeypatch):
+    """
+    Concluir retorna ANTES do gather. A coroutine da pesquisa já criada precisa
+    ser fechada, senão vira "coroutine was never awaited" e conexão pendurada.
+    """
+    import warnings
+
+    monkeypatch.setattr(mi, "ler_site",
+                        lambda u: _async({"url_final": u, "texto": "x", "truncado": False}),
+                        raising=True)
+    _instalar(monkeypatch, [
+        FakeResp([_tool("t1", "concluir_entrevista", COMPLETO),
+                  _tool("t2", "ler_site", {"url": "a.com"})], stop_reason="tool_use"),
+    ])
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", RuntimeWarning)
+        estado = await avancar(EstadoEntrevista(), "pode gerar")
+
+    assert estado.concluida is True
+    assert estado.form_data["company_name"] == "Pizzaria do Zé"
+
+
+@pytest.mark.asyncio
+async def test_pesquisa_nao_aparece_como_fala_na_tela(monkeypatch):
+    monkeypatch.setattr(mi, "ler_site",
+                        lambda u: _async({"url_final": u, "texto": "Paes", "truncado": False}),
+                        raising=True)
+    _instalar(monkeypatch, [
+        FakeResp([_texto("Manda o site que eu dou uma olhada.")]),
+        FakeResp([_texto("Deixa eu ver aqui."),
+                  _tool("t1", "ler_site", {"url": "aurora.com"})], stop_reason="tool_use"),
+        FakeResp([_texto("Voces fazem paes. Quem e o cliente tipico?")]),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), None)
+    estado = await avancar(estado, "aurora.com")
+
+    visivel = historico_visivel(estado)
+    assert [m["de"] for m in visivel] == ["mestre", "usuario", "mestre", "mestre"]
+    assert all("CONTEÚDO DA PÁGINA" not in m["texto"] for m in visivel), \
+        "o texto do site vazou para a tela como se fosse fala da Mestre"
 
 
 # ── O que a tela mostra ──
