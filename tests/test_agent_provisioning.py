@@ -7,6 +7,7 @@ qualificar. Estes testes travam a ponte que faltava (perguntas → campos) e o
 fail-closed de tudo que depende do CRM.
 """
 
+from types import SimpleNamespace
 import pytest
 
 from services.agent_provisioning import (
@@ -222,3 +223,81 @@ def test_campos_derivados_geram_a_tool_de_qualificacao():
     # E sem campos continua só com o handoff (o estado de hoje).
     vazio = SimpleNamespace(qualification_enabled=False, qualification_fields=None)
     assert [s.name for s in build_tool_specs(vazio)] == ["escalate_to_human"]
+
+
+# --------------------------------------------------------------------------- #
+# O portão de qualificação pergunta o que CADA MODO precisa
+# --------------------------------------------------------------------------- #
+class TestPortaoPorModo:
+    """
+    "Qualificar" significa coisas diferentes, e antes havia um portão só:
+
+      ghl            → cria oportunidade no funil        → EXIGE pipeline+stage
+      whatsapp_only  → grava QualifiedLead (que É o gate) → não exige nada
+
+    O handler já ramificava (`qualification_handler.py`: `if has_ghl_token and
+    pipeline_id and stage_id`), mas o provisionamento não — e desligava a
+    qualificação de tenant sem CRM, que funciona perfeitamente. Foi o caso da
+    Joorney: whatsapp_only, sem funil, qualificação impossível de ligar.
+    """
+
+    @pytest.mark.asyncio
+    async def test_whatsapp_only_sem_funil_LIGA_a_qualificacao(self, monkeypatch):
+        from services import agent_provisioning as ap
+
+        monkeypatch.setattr(ap, "fetch_crm_catalog",
+                            _async_retorna({"ok": False, "error": "sem CRM"}))
+        tenant = SimpleNamespace(mode="whatsapp_only", location_id="loc1")
+
+        r = await ap.build_agent_provisioning(
+            "loc1", {"qualification_questions": "Qual o orçamento?"}, tenant=tenant)
+
+        assert r["config"]["qualification_enabled"] is True, \
+            "desligou qualificacao de tenant que nao precisa de CRM"
+        assert r["config"]["qualification_pipeline_id"] is None
+        assert any("Sem CRM" in p for p in r["report"]["pendencias"]), \
+            "ligou sem explicar o que acontece com o lead"
+
+    @pytest.mark.asyncio
+    async def test_ghl_sem_funil_continua_DESLIGANDO(self, monkeypatch):
+        """O fail-closed do modo CRM não pode ter sido afrouxado junto."""
+        from services import agent_provisioning as ap
+
+        monkeypatch.setattr(ap, "fetch_crm_catalog",
+                            _async_retorna({"ok": False, "error": "CRM fora"}))
+        tenant = SimpleNamespace(mode="ghl", location_id="loc1")
+
+        r = await ap.build_agent_provisioning(
+            "loc1", {"qualification_questions": "Qual o orçamento?"}, tenant=tenant)
+
+        assert r["config"]["qualification_enabled"] is False
+        assert any("DESLIGADA" in p for p in r["report"]["pendencias"])
+
+    @pytest.mark.asyncio
+    async def test_sem_tenant_assume_o_modo_ESTRITO(self, monkeypatch):
+        """
+        Falhar para o lado conservador: no pior caso a qualificação nasce
+        desligada e o operador liga. O inverso prometeria registro que não
+        acontece.
+        """
+        from services import agent_provisioning as ap
+
+        monkeypatch.setattr(ap, "fetch_crm_catalog",
+                            _async_retorna({"ok": False, "error": "x"}))
+
+        def explode(*a, **kw):
+            raise RuntimeError("banco fora")
+
+        import auth.token_manager as tm
+        monkeypatch.setattr(tm.token_manager, "get_tenant", explode, raising=True)
+
+        r = await ap.build_agent_provisioning(
+            "loc1", {"qualification_questions": "Qual o orçamento?"})
+
+        assert r["config"]["qualification_enabled"] is False
+
+
+def _async_retorna(valor):
+    async def _f(*a, **kw):
+        return valor
+    return _f

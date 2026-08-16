@@ -232,7 +232,8 @@ def pick_pipeline_stage(pipelines: list) -> tuple[Optional[str], Optional[str], 
 
 
 async def build_agent_provisioning(
-    location_id: str, form_data: dict, fields_override: Optional[list[dict]] = None
+    location_id: str, form_data: dict, fields_override: Optional[list[dict]] = None,
+    tenant: Any = None,
 ) -> dict:
     """
     Monta a parte da config do agente que NÃO é o prompt, e explica o que fez.
@@ -246,6 +247,20 @@ async def build_agent_provisioning(
     código, contra o CRM real — nunca vêm do LLM. Devolve `config` (só as chaves a
     gravar) e `report` (o que ligou e o que ficou pendente) — auditável, não mágico.
     """
+    if tenant is None:
+        # Chamador antigo não passa o tenant; buscamos, porque sem o modo o portão
+        # de qualificação decide errado (ver comentário mais abaixo). Se a busca
+        # falhar, seguimos SEM tenant — e o portão cai no modo `ghl`, o estrito.
+        # Falhar para o lado conservador: no pior caso a qualificação nasce
+        # desligada e o operador liga; o inverso prometeria registro que não
+        # acontece.
+        try:
+            from auth.token_manager import token_manager
+
+            tenant = token_manager.get_tenant(location_id)
+        except Exception as e:
+            logger.warning(f"[PROVISION] Sem tenant para {location_id} ({type(e).__name__}); assumindo modo 'ghl'.")
+
     pendencias: list[str] = []
     if fields_override is not None:
         campos = _com_chaves(fields_override)
@@ -285,22 +300,37 @@ async def build_agent_provisioning(
             f"o dado fica no lead qualificado, mas não sobe para o CRM."
         )
 
-    # FAIL-CLOSED DE VERDADE: sem funil definido a qualificação fica DESLIGADA.
+    # O PORTÃO PERGUNTA O QUE ESTE MODO PRECISA — não existe um requisito único.
     #
-    # Ligar sem pipeline/stage seria a pior falha possível, e é silenciosa: o
-    # agente ganharia a tool, diria ao lead que registrou, o handler pularia o
-    # CRM (`qualification_handler.py:67` exige pipeline_id e stage_id) sem nem
-    # emitir warning, gravaria o QualifiedLead — e a partir daí `ai_service.py:319`
-    # PAUSA A IA PARA SEMPRE naquele lead. Pior: o guard de idempotência impede
-    # que ele seja reenviado ao CRM mesmo depois de o operador corrigir o funil.
-    # Ou seja: o lead conversa, é dado como qualificado, não chega ao CRM e fica
-    # sem resposta. Melhor não prometer qualificar do que prometer e engolir.
-    pronto = bool(pipeline_id and stage_id)
-    if not pronto:
-        pendencias.append(
-            "Qualificação DESLIGADA até o funil ser definido — o agente conversa "
-            "normalmente, mas não registra leads."
-        )
+    # `ghl`: qualificar significa CRIAR OPORTUNIDADE no funil. Sem pipeline/stage a
+    # falha é silenciosa e cara: o agente ganha a tool, diz ao lead que registrou, o
+    # handler pula o ramo do CRM (`qualification_handler.py:66` — `if has_ghl_token
+    # and pipeline_id and stage_id`), grava o QualifiedLead, e a partir daí a IA fica
+    # PAUSADA PARA SEMPRE naquele lead. Pior: a idempotência impede reenvio ao CRM
+    # mesmo depois de o operador corrigir o funil. O lead conversa, é dado como
+    # qualificado, não chega ao CRM e fica sem resposta.
+    #
+    # `whatsapp_only`: qualificar significa GRAVAR O QualifiedLead — e essa linha JÁ É
+    # o destino (ela é o gate que pausa a IA e sinaliza para o humano). Não há CRM,
+    # então exigir funil aqui desligava uma função que funciona. Foi o que aconteceu
+    # com a Joorney: whatsapp_only, sem funil, qualificação impossível de ligar por
+    # este caminho.
+    e_whatsapp_only = str(getattr(tenant, "mode", "ghl") or "ghl") == "whatsapp_only"
+
+    if e_whatsapp_only:
+        pronto = True
+        if not (pipeline_id and stage_id):
+            pendencias.append(
+                "Sem CRM: o lead qualificado é marcado e a IA pausa para atendimento "
+                "humano. Nenhuma oportunidade é criada — não há funil."
+            )
+    else:
+        pronto = bool(pipeline_id and stage_id)
+        if not pronto:
+            pendencias.append(
+                "Qualificação DESLIGADA até o funil ser definido — o agente conversa "
+                "normalmente, mas não registra leads."
+            )
 
     config = {
         # Explícito, não herdado do default da coluna: agente que a Mestre cria
