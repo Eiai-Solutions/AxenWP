@@ -22,7 +22,8 @@ Cérebro externo do projeto. O código é a fonte da verdade; aqui mora o **porq
 - [[decisoes/ia-mestre-portadora-do-metodo]] — a Mestre carrega o método e emite Agent Spec; **motor e tools decididos**; bloqueador: agente nasce desligado · status:solid
 - [[decisoes/log-de-mensagens]] — log próprio de mensagens como base do painel de chat · status:solid
 - [[decisoes/isolamento-operador-cliente]] — Organization + papel + barreira no router; a ordem que evita o vazamento · status:solid
-- [[decisoes/entrevista-da-mestre]] — entrevista e formulário convergem num gerador só; a entrevista vira submission · status:solid
+- [[decisoes/entrevista-da-mestre]] — entrevista e formulário convergem num gerador só; a entrevista vira submission; a Mestre pesquisa CNPJ/site com blindagem de SSRF · status:solid
+- [[decisoes/wizard-de-criacao-de-agente]] — as etapas são função pura do tenant; sem CRM a qualificação muda de variante, não some; derivar nunca copiar · status:solid
 
 ## Fluxos
 - (a registrar) qualificação SDR, debounce/dedup, sync GHL
