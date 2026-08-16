@@ -471,6 +471,13 @@ class AIEngine:
         if escalate:
             result["escalate"] = True
             result["escalate_reason"] = escalate_reason
+        # O log de mensagens grava o áudio inbound ANTES da IA rodar (de propósito:
+        # precisa registrar mesmo com a IA desligada), então nasce com o rótulo
+        # "[Áudio recebido]". Devolvemos a transcrição para o pipeline completar a
+        # linha — sem isso o painel mostra bolha de áudio sem texto nenhum, e não
+        # dá para ler a conversa passando o olho.
+        if is_audio and actual_message and actual_message != user_message:
+            result["transcricao"] = actual_message
         return result
 
     # ── Suporte ao motor Claude (tool-use) ──

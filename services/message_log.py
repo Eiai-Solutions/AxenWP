@@ -13,6 +13,7 @@ faltava, status); não achou → insere. Isso cobre:
 - a mensagem que nasce com o id do provedor e ganha o id do CRM depois (espelho).
 """
 
+import re
 import asyncio
 from typing import Optional
 
@@ -28,6 +29,35 @@ def _norm(v: Optional[str]) -> Optional[str]:
         return None
     v = str(v).strip()
     return v or None
+
+
+# Sufixo de identidade do WhatsApp que NÃO é telefone: `@lid` identifica leads de
+# anúncio e não tem número por trás. Reduzi-lo a dígitos destruiria a identidade.
+_LID = re.compile(r"@lid$", re.IGNORECASE)
+
+
+def normalizar_contact_ref(valor: Optional[str]) -> Optional[str]:
+    """
+    Forma canônica do identificador do contato. UM ponto para todos os caminhos.
+
+    Sem isto a mesma pessoa vira duas conversas: o inbound do WAHA grava
+    `554797838884` (só dígitos) e a resposta do operador pelo CRM grava o telefone
+    como o GHL devolve, `+554797838884`. Como `session_id` é derivado daqui, o
+    thread partia em dois — visível em produção antes desta correção.
+
+    `@lid` passa intacto: é identidade, não telefone.
+    """
+    if valor is None:
+        return None
+    v = str(valor).strip()
+    if not v:
+        return None
+    if _LID.search(v):
+        return v
+    digitos = re.sub(r"\D", "", v)
+    # Se não sobrou dígito nenhum, o valor não era telefone — preserva o original
+    # em vez de virar None e derrubar a mensagem.
+    return digitos or v
 
 
 def _achar_existente(db, loc: str, pmid: Optional[str], gmid: Optional[str]):
@@ -102,6 +132,7 @@ async def persist_message(
     session_id: Optional[str] = None,
 ) -> None:
     """Grava (ou completa) uma mensagem no log. Best-effort."""
+    contact_ref = normalizar_contact_ref(contact_ref)
     if not (location_id and contact_ref):
         return
     campos = {
@@ -130,6 +161,20 @@ async def persist_message(
         logger.error(f"[MSGLOG] Falha ao registrar mensagem de {location_id}: {e}")
 
 
+# Progressão do status de entrega. Acks do WhatsApp chegam FORA DE ORDEM e o WAHA
+# reentrega — sem esta ordem, um "sent" atrasado rebaixaria um "read" já registrado
+# e o tique na tela passaria a mentir. `failed` é exceção: erro explícito sempre vale.
+_RANK_STATUS = {"pending": 0, "sent": 1, "delivered": 2, "read": 3}
+
+
+def _e_avanco(atual: Optional[str], novo: str) -> bool:
+    if novo == "failed":
+        return True
+    if atual == "failed":
+        return False  # já falhou; ack tardio não "conserta"
+    return _RANK_STATUS.get(novo, -1) > _RANK_STATUS.get(atual or "", -1)
+
+
 def _update_status_sync(location_id: str, provider_message_id: Optional[str],
                         ghl_message_id: Optional[str], status: str, error: Optional[str]) -> None:
     db = SessionLocal()
@@ -141,13 +186,39 @@ def _update_status_sync(location_id: str, provider_message_id: Optional[str],
             row = q.filter_by(ghl_message_id=ghl_message_id).first()
         else:
             return
-        if row:
+        if row and _e_avanco(row.status, status):
             row.status = status
             if error:
                 row.error_message = error
             db.commit()
     finally:
         db.close()
+
+
+def _update_text_sync(location_id: str, provider_message_id: str, texto: str) -> None:
+    db = SessionLocal()
+    try:
+        row = (
+            db.query(Message)
+            .filter_by(location_id=location_id, provider_message_id=provider_message_id)
+            .first()
+        )
+        if row:
+            row.text = texto
+            db.commit()
+    finally:
+        db.close()
+
+
+async def update_message_text(location_id: str, provider_message_id: str, texto: str) -> None:
+    """Completa o texto de uma mensagem já registrada (transcrição de áudio). Best-effort."""
+    pmid, texto = _norm(provider_message_id), _norm(texto)
+    if not (location_id and pmid and texto):
+        return
+    try:
+        await asyncio.to_thread(_update_text_sync, location_id, pmid, texto)
+    except Exception as e:
+        logger.error(f"[MSGLOG] Falha ao completar texto em {location_id}: {e}")
 
 
 async def update_message_status(

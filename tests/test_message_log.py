@@ -153,3 +153,52 @@ def test_message_type_from_url():
     assert f("https://cdn/doc.pdf") == "document"
     assert f("https://cdn/qualquer.ogg", is_audio=True) == "audio"
     assert f(None) == "text"
+
+
+# --------------------------------------------------------------------------- #
+# contact_ref canônico — sem isso a mesma pessoa vira duas conversas
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "entrada,esperado",
+    [
+        ("+554797838884", "554797838884"),   # como o GHL devolve
+        ("554797838884", "554797838884"),    # como o WAHA grava
+        ("+55 (47) 99720-4869", "5547997204869"),
+        ("  5511999  ", "5511999"),
+        ("182736471823@lid", "182736471823@lid"),  # identidade, não telefone
+        ("182736471823@LID", "182736471823@LID"),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_normalizacao_do_contact_ref(entrada, esperado):
+    from services.message_log import normalizar_contact_ref
+
+    assert normalizar_contact_ref(entrada) == esperado
+
+
+@pytest.mark.asyncio
+async def test_lead_e_operador_caem_na_MESMA_conversa(db):
+    """
+    O bug que estava corrompendo produção: o inbound gravava `554797838884` e a
+    resposta do operador pelo CRM gravava `+554797838884`. Como o session_id é
+    derivado do contact_ref, o thread partia em dois.
+    """
+    from data.models import Message
+    from services.message_log import persist_message
+
+    await persist_message(
+        location_id="loc1", channel="whatsapp", direction="inbound", sender_role="contact",
+        contact_ref="554797838884", text="oi", provider_message_id="WA-in",
+    )
+    await persist_message(
+        location_id="loc1", channel="whatsapp", direction="outbound", sender_role="operator_crm",
+        contact_ref="+554797838884", text="ola", ghl_message_id="GHL-1",
+    )
+
+    s = db()
+    linhas = s.query(Message).order_by(Message.id).all()
+    assert len(linhas) == 2
+    assert len({m.session_id for m in linhas}) == 1, "operador e lead em conversas separadas"
+    assert {m.contact_ref for m in linhas} == {"554797838884"}
+    s.close()

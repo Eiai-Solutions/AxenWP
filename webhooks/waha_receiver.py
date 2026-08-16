@@ -19,6 +19,7 @@ from fastapi import APIRouter, BackgroundTasks, Path, Request
 
 from auth.token_manager import token_manager
 from channels.whatsapp.waha import WAHAChannel
+from services import message_log
 from services.channel_policy import WAHA, active_whatsapp_provider
 from services.inbound_pipeline import handle_inbound
 from services.waha_service import waha_service
@@ -81,11 +82,46 @@ async def waha_webhook(
         status = (payload.get("payload") or {}).get("status", "?")
         logger.info(f"[WAHA] Sessão {location_id}: {status}")
         metrics.inc("millochat_waha_session_status_total", labels={"status": str(status)})
+    elif evento == "message.ack":
+        background_tasks.add_task(process_waha_ack, location_id, payload)
     else:
         logger.debug(f"[WAHA] Evento ignorado: {evento or '(vazio)'}")
 
     # Sempre 200: o WAHA reentrega em resposta não-2xx.
     return {"success": True}
+
+
+# O WAHA manda `ackName` (READ/DEVICE/…) e/ou o código numérico. Preferimos o NOME:
+# depender só do número é o jeito clássico de os tiques passarem a mentir depois de
+# uma atualização do provedor. O número fica de reserva.
+_ACK_NOME = {
+    "ERROR": "failed", "PENDING": "pending", "SERVER": "sent",
+    "DEVICE": "delivered", "READ": "read", "PLAYED": "read",
+}
+_ACK_NUM = {-1: "failed", 0: "pending", 1: "sent", 2: "delivered", 3: "read", 4: "read"}
+
+
+async def process_waha_ack(location_id: str, payload: dict) -> None:
+    """Espelha o tique de entrega do WhatsApp no log — a sessão já assinava o evento."""
+    corpo = payload.get("payload") or {}
+    pmid = corpo.get("id")
+    if not pmid:
+        return
+
+    nome = str(corpo.get("ackName") or "").upper()
+    status = _ACK_NOME.get(nome)
+    if status is None:
+        try:
+            status = _ACK_NUM.get(int(corpo.get("ack")))
+        except (TypeError, ValueError):
+            status = None
+    if status is None:
+        logger.debug(f"[WAHA] ack desconhecido em {location_id}: {corpo.get('ackName')}/{corpo.get('ack')}")
+        return
+
+    await message_log.update_message_status(
+        location_id, provider_message_id=str(pmid), status=status
+    )
 
 
 async def process_waha_message(location_id: str, payload: dict) -> None:

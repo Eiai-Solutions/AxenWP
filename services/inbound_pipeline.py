@@ -18,6 +18,8 @@ devem migrar para cá — enquanto não migram, a lógica vive em dois lugares, 
 """
 
 from __future__ import annotations
+import base64
+import uuid
 
 import asyncio
 import re
@@ -29,8 +31,9 @@ from auth.token_manager import token_manager
 from channels.base import ParsedMessage
 from services.ghl_service import ghl_service
 from services.media_store import MAX_BLOB_BYTES, store_media
-from services.message_log import message_type_from_mimetype, persist_message
+from services.message_log import message_type_from_mimetype, persist_message, update_message_text
 from utils import metrics
+from utils.config import settings
 from utils.logger import logger
 
 DEFAULT_DEBOUNCE_SECONDS = 1.5
@@ -318,12 +321,55 @@ async def _log_inbound(adapter, tenant, pm: ParsedMessage, contact_id: Optional[
     )
 
 
+def _url_do_proxy(location_id: str, filename: Optional[str]) -> Optional[str]:
+    """Link do nosso proxy de mídia — o mesmo caminho que o inbound já usa."""
+    if not filename:
+        return None
+    base = (getattr(settings, "public_base_url", "") or "").rstrip("/")
+    return f"{base}/media/whatsapp/{location_id}/{filename}" if base else None
+
+
+async def _guardar_audio_da_ia(location_id: str, data_url: str) -> tuple[Optional[str], Optional[str]]:
+    """
+    Guarda o áudio do TTS e devolve (filename, mimetype).
+
+    Sem isto a mensagem da IA era gravada só como o rótulo "[Áudio da IA]", sem
+    referência de mídia nenhuma — no painel a bolha apareceria muda, sem player,
+    e o cliente não teria como ouvir o que o próprio agente dele falou.
+    O TTS entrega "data:audio/ogg;base64,<b64>"; o anexo do CRM entrega URL http,
+    que não é nosso para guardar.
+    """
+    if not data_url or not data_url.startswith("data:"):
+        return None, None
+    try:
+        cabecalho, _, b64 = data_url.partition(",")
+        if not b64:
+            return None, None
+        mimetype = (cabecalho[5:].split(";")[0] or "audio/ogg").strip()
+        dados = base64.b64decode(b64)
+        if not dados:
+            return None, None
+        # Extensão a partir do mimetype: o player do painel decide por ela.
+        ext = {"audio/ogg": "ogg", "audio/mpeg": "mp3", "audio/mp4": "m4a",
+               "audio/wav": "wav"}.get(mimetype, "ogg")
+        filename = f"ia-{uuid.uuid4().hex}.{ext}"
+        if await store_media(location_id, filename, mimetype, dados):
+            return filename, mimetype
+    except Exception as e:
+        logger.error(f"[MEDIA] Falha ao guardar áudio da IA em {location_id}: {e}")
+    return None, None
+
+
 async def _log_outbound_ia(adapter, pm: ParsedMessage, contact_id: Optional[str], texto: str,
-                           res, ghl_id: Optional[str], message_type: str = "text") -> None:
+                           res, ghl_id: Optional[str], message_type: str = "text",
+                           media_filename: Optional[str] = None,
+                           media_mimetype: Optional[str] = None,
+                           media_url: Optional[str] = None) -> None:
     await persist_message(
         location_id=pm.location_id, channel=pm.channel, provider=adapter.provider,
         direction="outbound", sender_role="ai", contact_ref=pm.sender_id,
         ghl_contact_id=contact_id, message_type=message_type, text=texto,
+        media_filename=media_filename, media_mimetype=media_mimetype, media_url=media_url,
         provider_message_id=getattr(res, "provider_message_id", None), ghl_message_id=ghl_id,
         status="sent" if getattr(res, "ok", False) else "failed",
     )
@@ -397,6 +443,12 @@ async def _run_ai(adapter, tenant, pm: ParsedMessage, contact_id: Optional[str],
         if not resposta:
             return
 
+        # Completa o texto do áudio inbound com a transcrição. A linha já existe
+        # (o log roda antes da IA), então aqui só preenchemos o que nasceu rótulo.
+        transcricao = resposta.get("transcricao")
+        if transcricao and pm.provider_message_id:
+            await update_message_text(pm.location_id, pm.provider_message_id, transcricao)
+
         qualified = resposta.get("qualified_data")
         if qualified:
             from services.qualification_handler import handle_qualification
@@ -439,7 +491,12 @@ async def _run_ai(adapter, tenant, pm: ParsedMessage, contact_id: Optional[str],
             if res.ok and espelhar:
                 ghl_id = await _mirror_outbound(tenant, pm, contact_id, "[Mensagem de Áudio enviada pela IA]",
                                                 res.provider_message_id)
-            await _log_outbound_ia(adapter, pm, contact_id, "[Áudio da IA]", res, ghl_id, message_type="audio")
+            arq, mime = await _guardar_audio_da_ia(pm.location_id, conteudo)
+            await _log_outbound_ia(
+                adapter, pm, contact_id, "[Áudio da IA]", res, ghl_id, message_type="audio",
+                media_filename=arq, media_mimetype=mime,
+                media_url=_url_do_proxy(pm.location_id, arq),
+            )
             return
 
         for i, chunk in enumerate(split_chunks(conteudo)):
