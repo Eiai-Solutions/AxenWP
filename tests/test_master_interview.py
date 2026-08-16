@@ -136,6 +136,76 @@ async def test_concluir_entrega_o_form_data(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_reabrir_conversa_em_andamento_nao_chama_a_api(monkeypatch):
+    """
+    REGRESSÃO — isto era 502 em produção, em todo reload de entrevista aberta.
+
+    A tela chama a rota sem mensagem toda vez que a página carrega ("reabre a que
+    já existe"), e a conversa salva termina em `assistant` sempre que a Mestre está
+    esperando resposta — ou seja, sempre. Reenviar assim faz a API recusar com
+    "does not support assistant message prefill".
+    """
+    cliente = _instalar(monkeypatch, [])
+    estado = EstadoEntrevista(
+        mensagens=[
+            {"role": "user", "content": "Vamos começar."},
+            {"role": "assistant", "content": [{"type": "text", "text": "O que voces fazem?"}]},
+        ],
+        turnos=1,
+    )
+
+    devolvido = await avancar(estado, None)
+
+    assert cliente.chamadas == [], "reabrir gastou uma chamada de API"
+    assert devolvido.turnos == 1, "reabrir contou como turno"
+    assert ultima_fala(devolvido) == "O que voces fazem?"
+    assert historico_visivel(devolvido) == [{"de": "mestre", "texto": "O que voces fazem?"}]
+
+
+@pytest.mark.asyncio
+async def test_mensagem_vazia_da_tela_nao_vira_turno(monkeypatch):
+    """
+    A rota converte `""` em `None` (`mensagem or None`), então string vazia cai no
+    mesmo caminho de reabrir. Se um dia isso mudar, o teste marca.
+    """
+    cliente = _instalar(monkeypatch, [])
+    estado = EstadoEntrevista(
+        mensagens=[
+            {"role": "user", "content": "Vamos começar."},
+            {"role": "assistant", "content": [{"type": "text", "text": "Oi!"}]},
+        ],
+        turnos=1,
+    )
+
+    await avancar(estado, None)
+    assert cliente.chamadas == []
+
+
+@pytest.mark.asyncio
+async def test_a_conversa_enviada_nunca_termina_em_assistant(monkeypatch):
+    """
+    A invariante que a API cobra. Vale para o começo, para o meio e para o retorno
+    depois de uma ferramenta.
+    """
+    monkeypatch.setattr(mi, "ler_site",
+                        lambda u: _async({"url_final": u, "texto": "Paes", "truncado": False}),
+                        raising=True)
+    cliente = _instalar(monkeypatch, [
+        FakeResp([_texto("Oi! Manda o site.")]),
+        FakeResp([_tool("t1", "ler_site", {"url": "a.com"})], stop_reason="tool_use"),
+        FakeResp([_texto("Vi o site. Qual o horario?")]),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), None)
+    estado = await avancar(estado, "a.com")
+
+    assert len(cliente.chamadas) == 3
+    for i, chamada in enumerate(cliente.chamadas):
+        assert chamada["messages"][-1]["role"] == "user", \
+            f"chamada {i + 1} terminou em assistant — a API recusa como prefill"
+
+
+@pytest.mark.asyncio
 async def test_avancar_numa_entrevista_ja_concluida_e_no_op(monkeypatch):
     cliente = _instalar(monkeypatch, [])
     estado = EstadoEntrevista(concluida=True, form_data=dict(COMPLETO))

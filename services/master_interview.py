@@ -455,6 +455,17 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
         # A Mestre precisa de um turno de usuário para começar; este é o gatilho e
         # não aparece na tela.
         estado.mensagens.append({"role": "user", "content": "Vamos começar."})
+    elif estado.mensagens[-1].get("role") == "assistant":
+        # REABRIR NÃO É UM TURNO NOVO. A tela chama esta rota sem mensagem toda vez
+        # que a página carrega ("reabre a que já existe"), e a conversa salva termina
+        # em `assistant` sempre que a Mestre está esperando resposta — ou seja,
+        # sempre. Chamar a API aqui reenviaria a conversa terminando no assistant, e
+        # a API recusa: "does not support assistant message prefill". Era 502 em todo
+        # reload de entrevista em andamento.
+        #
+        # Devolver o estado como está é o comportamento certo (o chamador já monta o
+        # histórico a partir dele) e ainda não gasta token.
+        return estado
 
     cliente = AsyncAnthropic(api_key=chave, timeout=120.0, max_retries=2)
     modelo = _modelo()
