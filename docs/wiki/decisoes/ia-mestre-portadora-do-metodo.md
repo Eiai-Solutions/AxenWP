@@ -1,16 +1,22 @@
 ---
 type: decisao
 status: solid
-updated: 2026-07-22
+updated: 2026-08-16
 sources: [utils/master_prompt.py, admin/ai_agent.py, services/agent_engine/tools.py, public/onboarding.py, ~/.claude/skills/criar-agente-sdk]
 confidence: high
 ---
 
 # Decisão: a IA Mestre carrega o MÉTODO de criação de agentes
 
-**Status:** direção travada + **as duas perguntas em aberto resolvidas com medição** (2026-07-22).
-**Não implementada.** É o norte
-da frente "Mestre" — escrito antes de codar justamente para não construí-la errado.
+**Status (2026-08-16): PARCIALMENTE IMPLEMENTADA.** O que era norte virou código:
+`services/master_engine.py` (Anthropic + saída estruturada), `utils/agent_spec.py`
+(o Agent Spec) e `services/agent_provisioning.py` (o Spec vira config segura) estão no ar.
+A entrevista conversacional — a porta que resolve "cliente não sabe o que preencher" —
+está em [[decisoes/entrevista-da-mestre]].
+
+Falta: `analyze-prompt` e `master-chat` (`admin/ai_agent.py`) continuam em OpenRouter com
+prompt inline, enquanto a geração já é Anthropic estruturado. **Dois cérebros para o mesmo
+papel**, divergindo.
 
 ## O problema
 

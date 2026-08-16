@@ -73,3 +73,11 @@
 - Gate PRÓPRIO: `is_configured()` exige chave Anthropic E toggle `MASTER_ENGINE=anthropic` — senão a mesma chave do motor trocaria a Mestre de todos os tenants sozinha. Sem toggle = OpenRouter legado byte-idêntico.
 - Floor `anthropic>=0.80.0` (verificado: 0.69 não tem `messages.parse`/`output_format`).
 - Falta: validar QUALIDADE com API real (Anthropic vs gpt-4o) antes de ligar o toggle em produção.
+
+## [2026-08-16] add | Isolamento, entrevista da Mestre e migração do motor
+- `decisoes/isolamento-operador-cliente.md` (**novo**) — `Organization` + `AdminUser.role`, `require_admin` exigindo operador, barreira por dependência de router e teste de inventário sobre `app.routes`. A ordem importa: criar conta de cliente antes da barreira daria acesso às 86 rotas de `/admin`, incluindo a que devolve `api_key` e prompt em texto puro de qualquer tenant. Corrigido junto o `LIKE` não escapado (location_id contém `_`, curinga em SQL).
+- `decisoes/entrevista-da-mestre.md` (**novo**) — "duas portas, um gerador só": entrevista e formulário convergem em `form_data` → `generate_agent_spec`; a entrevista concluída cria uma `OnboardingSubmission`, reusando todo o downstream. Guards no código (obrigatórios, par tool_use/tool_result na serialização), tetos por ser link público anônimo.
+- `decisoes/agente-claude-agent-sdk.md` (**atualizado**) — de "não ligado em nenhum tenant" para **6/6 migrados**. Registra o achado: prompt fraco + ferramentas = o agente escala tudo (efeito que não existe no motor legado). Prompt caching medido: 10.757 tokens lidos do cache.
+- `decisoes/ia-mestre-portadora-do-metodo.md` (**atualizado**) — status de "não implementada" para "parcialmente"; aponta os dois cérebros que restam (`analyze-prompt`/`master-chat` em OpenRouter inline).
+- `decisoes/produto-saas-fase0.md` (**atualizado**) — dimensão de isolamento multi-tenant de 1 para ~3.
+- `sintese/contradicoes.md` (**novo**) — Haiku (decidido) x Sonnet (em produção) no loop do agente, sem conta de custo refeita.

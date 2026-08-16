@@ -19,7 +19,7 @@ MVP funcional maduro para uso operado, **não vendível ainda**. Fundação de d
 ### Scorecard (atual/alvo, de 5)
 | Dimensão | Atual | Alvo |
 |---|:-:|:-:|
-| Segurança & isolamento multi-tenant | 1 | 4 |
+| Segurança & isolamento multi-tenant | ~~1~~ → 3 | 4 |
 | Confiabilidade & erro | 1 | 4 |
 | Testes & qualidade | 1 | 4 |
 | Prontidão comercial/SaaS | 1 | 4 |
@@ -51,3 +51,13 @@ Migrations vão até **021** (não 18, como o CLAUDE.md diz — doc drift). Aloc
 Modelo de pricing (por conversa/lead/msg/flat — default: Free + 1 pago), nível de compliance-alvo, quais canais depois.
 
 Relacionado: [[sintese/visao-geral]] · [[decisoes/reestruturacao-abstracoes-primeiro]] · [[decisoes/whatsapp-waha]] · [[decisoes/agente-claude-agent-sdk]] · [[decisoes/ia-mestre-portadora-do-metodo]] (o que torna o self-service **confiável**: agente gerado nasce correto por construção)
+
+## Atualização (2026-08-16)
+
+A dimensão **Segurança & isolamento multi-tenant** saiu de 1 para ~3: existe papel
+(`operator`/`client`), `Organization`, escopo lido do banco por request e barreira no
+router com teste de inventário — ver [[decisoes/isolamento-operador-cliente]]. Falta o
+router `/app` do cliente para chegar a 4.
+
+Autenticação também endureceu: contas em `admin_users` com hash scrypt, troca de senha
+pelo painel e resgate por `ADMIN_FORCE_RESET` (ver `CLAUDE.md` → Convenções).
