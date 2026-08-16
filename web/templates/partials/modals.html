@@ -83,7 +83,7 @@
                                     class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
                                     {% set _am = system_settings.admin_anthropic_model if system_settings else '' %}
                                     <option value="claude-sonnet-5" {% if _am=='claude-sonnet-5' or not _am %}selected{% endif %}>claude-sonnet-5 (padrão)</option>
-                                    <option value="claude-opus-4-8" {% if _am=='claude-opus-4-8' %}selected{% endif %}>claude-opus-4-8 (máxima qualidade)</option>
+                                    <option value="claude-opus-5" {% if _am=='claude-opus-5' %}selected{% endif %}>claude-opus-5 (máxima qualidade)</option>
                                     <option value="claude-haiku-4-5-20251001" {% if _am=='claude-haiku-4-5-20251001' %}selected{% endif %}>claude-haiku-4.5 (rápido)</option>
                                 </select>
                             </div>
@@ -1356,7 +1356,7 @@
                                     title="Claude (Agent SDK): tool-use, qualifica e escala via ferramentas. OpenRouter: single-turn legado."
                                     class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
                                     <option value="claude">Claude Agent SDK (tool-use)</option>
-                                    <option value="langchain">OpenRouter (single-turn, legado)</option>
+                                    <option value="langchain">OpenRouter (single-turn) — legado, sem ferramentas</option>
                                 </select>
                             </div>
                         </div>
@@ -1370,7 +1370,7 @@
                                         class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono">
                                         <option value="">Padrão (herda do admin)</option>
                                         <option value="claude-sonnet-5">claude-sonnet-5</option>
-                                        <option value="claude-opus-4-8">claude-opus-4-8 (máxima qualidade)</option>
+                                        <option value="claude-opus-5">claude-opus-5 (máxima qualidade)</option>
                                         <option value="claude-haiku-4-5-20251001">claude-haiku-4.5 (rápido)</option>
                                     </select>
                                 </div>

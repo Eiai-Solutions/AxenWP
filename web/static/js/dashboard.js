@@ -736,7 +736,7 @@
             document.getElementById('ai_model').value = agentModel || 'openai/gpt-4o';
             document.getElementById('ai_api_key').value = agentApiKey || '';
             // Motor do agente (claude = Agent SDK tool-use · langchain = OpenRouter legado).
-            const engine = (btn.dataset.aiengine || 'langchain').toLowerCase() === 'claude' ? 'claude' : 'langchain';
+            const engine = (btn.dataset.aiengine || 'claude').toLowerCase() === 'langchain' ? 'langchain' : 'claude';
             document.getElementById('ai_engine').value = engine;
             document.getElementById('ai_anthropic_model').value = btn.dataset.aianthropicmodel || '';
             document.getElementById('ai_anthropic_api_key').value = btn.dataset.aianthropickey || '';

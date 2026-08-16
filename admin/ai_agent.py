@@ -51,7 +51,7 @@ async def save_agent_settings(
     prompt: str = Form(...),
     model: str = Form("openai/gpt-4o"),
     api_key: Optional[str] = Form(None),
-    agent_engine: str = Form("langchain"),
+    agent_engine: str = Form("claude"),
     anthropic_model: Optional[str] = Form(None),
     anthropic_api_key: Optional[str] = Form(None),
     tts_provider: str = Form("elevenlabs"),

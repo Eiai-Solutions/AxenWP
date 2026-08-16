@@ -95,7 +95,9 @@ class AIAgent(Base):
     # Motor de agente: 'langchain' (single-turn OpenRouter, atual) | 'claude'
     # (tool-use Anthropic direto, com prompt caching). Default preserva o
     # comportamento de todos os agentes existentes — a troca é opt-in por agente.
-    agent_engine = Column(String(20), default="langchain", server_default="langchain", nullable=False)
+    # Agente novo nasce no motor SDK (tool-use). Os 6 legados foram migrados em
+    # 2026-08-16, depois de o motor ser provado contra os prompts reais deles.
+    agent_engine = Column(String(20), default="claude", server_default="claude", nullable=False)
     anthropic_model = Column(String(80), nullable=True)   # ex.: "claude-sonnet-5"; None → default do engine
     anthropic_api_key = Column(String(255), nullable=True)  # None → cai na chave global do admin
 

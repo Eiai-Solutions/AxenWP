@@ -303,6 +303,10 @@ async def build_agent_provisioning(
         )
 
     config = {
+        # Explícito, não herdado do default da coluna: agente que a Mestre cria
+        # nasce no motor SDK. As tools de qualificar/escalar são justamente o que
+        # o motor legado (single-turn, sem ferramentas) não sabe usar.
+        "agent_engine": "claude",
         "qualification_enabled": pronto,
         "qualification_fields": campos,
         "qualification_pipeline_id": pipeline_id,

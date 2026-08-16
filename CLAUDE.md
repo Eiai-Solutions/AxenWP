@@ -77,6 +77,9 @@ Repositório: `Eiai-Solutions/AxenWP` via SSH (o repo mantém o nome antigo; o p
 
 - `tenants` — credenciais OAuth + Z-API + Telegram + PIT (PK: location_id)
 - `ai_agents` — config LLM/voz por (location_id, channel). `linked_to_channel` para alias.
+  **Motor padrão = `claude` (Agent SDK, tool-use).** Os 6 legados migraram de `langchain` em 2026-08-16,
+  depois de o motor ser provado contra os prompts reais deles. O legado é single-turn e **não sabe usar
+  as tools** de qualificar/escalar — agente com prompt fraco + tools disponíveis tende a escalar tudo.
 - `agent_prompt_history` — versionamento (form/regenerate/optimize_apply/manual_save/restore)
 - `chat_histories` — memória de conversa (location_id explícito + index composto)
 - `qualified_leads` — leads qualificados (1 por phone+location, flag pra IA)
