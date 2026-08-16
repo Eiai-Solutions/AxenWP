@@ -95,3 +95,10 @@
 - **O risco da busca por nome é acertar a empresa errada** — dezenas de "Padaria Aurora" no Brasil, e agente sobre a empresa errada é pior que genérico: parece confiante e está errado. A Mestre confirma antes de tratar como verdade.
 - Consequências que viraram trabalho: `pause_turn` (busca devolve turno em pedaços — tratar como fim cortaria a resposta no meio); teto de busca dentro de `estourou_teto`, checado no início de `avancar` para o turno que estourou ainda ser SALVO; e **breakpoint de cache móvel** no histórico, que ficou pesado porque o resultado da busca é reenviado a cada turno.
 - **Falta fechar:** verificação contra a API real. Os testes usam cliente falso e passariam com o tipo de ferramenta errado.
+
+## [2026-08-16] fix | Reabrir a entrevista era 502 — e a busca na web verificada em produção
+- `decisoes/entrevista-da-mestre.md` (**atualizado**) — a tela chama a rota de turno em TODO carregamento, e a conversa salva termina em `assistant` sempre que a Mestre espera resposta. A API recusa como prefill. **Causa raiz medida:** o modelo responde com blocos `thinking`, e extended thinking não aceita prefill de assistant.
+- **A lição é sobre cobertura, não sobre a linha:** não havia teste do caminho de REABRIR, só de avançar. A função estava certa para o caminho testado. O bug era invisível na leitura.
+- **Diagnóstico que vale repetir:** a entrevista que estourou foi criada 17:58, quase uma hora antes do deploy das 18:52, e tinha `buscas_web=None` — escrita pelo código antigo. Foi isso que separou "bug meu" de "bug preexistente exposto pelo deploy". Ler a linha no banco custou menos que teorizar.
+- **Verificado em produção:** `web_search_20260318` executa (blocos `server_tool_use` + `web_search_tool_result`, `buscas_web=1`), e o breakpoint de cache móvel — antes anotado como "não medido" — leu **19.291 tokens do cache** no turno seguinte à busca.
+- Pendente: `interview_session.carregar_para_exibir` existe para reabrir sem gastar LLM e segue sem endpoint que a chame.

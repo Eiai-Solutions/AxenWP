@@ -178,6 +178,39 @@ verdade e olhar o que voltou sujo.
   estável é evidência do SDK, não de runtime — falta uma entrevista de verdade
   buscando por nome para fechar isso.
 
+## Reabrir não é um turno (502 em produção, 2026-08-16)
+
+A tela chama `POST .../entrevista/mensagem` **em todo carregamento** (`turno(null)`,
+comentado como "reabre a que já existe"). A rota converte `""` em `None`, e `avancar`
+não anexava nada — mas a conversa salva **termina em `assistant` sempre que a Mestre
+está esperando resposta**, ou seja, sempre. A conversa ia para a API terminando no
+assistant e voltava 400:
+
+> `This model does not support assistant message prefill. The conversation must end
+> with a user message.`
+
+**Por que a API é dura nisso:** medido em produção, o modelo responde com blocos
+`thinking`. Modelo com extended thinking não aceita prefill de assistant — não é que
+a API "poderia" ignorar o último turno, ela não pode.
+
+A correção é uma **invariante em `avancar`**: sem mensagem nova e com a conversa já
+terminando em `assistant`, devolve o estado como está. É o comportamento certo (o
+chamador monta o histórico a partir do estado) e ainda não gasta token.
+
+**A lição não é sobre a linha errada, é sobre o que não tinha teste.** Não havia
+nenhum teste do caminho de REABRIR — só de avançar. O bug era invisível lendo a
+função, porque a função estava certa para o caminho que os testes cobriam. Hoje há
+três, um deles verificando a invariante direto: nenhuma chamada à API pode terminar
+em `assistant`, no começo, no meio ou depois de uma ferramenta.
+
+Diagnóstico que vale repetir: a entrevista que estourou foi criada **17:58**, quase
+uma hora antes do deploy das **18:52**, e tinha `buscas_web=None` no estado — escrita
+pelo código antigo. Foi isso que separou "bug meu de agora" de "bug preexistente que
+o deploy expôs". Ler a linha no banco custou menos que teorizar.
+
+Resto anotado: `interview_session.carregar_para_exibir` existe exatamente para
+reabrir sem gastar LLM, e continua **sem endpoint que a chame**.
+
 ## Detalhes que valem lembrar
 
 - O token da sessão fica no `localStorage` do browser: fechar a aba e voltar **continua**
