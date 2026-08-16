@@ -336,6 +336,8 @@
                 openTelegramModal(d.companyName, d.locationId, d.telegramBotToken, d.telegramBotUsername);
             } else if (action === 'waha') {
                 openWahaModal(d.locationId, d.companyName);
+            } else if (action === 'wizard') {
+                abrirWizard(d.locationId, d.companyName);
             } else if (action === 'form') {
                 generateFormLink(d.locationId);
             } else if (action === 'delete') {
@@ -708,6 +710,219 @@
         }
 
         // Alterna os campos do Agent Core entre Claude (Agent SDK) e OpenRouter (LangChain).
+
+
+        // ── Wizard de criação de agente ──
+        // A tela NÃO decide as etapas: elas vêm do servidor, porque dependem do que
+        // a instância tem (CRM ou não, quantos canais). Aqui só desenhamos o que
+        // veio e mandamos de volta o que a pessoa preencheu.
+        let _wz = { loc: null, draftId: null, etapas: [], indice: 0, rascunho: {}, podePublicar: false };
+
+        async function abrirWizard(locationId, empresa) {
+            _wz = { loc: locationId, draftId: null, etapas: [], indice: 0, rascunho: {}, podePublicar: false };
+            document.getElementById('wz_empresa').textContent = empresa || '';
+            document.getElementById('wizardModal').classList.remove('hidden');
+            wizardErro('');
+            document.getElementById('wz_corpo').innerHTML =
+                '<p class="text-xs text-gray-500 font-mono">Carregando…</p>';
+
+            const r = await fetch(`/admin/agents/${encodeURIComponent(locationId)}/wizard/abrir`, { method: 'POST' });
+            const d = await r.json();
+            if (!d.success) { wizardErro(d.error || 'Não foi possível abrir.'); return; }
+            _aplicarEstado(d);
+            // Retoma onde a pessoa parou.
+            const i = _wz.etapas.findIndex(e => e.id === (_wz.rascunho.etapa_atual || 'canal'));
+            _wz.indice = i >= 0 ? i : 0;
+            wizardRender();
+        }
+
+        function closeWizard() { document.getElementById('wizardModal').classList.add('hidden'); }
+
+        function wizardErro(msg) {
+            const el = document.getElementById('wz_erro');
+            el.textContent = msg || '';
+            el.classList.toggle('hidden', !msg);
+        }
+
+        function _aplicarEstado(d) {
+            _wz.draftId = d.rascunho.id;
+            _wz.etapas = d.etapas || [];
+            _wz.rascunho = d.rascunho || {};
+            _wz.podePublicar = !!d.pode_publicar;
+            _wz.impedimento = d.impedimento || '';
+            _wz.vaiSubstituir = d.vai_substituir || null;
+        }
+
+        async function wizardSalvar(mudancas) {
+            const r = await fetch(`/admin/agents/${encodeURIComponent(_wz.loc)}/wizard/${_wz.draftId}/etapa`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(mudancas),
+            });
+            const d = await r.json();
+            if (!d.success) { wizardErro(d.error || 'Não foi possível salvar.'); return false; }
+            _aplicarEstado(d);
+            const s = document.getElementById('wz_salvo');
+            s.textContent = 'rascunho salvo';
+            setTimeout(() => { s.textContent = ''; }, 2000);
+            return true;
+        }
+
+        function wizardRender() {
+            const etapa = _wz.etapas[_wz.indice];
+            if (!etapa) return;
+            wizardErro('');
+
+            // Trilha
+            document.getElementById('wz_trilha').innerHTML = _wz.etapas.map((e, i) => {
+                const atual = i === _wz.indice;
+                const passou = i < _wz.indice;
+                const cor = atual ? 'text-brand-primary border-brand-primary'
+                    : passou ? 'text-gray-400 border-gray-700' : 'text-gray-600 border-gray-800';
+                return `<span class="text-[9px] font-mono uppercase tracking-widest px-2 py-1 rounded border ${cor}">${i + 1}. ${e.titulo}</span>`;
+            }).join('');
+
+            document.getElementById('wz_titulo').textContent = etapa.titulo;
+            document.getElementById('wz_descricao').textContent = etapa.descricao;
+            document.getElementById('wz_corpo').innerHTML = _corpoDaEtapa(etapa);
+
+            document.getElementById('wz_voltar').style.visibility = _wz.indice === 0 ? 'hidden' : 'visible';
+            const ultimo = _wz.indice === _wz.etapas.length - 1;
+            const btn = document.getElementById('wz_avancar');
+            btn.textContent = ultimo ? 'Publicar agente' : 'Avancar';
+            btn.disabled = etapa.variante === 'bloqueado';
+            btn.classList.toggle('opacity-40', btn.disabled);
+        }
+
+        function _corpoDaEtapa(e) {
+            const r = _wz.rascunho;
+            if (e.variante === 'bloqueado') {
+                return `<div class="rounded-xl border border-danger/40 bg-danger/5 p-4 text-sm text-gray-300">
+                    Conecte um canal na aba <strong>Canais</strong> e volte aqui.</div>`;
+            }
+            if (e.id === 'canal') {
+                if (e.variante === 'unico') {
+                    const c = e.dados.canais[0];
+                    return `<div class="rounded-xl border border-gray-800 p-4 flex items-center gap-3">
+                        <span class="w-1.5 h-1.5 rounded-full bg-brand-primary"></span>
+                        <span class="text-sm text-white font-bold">${c.rotulo}</span>
+                        <span class="text-[10px] text-gray-500 font-mono">${c.detalhe}</span></div>`;
+                }
+                return e.dados.canais.map(c => `
+                    <label class="flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-colors ${r.channel === c.canal ? 'border-brand-primary/50 bg-brand-primary/5' : 'border-gray-800 hover:border-gray-700'}"
+                        title="Este agente atende pelo ${c.rotulo}">
+                        <input type="radio" name="wz_canal" value="${c.canal}" class="hidden"
+                            onchange="wizardSalvar({channel: this.value}).then(wizardRender)" ${r.channel === c.canal ? 'checked' : ''}>
+                        <span class="text-sm font-bold text-white">${c.rotulo}</span>
+                        <span class="text-[10px] text-gray-500 font-mono">${c.detalhe}</span>
+                    </label>`).join('');
+            }
+            if (e.id === 'identidade') {
+                const portas = e.dados.portas.map(pt => `
+                    <button type="button" onclick="wizardPorta('${pt.id}')" title="${pt.detalhe}"
+                        class="w-full text-left p-4 rounded-xl border transition-colors ${r.origem === pt.id ? 'border-brand-primary/50 bg-brand-primary/5' : 'border-gray-800 hover:border-gray-700'}">
+                        <p class="text-sm font-bold text-white">${pt.rotulo}
+                            ${pt.recomendado ? '<span class="text-[9px] text-brand-primary font-mono uppercase ml-1">recomendado</span>' : ''}</p>
+                        <p class="text-[10px] text-gray-500 font-mono mt-0.5">${pt.detalhe}</p>
+                    </button>`).join('');
+                const prompt = `<div class="pt-2">
+                    <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Prompt do agente</label>
+                    <textarea id="wz_prompt" rows="8" title="O que o agente sabe e como ele fala"
+                        class="input-dark w-full py-3 px-3 rounded-lg text-sm leading-relaxed"
+                        placeholder="Cole aqui, ou use uma das opcoes acima para a Mestre escrever."
+                        onchange="wizardSalvar({prompt: this.value, origem: 'manual'})">${(r.prompt || '').replace(/</g, '&lt;')}</textarea>
+                </div>`;
+                return portas + prompt;
+            }
+            if (e.id === 'qualificacao') {
+                const semCrm = e.variante === 'sem_crm';
+                const marcado = r.qualificar ? 'checked' : '';
+                return `
+                    <label class="flex items-start gap-3 p-4 rounded-xl border border-gray-800 cursor-pointer"
+                        title="Se ligado, o agente coleta os dados e registra o lead">
+                        <input type="checkbox" ${marcado} class="mt-1"
+                            onchange="wizardSalvar({qualificar: this.checked}).then(wizardRender)">
+                        <span>
+                            <span class="text-sm font-bold text-white block">Qualificar leads</span>
+                            <span class="text-[11px] text-gray-400 leading-relaxed block mt-0.5">${semCrm
+                                ? 'O lead é marcado e a IA pausa para atendimento humano.'
+                                : 'O lead vira oportunidade no funil do CRM.'}</span>
+                        </span>
+                    </label>
+                    ${r.qualificar && !semCrm ? `<p class="text-[11px] text-gray-500 leading-relaxed">
+                        O funil e a etapa sao escolhidos automaticamente contra o seu CRM ao publicar.
+                        Se nenhum funil for encontrado, a qualificacao nasce desligada e voce vera o motivo.</p>` : ''}`;
+            }
+            if (e.id === 'revisao') {
+                const sub = _wz.vaiSubstituir;
+                const aviso = sub ? `<div class="rounded-xl border border-ocre/50 bg-[#CE9433]/5 p-4 mb-4">
+                    <p class="text-sm font-bold text-white">Ja existe um agente neste canal</p>
+                    <p class="text-[11px] text-gray-400 leading-relaxed mt-1">
+                        <strong>${sub.nome}</strong>, ${sub.tamanho_prompt} caracteres de prompt,
+                        ${sub.ativo ? 'no ar' : 'pausado'}${sub.qualificacao_ligada ? ', com qualificacao ligada' : ''}${sub.e_alias_de ? `, hoje espelhando o canal ${sub.e_alias_de}` : ''}.
+                        Publicar substitui o prompt dele — a versao atual fica no historico.</p>
+                </div>` : '';
+                const impedimento = !_wz.podePublicar ? `<div class="rounded-xl border border-danger/40 bg-danger/5 p-4 mb-4 text-sm text-danger">${_wz.impedimento}</div>` : '';
+                return aviso + impedimento + `
+                    <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Nome do agente</label>
+                    <input type="text" value="${(r.agent_name || '').replace(/"/g, '&quot;')}" title="Como o agente se apresenta"
+                        class="input-dark w-full py-2.5 px-3 rounded-lg text-sm mb-4" placeholder="ex: Sofia"
+                        onchange="wizardSalvar({agent_name: this.value})">
+                    <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Prompt</label>
+                    <textarea rows="10" title="Revise antes de publicar"
+                        class="input-dark w-full py-3 px-3 rounded-lg text-sm leading-relaxed"
+                        onchange="wizardSalvar({prompt: this.value})">${(r.prompt || '').replace(/</g, '&lt;')}</textarea>`;
+            }
+            return '';
+        }
+
+        async function wizardPorta(porta) {
+            if (porta === 'manual') {
+                await wizardSalvar({ origem: 'manual' });
+                wizardRender();
+                return;
+            }
+
+            // Entrevista e formulário vivem no link público do cliente. Abrimos numa
+            // aba nova; o operador conduz lá e volta aqui para revisar e publicar.
+            try {
+                const resp = await fetch('/admin/tenant/' + _wz.loc + '/generate-form-link', { method: 'POST' });
+                const data = await resp.json();
+                if (!data.success) { wizardErro('Erro ao gerar o link: ' + (data.error || 'desconhecido')); return; }
+                await wizardSalvar({ origem: porta });
+                wizardRender();
+                // `data.url` termina em /form/{token}; a entrevista é o sufixo.
+                window.open(porta === 'entrevista' ? data.url.replace(/\/$/, '') + '/entrevista' : data.url, '_blank');
+            } catch (e) {
+                wizardErro('Erro de rede ao gerar o link.');
+            }
+        }
+
+        function wizardVoltar() {
+            if (_wz.indice > 0) { _wz.indice--; wizardRender(); }
+        }
+
+        async function wizardAvancar() {
+            const etapa = _wz.etapas[_wz.indice];
+            const ultimo = _wz.indice === _wz.etapas.length - 1;
+
+            if (!ultimo) {
+                const proxima = _wz.etapas[_wz.indice + 1];
+                await wizardSalvar({ etapa_atual: proxima.id });
+                _wz.indice++;
+                wizardRender();
+                return;
+            }
+
+            // Publicar: o servidor reavalia o guard, entao um "nao" aqui e definitivo.
+            const r = await fetch(`/admin/agents/${encodeURIComponent(_wz.loc)}/wizard/${_wz.draftId}/publicar`, { method: 'POST' });
+            const d = await r.json();
+            if (!d.success) { wizardErro(d.error || 'Nao foi possivel publicar.'); return; }
+            const pend = (d.pendencias || []).join(' · ');
+            closeWizard();
+            window.location.href = `/admin/dashboard?msg=${encodeURIComponent(
+                'Agente publicado.' + (pend ? ' ' + pend : ''))}`;
+        }
+
         function switchAgentEngine(engine) {
             const claude = engine === 'claude';
             const fc = document.getElementById('ai-fields-claude');
