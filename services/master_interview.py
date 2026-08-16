@@ -20,13 +20,22 @@ Custo: o prefixo (system + tools) é ESTÁVEL e marcado com `cache_control`, ent
 a partir do 2º turno ele é lido do cache. Nada de timestamp/uuid no prefixo —
 qualquer variação invalida o cache silenciosamente e o custo triplica.
 
-A Mestre também PESQUISA: com o CNPJ ou o site, ela chega na conversa já sabendo
-do negócio e pergunta só o que falta. A blindagem dessas duas ferramentas vive em
-`services/pesquisa_empresa.py` — leia o cabeçalho de lá antes de mexer: esta
-entrevista é pública e anônima, então "busque esta URL" é superfície de SSRF.
-Aqui em cima dela ficam duas travas de ABUSO (não de segurança): teto de
-pesquisas por entrevista, para que o link não vire proxy HTTP aberto gastando a
-nossa chave, e o conteúdo entrando rotulado como DADO, nunca como instrução.
+A Mestre também PESQUISA — com o nome, o CNPJ ou o site, ela chega na conversa já
+sabendo do negócio e pergunta só o que falta. São três ferramentas de duas
+naturezas diferentes, e a distinção importa:
+
+  `ler_site` / `consultar_cnpj`  nossas, executadas AQUI. A blindagem vive em
+                                 `services/pesquisa_empresa.py` — leia o cabeçalho
+                                 de lá antes de mexer: esta entrevista é pública e
+                                 anônima, então "busque esta URL" é SSRF.
+  `web_search`                   server-side da Anthropic. Quem executa é a API, a
+                                 requisição não sai da nossa rede e não há SSRF a
+                                 blindar. Em compensação é COBRADA por request, e
+                                 por isso tem teto próprio (`MAX_BUSCAS_WEB`).
+
+Em cima das três ficam as travas de ABUSO (não de segurança): tetos por entrevista,
+para que o link não vire proxy HTTP nem buscador pago de graça, e o conteúdo
+entrando rotulado como DADO, nunca como instrução.
 """
 
 from __future__ import annotations
@@ -61,6 +70,14 @@ MAX_TOKENS_SAIDA = 60_000
 # não fica vendo uma ferramenta que não pode usar.
 MAX_PESQUISAS = 6
 
+# Busca na web: ferramenta SERVER-SIDE da Anthropic — a API executa e cobra por
+# request. `MAX_USOS_BUSCA` limita por chamada (fica no bloco de tools, que é
+# cacheado: variar por turno invalidaria o cache); `MAX_BUSCAS_WEB` é o teto da
+# entrevista inteira, checado no nosso lado. Sem o segundo, 40 turnos × 3 usos
+# seriam 120 buscas pagas por aba aberta de um anônimo.
+MAX_USOS_BUSCA = 3
+MAX_BUSCAS_WEB = 10
+
 
 # Os campos são exatamente os que `public/onboarding.py` coleta — é isso que faz
 # as duas portas convergirem. Mudou lá, muda aqui.
@@ -92,13 +109,17 @@ COMO CONDUZIR
 
 Faça UMA pergunta por vez. Nunca despeje uma lista de perguntas — isso é uma conversa, não um formulário disfarçado.
 
-Comece se apresentando em uma frase e, na MESMA mensagem, ofereça o atalho: se a pessoa tiver o site ou o CNPJ da empresa, pedir que mande — você pesquisa e já chega sabendo. Se ela não tiver ou não quiser, pergunte o que a empresa faz e siga normalmente. Nunca trave a entrevista esperando site ou CNPJ.
+Comece se apresentando em uma frase e, na MESMA mensagem, ofereça o atalho: peça o nome da empresa, o site ou o CNPJ — qualquer um serve, você pesquisa e já chega sabendo. Se a pessoa não quiser, pergunte o que a empresa faz e siga normalmente. Nunca trave a entrevista esperando esses dados.
 
 A partir daí, deixe as respostas guiarem a ordem. Se a pessoa já respondeu algo de passagem, NÃO pergunte de novo — aproveite e siga.
 
 PESQUISANDO A EMPRESA
 
-Quando aparecer um site, use `ler_site`. Quando aparecer um CNPJ, use `consultar_cnpj`. Pode usar os dois: o CNPJ traz a razão social, o ramo e a cidade; o site traz o que ela vende e como fala.
+Quando aparecer um site, use `ler_site`. Quando aparecer um CNPJ, use `consultar_cnpj`. Quando tiver só o nome, use `web_search` para achar o site oficial e depois leia esse site. Pode combinar: o CNPJ traz a razão social, o ramo e a cidade; o site traz o que ela vende e como fala.
+
+CUIDADO AO BUSCAR POR NOME: existem dezenas de "Padaria Aurora" no Brasil. Buscar por nome pode trazer a empresa ERRADA, e um agente construído sobre a empresa errada é pior que um agente genérico. Por isso, sempre que a informação vier de busca por nome, CONFIRME antes de usar: diga o que achou e pergunte se é essa mesmo ("achei uma Padaria Aurora na Vila Mariana, com delivery — é a sua?"). Só trate como verdade depois do sim. Se a pessoa disser que não é, peça o site ou o CNPJ em vez de tentar adivinhar de novo.
+
+Se souber a cidade ou o estado, inclua na busca — é o que separa a empresa certa das homônimas.
 
 Depois de pesquisar, diga em uma frase o que descobriu e siga perguntando só o que FALTA. Este é o ponto todo da pesquisa: não pergunte o que você já leu. Perguntar "o que vocês fazem?" depois de ler o site inteiro faz a pessoa achar que você não leu.
 
@@ -193,8 +214,19 @@ _TOOL_CNPJ = {
     },
 }
 
+# Busca na web: server-side. Quem executa é a API da Anthropic, não nós — não há
+# dispatch para escrever, e por isso também não há SSRF a blindar aqui (a busca
+# não sai da nossa rede). `user_location` enviesa para o Brasil: sem isso, buscar
+# "Padaria Aurora" traz padaria em Portugal antes da do cliente.
+_TOOL_BUSCA = {
+    "type": "web_search_20260318",
+    "name": "web_search",
+    "max_uses": MAX_USOS_BUSCA,
+    "user_location": {"type": "approximate", "country": "BR"},
+}
+
 # Ordem FIXA: tools fazem parte do prefixo cacheado, e reordenar invalida o cache.
-_TOOLS = [_TOOL_CONCLUIR, _TOOL_SITE, _TOOL_CNPJ]
+_TOOLS = [_TOOL_CONCLUIR, _TOOL_SITE, _TOOL_CNPJ, _TOOL_BUSCA]
 
 
 @dataclass
@@ -207,6 +239,7 @@ class EstadoEntrevista:
     tokens_saida: int = 0
     tokens_cache_read: int = 0
     pesquisas: int = 0
+    buscas_web: int = 0
     concluida: bool = False
     form_data: Optional[dict] = None
 
@@ -219,6 +252,7 @@ class EstadoEntrevista:
                 "tokens_saida": self.tokens_saida,
                 "tokens_cache_read": self.tokens_cache_read,
                 "pesquisas": self.pesquisas,
+                "buscas_web": self.buscas_web,
                 "concluida": self.concluida,
                 "form_data": self.form_data,
             },
@@ -241,13 +275,22 @@ class EstadoEntrevista:
             tokens_saida=int(d.get("tokens_saida") or 0),
             tokens_cache_read=int(d.get("tokens_cache_read") or 0),
             pesquisas=int(d.get("pesquisas") or 0),
+            buscas_web=int(d.get("buscas_web") or 0),
             concluida=bool(d.get("concluida")),
             form_data=d.get("form_data"),
         )
 
     @property
     def estourou_teto(self) -> bool:
-        return self.turnos >= MAX_TURNOS or self.tokens_saida >= MAX_TOKENS_SAIDA
+        # `buscas_web` entra aqui, e não no meio do loop, de propósito: checado no
+        # começo de `avancar`, o turno que estourou ainda é SALVO com o contador
+        # certo, e só a tentativa seguinte é recusada. Levantar no meio perderia a
+        # conversa e o contador junto — e a busca seria refeita para sempre.
+        return (
+            self.turnos >= MAX_TURNOS
+            or self.tokens_saida >= MAX_TOKENS_SAIDA
+            or self.buscas_web >= MAX_BUSCAS_WEB
+        )
 
     @property
     def pode_pesquisar(self) -> bool:
@@ -268,6 +311,50 @@ def _system_blocks() -> list[dict]:
         obrigatorios=", ".join(OBRIGATORIOS),
     )
     return [{"type": "text", "text": texto, "cache_control": {"type": "ephemeral"}}]
+
+
+def _mensagens_para_envio(mensagens: list[dict]) -> list[dict]:
+    """
+    Cópia do histórico com a ÚLTIMA mensagem marcada para cache.
+
+    O prefixo estável (system + tools) já é cacheado, mas o histórico não era — e
+    com a busca na web ele ficou pesado: o resultado volta inteiro e precisa ser
+    reenviado a cada turno (`response_inclusion: excluded` só vale para resultado
+    consumido por `code_execution`, não é o nosso caso). Sem breakpoint, cada turno
+    paga a conversa inteira como input novo.
+
+    O breakpoint ANDA: marcado no fim, o turno seguinte lê tudo que veio antes do
+    cache e escreve só o pedaço novo.
+
+    Marca uma CÓPIA de propósito. `cache_control` é detalhe de transporte; vazar
+    para `estado.mensagens` sujaria o JSON que vai ao banco e espalharia marcas
+    pelo histórico a cada turno.
+
+    Ressalva honesta: o cache expira em 5 minutos. Numa entrevista em que a pessoa
+    demora para responder, paga-se a escrita (1,25x) sem a leitura. Vale porque o
+    caso comum é alguém respondendo em sequência, não deixando a aba parada.
+    """
+    if not mensagens:
+        return mensagens
+
+    saida = list(mensagens)
+    ultima = dict(saida[-1])
+    conteudo = ultima.get("content")
+
+    if isinstance(conteudo, str):
+        ultima["content"] = [
+            {"type": "text", "text": conteudo, "cache_control": {"type": "ephemeral"}}
+        ]
+    elif conteudo:
+        blocos = [dict(b) if isinstance(b, dict) else b for b in conteudo]
+        if isinstance(blocos[-1], dict):
+            blocos[-1]["cache_control"] = {"type": "ephemeral"}
+        ultima["content"] = blocos
+    else:
+        return saida
+
+    saida[-1] = ultima
+    return saida
 
 
 def _modelo() -> str:
@@ -382,7 +469,7 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
             max_tokens=_MAX_TOKENS,
             system=_system_blocks(),
             tools=_TOOLS,
-            messages=estado.mensagens,
+            messages=_mensagens_para_envio(estado.mensagens),
         )
 
         uso = getattr(resp, "usage", None)
@@ -390,6 +477,11 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
             estado.tokens_entrada += getattr(uso, "input_tokens", 0) or 0
             estado.tokens_saida += getattr(uso, "output_tokens", 0) or 0
             estado.tokens_cache_read += getattr(uso, "cache_read_input_tokens", 0) or 0
+            # A busca é cobrada por REQUEST, à parte dos tokens. Sem contar aqui,
+            # o teto da entrevista não existe e o gasto é invisível na auditoria.
+            servidor = getattr(uso, "server_tool_use", None)
+            if servidor:
+                estado.buscas_web += getattr(servidor, "web_search_requests", 0) or 0
 
         # O turno do assistant entra INTEIRO (com o tool_use), e o tool_result vem
         # encostado logo depois — é o invariante que evita `tool_use` órfão virar
@@ -398,11 +490,22 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
             {"role": "assistant", "content": [b.model_dump() for b in resp.content]}
         )
 
+        if resp.stop_reason == "pause_turn":
+            # A busca server-side pode devolver um turno longo em pedaços. O jeito
+            # de continuar é reenviar a resposta como está — o turno do assistant
+            # já foi anexado logo acima, então basta voltar ao topo. `MAX_TURNOS`
+            # é o que impede isto de virar laço infinito.
+            estado.turnos += 1
+            if estado.estourou_teto:
+                raise EntrevistaIndisponivel("Limite de turnos atingido.")
+            continue
+
         if resp.stop_reason != "tool_use":
             estado.turnos += 1
             logger.info(
                 f"[ENTREVISTA] turno {estado.turnos} | in={estado.tokens_entrada} "
-                f"out={estado.tokens_saida} cache_read={estado.tokens_cache_read}"
+                f"out={estado.tokens_saida} cache_read={estado.tokens_cache_read} "
+                f"buscas_web={estado.buscas_web}"
             )
             return estado
 

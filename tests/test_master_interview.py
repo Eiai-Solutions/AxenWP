@@ -38,10 +38,12 @@ def _tool(bid, nome, entrada):
     )
 
 
-def _uso(inp=500, out=60, cache_read=0):
+def _uso(inp=500, out=60, cache_read=0, buscas=None):
     return SimpleNamespace(
         input_tokens=inp, output_tokens=out,
         cache_read_input_tokens=cache_read, cache_creation_input_tokens=0,
+        server_tool_use=(SimpleNamespace(web_search_requests=buscas)
+                         if buscas is not None else None),
     )
 
 
@@ -454,7 +456,9 @@ async def test_lista_de_tools_e_constante_mesmo_com_o_teto_estourado(monkeypatch
     await avancar(EstadoEntrevista(pesquisas=mi.MAX_PESQUISAS), "a.com")
 
     nomes = [[t["name"] for t in c["tools"]] for c in cliente.chamadas]
-    assert nomes[0] == nomes[1] == ["concluir_entrevista", "ler_site", "consultar_cnpj"]
+    assert nomes[0] == nomes[1] == [
+        "concluir_entrevista", "ler_site", "consultar_cnpj", "web_search",
+    ]
 
 
 @pytest.mark.asyncio
@@ -532,6 +536,147 @@ async def test_concluir_junto_com_pesquisa_nao_deixa_coroutine_solta(monkeypatch
 
     assert estado.concluida is True
     assert estado.form_data["company_name"] == "Pizzaria do Zé"
+
+
+@pytest.mark.asyncio
+async def test_historico_vai_marcado_para_cache_sem_sujar_o_estado(monkeypatch):
+    """
+    Com a busca na web o histórico ficou pesado (o resultado volta inteiro e é
+    reenviado todo turno). O breakpoint anda no fim da conversa — mas numa CÓPIA:
+    vazar `cache_control` para o estado sujaria o JSON do banco e espalharia marcas
+    pelo histórico a cada turno.
+    """
+    cliente = _instalar(monkeypatch, [FakeResp([_texto("a")]), FakeResp([_texto("b")])])
+
+    estado = await avancar(EstadoEntrevista(), None)
+    estado = await avancar(estado, "Padaria Aurora, em Sao Paulo")
+
+    enviadas = cliente.chamadas[1]["messages"]
+    assert enviadas[-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert all("cache_control" not in b
+               for m in enviadas[:-1] if isinstance(m["content"], list)
+               for b in m["content"] if isinstance(b, dict)), \
+        "marca ficou para trás — breakpoint tem que andar, não acumular"
+
+    bruto = estado.to_json()
+    assert "cache_control" not in bruto, "marca de transporte vazou para o banco"
+
+
+@pytest.mark.asyncio
+async def test_marcar_o_cache_nao_desencosta_o_par_tool_use_tool_result(monkeypatch):
+    """A cópia não pode reordenar nem perder bloco — é onde este projeto já sangrou."""
+    monkeypatch.setattr(mi, "ler_site",
+                        lambda u: _async({"url_final": u, "texto": "Paes", "truncado": False}),
+                        raising=True)
+    _instalar(monkeypatch, [
+        FakeResp([_tool("t1", "ler_site", {"url": "a.com"})], stop_reason="tool_use"),
+        FakeResp([_texto("ok")]),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), "a.com")
+
+    enviadas = mi._mensagens_para_envio(estado.mensagens)
+    assert [m["role"] for m in enviadas] == [m["role"] for m in estado.mensagens]
+    for i, m in enumerate(estado.mensagens):
+        assert len(enviadas[i]["content"]) == len(m["content"]) if isinstance(
+            m["content"], list) else True
+
+
+def test_marcar_cache_em_historico_vazio_nao_quebra():
+    assert mi._mensagens_para_envio([]) == []
+
+
+# ── Busca na web (server-side: quem executa e cobra é a API) ──
+
+@pytest.mark.asyncio
+async def test_busca_web_e_declarada_com_teto_e_vies_brasileiro(monkeypatch):
+    """
+    `user_location` não é detalhe: sem ele, buscar "Padaria Aurora" traz padaria
+    em Portugal antes da do cliente.
+    """
+    cliente = _instalar(monkeypatch, [FakeResp([_texto("oi")])])
+
+    await avancar(EstadoEntrevista(), None)
+
+    busca = [t for t in cliente.chamadas[0]["tools"] if t["name"] == "web_search"][0]
+    assert busca["type"] == "web_search_20260318"
+    assert busca["max_uses"] == mi.MAX_USOS_BUSCA
+    assert busca["user_location"]["country"] == "BR"
+
+
+@pytest.mark.asyncio
+async def test_buscas_web_sao_contadas_para_auditoria(monkeypatch):
+    """
+    A busca é cobrada por REQUEST, à parte dos tokens. Sem contar, o teto não
+    existe e o gasto fica invisível.
+    """
+    _instalar(monkeypatch, [
+        FakeResp([_texto("achei a empresa")], usage=_uso(buscas=2)),
+        FakeResp([_texto("mais uma")], usage=_uso(buscas=1)),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), "minha empresa e Padaria Aurora")
+    estado = await avancar(estado, "confere")
+
+    assert estado.buscas_web == 3
+
+
+@pytest.mark.asyncio
+async def test_resposta_sem_server_tool_use_nao_quebra_a_contagem(monkeypatch):
+    _instalar(monkeypatch, [FakeResp([_texto("oi")], usage=_uso(buscas=None))])
+
+    assert (await avancar(EstadoEntrevista(), None)).buscas_web == 0
+
+
+@pytest.mark.asyncio
+async def test_teto_de_buscas_web_encerra_a_entrevista(monkeypatch):
+    """40 turnos × 3 usos seriam 120 buscas pagas por aba aberta de um anônimo."""
+    _instalar(monkeypatch, [])
+
+    with pytest.raises(EntrevistaIndisponivel):
+        await avancar(EstadoEntrevista(buscas_web=mi.MAX_BUSCAS_WEB), "busca mais")
+
+
+@pytest.mark.asyncio
+async def test_turno_que_estoura_o_teto_de_busca_ainda_e_salvo(monkeypatch):
+    """
+    O teto é checado no INÍCIO de `avancar`, não no meio do loop. Levantar no meio
+    perderia a conversa e o contador junto — e a busca seria refeita para sempre.
+    """
+    _instalar(monkeypatch, [FakeResp([_texto("achei")], usage=_uso(buscas=mi.MAX_BUSCAS_WEB))])
+
+    estado = await avancar(EstadoEntrevista(), "acha minha empresa")
+
+    assert estado.buscas_web == mi.MAX_BUSCAS_WEB
+    assert ultima_fala(estado) == "achei", "a fala do turno que estourou foi perdida"
+    assert EstadoEntrevista.from_json(estado.to_json()).buscas_web == mi.MAX_BUSCAS_WEB
+
+
+@pytest.mark.asyncio
+async def test_pause_turn_continua_o_turno_em_vez_de_encerrar(monkeypatch):
+    """
+    A busca server-side pode devolver o turno em pedaços com `pause_turn`.
+    Tratar isso como fim entregaria uma resposta cortada no meio.
+    """
+    _instalar(monkeypatch, [
+        FakeResp([_texto("procurando...")], stop_reason="pause_turn", usage=_uso(buscas=1)),
+        FakeResp([_texto("Achei a Padaria Aurora na Vila Mariana. E a sua?")]),
+    ])
+
+    estado = await avancar(EstadoEntrevista(), "Padaria Aurora")
+
+    assert "Vila Mariana" in ultima_fala(estado)
+    assert estado.buscas_web == 1
+
+
+@pytest.mark.asyncio
+async def test_pause_turn_em_loop_nao_roda_para_sempre(monkeypatch):
+    _instalar(monkeypatch, [
+        FakeResp([_texto("...")], stop_reason="pause_turn") for _ in range(mi.MAX_TURNOS + 5)
+    ])
+
+    with pytest.raises(EntrevistaIndisponivel):
+        await avancar(EstadoEntrevista(), "vai")
 
 
 @pytest.mark.asyncio
