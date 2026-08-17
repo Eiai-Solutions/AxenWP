@@ -84,10 +84,59 @@ religa agente que o operador pausou), limpa `linked_to_channel`, e grava o
 `AgentPromptHistory` **na mesma transação** — snapshot é invariante, não best-effort
 ([[decisoes/ia-mestre-portadora-do-metodo]]).
 
+## O ciclo das portas (corrigido 2026-08-16)
+
+As três portas eram um desenho bonito com um buraco no meio: `wizardPorta()` gravava
+só `{origem}` e abria uma aba. **Nada voltava.** Um bug, três sintomas:
+
+```
+prompt/spec ficam None ─┬─► pode_publicar reprova PARA SEMPRE
+                        └─► build_agent_provisioning recebe spec={}
+                            └─► qualification_enabled: False
+```
+
+As colunas `submission_id` e `spec` já existiam, já eram validadas e **já eram lidas
+no publish** — consumidor sem produtor. É o cheiro que denuncia o buraco: quando um
+campo é lido e nunca escrito, falta metade do fluxo.
+
+O que fecha: `POST .../wizard/{id}/importar` + o botão "Trazer o que a Mestre
+escreveu". Roda a MESMA `_run_master` do caminho da submissão — um gerador só, como
+manda [[decisoes/entrevista-da-mestre]].
+
+**A submissão só vira `processed` no PUBLISH**, não na importação. Importar e
+desistir não pode queimar o trabalho que o cliente teve de responder: a submissão
+sumiria da aba sem nunca ter virado agente.
+
+## Publicar não pode ser destrutivo
+
+`_publicar_sync` escrevia as quatro colunas de qualificação **incondicionalmente**.
+Com o rascunho sem `qualificar` — o normal, já que a etapa nasce desmarcada — isso
+zerava o que veio do formulário ou da curadoria do operador. O agente seguia
+conversando e **só parava de registrar lead**, sem um único erro no log.
+
+A regra hoje: escreve quando o agente está **nascendo** (não há o que perder) ou
+quando a derivação de fato **ligou** a qualificação. Caso contrário preserva e
+devolve `qualificacao_preservada`, que a tela mostra no aviso — em vez de decidir em
+silêncio pelo operador. `admin/ai_agent.py` já preservava de propósito no caminho da
+submissão; o wizard não tinha esse cuidado.
+
+**"Derivar, nunca copiar" não implica "sempre escrever".** Eram duas regras
+diferentes e eu tinha só uma. Derivar protege contra o cliente mandar config
+mentirosa; não escrever quando não há intenção protege contra apagar o que já
+funcionava.
+
+Correção de camada que veio junto: a consulta da submissão foi para o
+`draft_service` (`submissao_pendente`), porque todo o resto do wizard acessa banco só
+pelo service. A rota orquestra e roda a Mestre; quem fala com o banco é o service.
+
 ## Em aberto
 
-- A entrevista da Mestre ainda abre em aba nova a partir do passo 2; o certo é
-  embutir dentro da etapa ([[decisoes/entrevista-da-mestre]]).
+- A entrevista ainda abre em aba nova; o certo é embutir dentro da etapa
+  ([[decisoes/entrevista-da-mestre]]). Hoje o retorno é manual, por botão.
+- **Desligar** a qualificação pelo wizard não existe: a regra não-destrutiva
+  preserva, e o caminho para desligar é a tela de Configurar Agente. A tela diz
+  isso no aviso, mas é uma lacuna consciente, não um acabamento.
+- Rascunho travado num canal que sumiu continua sem saída pela tela.
 
 Relacionado: [[decisoes/entrevista-da-mestre]] (a outra porta de criação) ·
 [[decisoes/isolamento-operador-cliente]] (quem pode abrir rascunho de quem) ·
