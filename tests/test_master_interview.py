@@ -86,6 +86,15 @@ def _instalar(monkeypatch, roteiro) -> FakeClient:
     return cliente
 
 
+def com_teto(monkeypatch, **valores):
+    """
+    Liga tetos para o teste. Em produção eles vêm do ambiente e hoje estão em `0`
+    (sem limite) — então quem testa o teto precisa ligá-lo explicitamente.
+    """
+    for nome, valor in valores.items():
+        monkeypatch.setattr(mi, nome, valor, raising=True)
+
+
 COMPLETO = {
     "company_name": "Pizzaria do Zé",
     "products_services": "pizza e esfiha",
@@ -311,7 +320,6 @@ def test_o_teto_por_chamada_cabe_o_turno_de_conclusao():
     turnos, em produção.
     """
     assert mi._MAX_TOKENS >= 6000, "pequeno demais para o turno que fecha a entrevista"
-    assert mi._MAX_TOKENS < mi.MAX_TOKENS_SAIDA, "o teto por chamada nao pode passar o da entrevista"
 
 
 @pytest.mark.asyncio
@@ -383,14 +391,28 @@ async def test_max_tokens_sem_tool_use_segue_normal(monkeypatch):
 
 # ── Custo e tetos (o link público é anônimo e gasta a nossa chave) ──
 
-def test_a_mensagem_do_teto_diz_qual_teto_estourou():
+def test_a_mensagem_do_teto_diz_qual_teto_estourou(monkeypatch):
     """
     "Limite de turnos atingido" quando quem estourou foi a busca web manda o
     operador investigar a coisa errada.
     """
-    assert "pesquisas" in EstadoEntrevista(buscas_web=mi.MAX_BUSCAS_WEB).motivo_do_teto
-    assert "conversa" in EstadoEntrevista(tokens_saida=mi.MAX_TOKENS_SAIDA).motivo_do_teto
-    assert "perguntas" in EstadoEntrevista(turnos=mi.MAX_TURNOS).motivo_do_teto
+    com_teto(monkeypatch, MAX_BUSCAS_WEB=10, MAX_TOKENS_SAIDA=60_000, MAX_TURNOS=40)
+
+    assert "pesquisas" in EstadoEntrevista(buscas_web=10).motivo_do_teto
+    assert "conversa" in EstadoEntrevista(tokens_saida=60_000).motivo_do_teto
+    assert "perguntas" in EstadoEntrevista(turnos=40).motivo_do_teto
+
+
+def test_com_os_tetos_desligados_a_entrevista_nao_e_interrompida():
+    """
+    Padrão de hoje (decisão de produto): `0` = sem limite. Uma entrevista longa
+    não pode esbarrar em nada — o painel admin é que vai definir os números.
+    """
+    assert (mi.MAX_TURNOS, mi.MAX_TOKENS_SAIDA, mi.MAX_PESQUISAS, mi.MAX_BUSCAS_WEB) == (0, 0, 0, 0)
+
+    enorme = EstadoEntrevista(turnos=9_999, tokens_saida=9_000_000, buscas_web=9_999, pesquisas=9_999)
+    assert enorme.estourou_teto is False
+    assert enorme.pode_pesquisar is True
 
 @pytest.mark.asyncio
 async def test_prefixo_estavel_e_marcado_para_cache(monkeypatch):
@@ -425,8 +447,9 @@ async def test_tokens_sao_acumulados_para_auditoria(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_teto_de_turnos_interrompe(monkeypatch):
+    com_teto(monkeypatch, MAX_TURNOS=40)
     _instalar(monkeypatch, [])
-    estado = EstadoEntrevista(turnos=mi.MAX_TURNOS)
+    estado = EstadoEntrevista(turnos=40)
 
     with pytest.raises(EntrevistaIndisponivel):
         await avancar(estado, "mais")
@@ -434,8 +457,9 @@ async def test_teto_de_turnos_interrompe(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_teto_de_tokens_interrompe(monkeypatch):
+    com_teto(monkeypatch, MAX_TOKENS_SAIDA=60_000)
     _instalar(monkeypatch, [])
-    estado = EstadoEntrevista(tokens_saida=mi.MAX_TOKENS_SAIDA)
+    estado = EstadoEntrevista(tokens_saida=60_000)
 
     with pytest.raises(EntrevistaIndisponivel):
         await avancar(estado, "mais")
@@ -486,16 +510,17 @@ def test_estado_ilegivel_nao_derruba_recomeça_limpo():
     assert EstadoEntrevista.from_json(None).turnos == 0
 
 
-def test_contador_de_pesquisas_sobrevive_ao_banco():
+def test_contador_de_pesquisas_sobrevive_ao_banco(monkeypatch):
     """
     O teto precisa valer na entrevista INTEIRA. Se `pesquisas` não atravessar a
     serialização, o contador zera a cada request e o teto deixa de existir.
     """
+    com_teto(monkeypatch, MAX_PESQUISAS=6)
     revivido = EstadoEntrevista.from_json(EstadoEntrevista(pesquisas=4).to_json())
 
     assert revivido.pesquisas == 4
     assert revivido.pode_pesquisar is True
-    assert EstadoEntrevista(pesquisas=mi.MAX_PESQUISAS).pode_pesquisar is False
+    assert EstadoEntrevista(pesquisas=6).pode_pesquisar is False
 
 
 # ── Pesquisa da empresa ──
@@ -596,6 +621,7 @@ async def test_teto_de_pesquisas_impede_a_chamada(monkeypatch):
     O link é público e anônimo: sem teto, ele é um proxy HTTP aberto rodando na
     NOSSA infra e gastando a NOSSA chave.
     """
+    com_teto(monkeypatch, MAX_PESQUISAS=6)
     chamou = []
     async def fake_site(url):
         chamou.append(url)
@@ -606,12 +632,12 @@ async def test_teto_de_pesquisas_impede_a_chamada(monkeypatch):
         FakeResp([_tool("t1", "ler_site", {"url": "a.com"})], stop_reason="tool_use"),
         FakeResp([_texto("Certo, vamos continuar sem o site.")]),
     ])
-    estado = EstadoEntrevista(pesquisas=mi.MAX_PESQUISAS)
+    estado = EstadoEntrevista(pesquisas=6)
 
     estado = await avancar(estado, "olha esse tambem")
 
     assert chamou == [], "pesquisou depois do teto"
-    assert estado.pesquisas == mi.MAX_PESQUISAS, "contador passou do teto"
+    assert estado.pesquisas == 6, "contador passou do teto"
     resultado = estado.mensagens[-2]["content"][0]
     assert resultado["is_error"] is True and "Limite de pesquisas" in resultado["content"]
 
@@ -822,10 +848,11 @@ async def test_resposta_sem_server_tool_use_nao_quebra_a_contagem(monkeypatch):
 @pytest.mark.asyncio
 async def test_teto_de_buscas_web_encerra_a_entrevista(monkeypatch):
     """40 turnos × 3 usos seriam 120 buscas pagas por aba aberta de um anônimo."""
+    com_teto(monkeypatch, MAX_BUSCAS_WEB=10)
     _instalar(monkeypatch, [])
 
     with pytest.raises(EntrevistaIndisponivel):
-        await avancar(EstadoEntrevista(buscas_web=mi.MAX_BUSCAS_WEB), "busca mais")
+        await avancar(EstadoEntrevista(buscas_web=10), "busca mais")
 
 
 @pytest.mark.asyncio
@@ -834,13 +861,14 @@ async def test_turno_que_estoura_o_teto_de_busca_ainda_e_salvo(monkeypatch):
     O teto é checado no INÍCIO de `avancar`, não no meio do loop. Levantar no meio
     perderia a conversa e o contador junto — e a busca seria refeita para sempre.
     """
-    _instalar(monkeypatch, [FakeResp([_texto("achei")], usage=_uso(buscas=mi.MAX_BUSCAS_WEB))])
+    com_teto(monkeypatch, MAX_BUSCAS_WEB=10)
+    _instalar(monkeypatch, [FakeResp([_texto("achei")], usage=_uso(buscas=10))])
 
     estado = await avancar(EstadoEntrevista(), "acha minha empresa")
 
-    assert estado.buscas_web == mi.MAX_BUSCAS_WEB
+    assert estado.buscas_web == 10
     assert ultima_fala(estado) == "achei", "a fala do turno que estourou foi perdida"
-    assert EstadoEntrevista.from_json(estado.to_json()).buscas_web == mi.MAX_BUSCAS_WEB
+    assert EstadoEntrevista.from_json(estado.to_json()).buscas_web == 10
 
 
 @pytest.mark.asyncio
@@ -862,12 +890,19 @@ async def test_pause_turn_continua_o_turno_em_vez_de_encerrar(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_pause_turn_em_loop_nao_roda_para_sempre(monkeypatch):
-    _instalar(monkeypatch, [
-        FakeResp([_texto("...")], stop_reason="pause_turn") for _ in range(mi.MAX_TURNOS + 5)
+    """
+    Com os tetos de produto DESLIGADOS, quem segura o laço é `MAX_VOLTAS_NO_LOOP` —
+    antes era `MAX_TURNOS` que fazia isso de carona. Sem a trava, o request nunca
+    responderia e a tela ficaria em "digitando..." para sempre.
+    """
+    cliente = _instalar(monkeypatch, [
+        FakeResp([_texto("...")], stop_reason="pause_turn")
+        for _ in range(mi.MAX_VOLTAS_NO_LOOP + 10)
     ])
 
-    with pytest.raises(EntrevistaIndisponivel):
+    with pytest.raises(EntrevistaIndisponivel, match="completar essa resposta"):
         await avancar(EstadoEntrevista(), "vai")
+    assert len(cliente.chamadas) <= mi.MAX_VOLTAS_NO_LOOP
 
 
 @pytest.mark.asyncio

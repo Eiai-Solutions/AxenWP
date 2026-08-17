@@ -185,13 +185,16 @@ def test_token_de_sessao_desconhecido_e_recusado(ambiente, monkeypatch):
 # ── Teto de gasto (a rota é anônima e queima a nossa chave) ──
 
 def test_teto_de_turnos_devolve_429_em_vez_de_gastar(ambiente, monkeypatch):
+    # Em produção os tetos vêm do ambiente e hoje estão em `0` (sem limite, por
+    # decisão de produto). Quem testa o teto precisa ligá-lo.
+    monkeypatch.setattr(mi, "MAX_TURNOS", 40, raising=True)
     _roteirizar(monkeypatch, [FakeResp([_texto("Oi!")])])
     token = _turno(ambiente.cliente, TOKEN_A).json()["token"]
 
     db = ambiente.Session()
     linha = db.query(AgentInterview).filter_by(token=token).first()
     estado = mi.EstadoEntrevista.from_json(linha.estado)
-    estado.turnos = mi.MAX_TURNOS
+    estado.turnos = 40
     linha.estado = estado.to_json()
     db.commit()
     db.close()
@@ -210,6 +213,7 @@ def test_teto_estourado_no_meio_do_turno_persiste_o_que_ja_foi_gasto(ambiente, m
     MESMAS buscas, que a Anthropic já tinha cobrado. Num link público e anônimo,
     isso é conta aberta.
     """
+    monkeypatch.setattr(mi, "MAX_BUSCAS_WEB", 10, raising=True)
     _roteirizar(monkeypatch, [FakeResp([_texto("Oi!")])])
     token = _turno(ambiente.cliente, TOKEN_A).json()["token"]
 
@@ -218,7 +222,7 @@ def test_teto_estourado_no_meio_do_turno_persiste_o_que_ja_foi_gasto(ambiente, m
     caro.usage = SimpleNamespace(
         input_tokens=100, output_tokens=50, cache_read_input_tokens=0,
         cache_creation_input_tokens=0,
-        server_tool_use=SimpleNamespace(web_search_requests=mi.MAX_BUSCAS_WEB),
+        server_tool_use=SimpleNamespace(web_search_requests=10),
     )
     _roteirizar(monkeypatch, [caro])
 
@@ -231,7 +235,7 @@ def test_teto_estourado_no_meio_do_turno_persiste_o_que_ja_foi_gasto(ambiente, m
         db.query(AgentInterview).filter_by(token=token).first().estado
     )
     db.close()
-    assert estado.buscas_web >= mi.MAX_BUSCAS_WEB, \
+    assert estado.buscas_web >= 10, \
         "as buscas pagas sumiram do banco — a proxima tentativa paga de novo"
 
 

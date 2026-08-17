@@ -33,9 +33,11 @@ naturezas diferentes, e a distinção importa:
                                  blindar. Em compensação é COBRADA por request, e
                                  por isso tem teto próprio (`MAX_BUSCAS_WEB`).
 
-Em cima das três ficam as travas de ABUSO (não de segurança): tetos por entrevista,
-para que o link não vire proxy HTTP nem buscador pago de graça, e o conteúdo
-entrando rotulado como DADO, nunca como instrução.
+O conteúdo que essas ferramentas trazem entra rotulado como DADO, nunca como
+instrução — página é escrita por terceiro e quem lê é um LLM.
+
+Os tetos por entrevista existem, mas hoje estão DESLIGADOS por decisão de produto
+(ver o bloco de `_teto` abaixo): o painel admin vai definí-los.
 """
 
 from __future__ import annotations
@@ -71,25 +73,45 @@ DEFAULT_MODEL = "claude-sonnet-5"
 # O teto de gasto de verdade é `MAX_TOKENS_SAIDA`, por entrevista.
 _MAX_TOKENS = 8000
 
-# Tetos de segurança. O link público é ANÔNIMO e gasta a NOSSA chave: sem teto,
-# uma aba esquecida (ou um curioso) vira conta aberta. Os números são folgados
-# para uma entrevista real (~12-18 turnos) e apertados para abuso.
-MAX_TURNOS = 40
-MAX_TOKENS_SAIDA = 60_000
+# --------------------------------------------------------------------------- #
+# Tetos da entrevista — CONFIGURÁVEIS, e hoje DESLIGADOS
+#
+# Decisão do Luiz (2026-08-17): "a entrevista não precisa ter limite por enquanto,
+# depois eu defino o limite no painel admin". Por isso os valores vêm de fora com
+# default `0` = SEM LIMITE, em vez de sumirem do código: quando o painel existir,
+# ele só escreve o número, sem reescrever a lógica de novo.
+#
+# O que a decisão implica, para ficar registrado: o link é PÚBLICO e ANÔNIMO e
+# gasta a NOSSA chave Anthropic. Sem teto, uma aba esquecida conversando devagar
+# não é barrada por nada aqui. O que continua de pé é o rate limit de 20/min por
+# IP na rota (`public/onboarding.py`) — ele segura abuso automatizado, não uso
+# lento e contínuo.
+# --------------------------------------------------------------------------- #
+def _teto(env: str, padrao: int = 0) -> int:
+    """Lê um teto do ambiente. `0` (o default) significa SEM LIMITE."""
+    try:
+        return max(0, int(os.getenv(env, "") or padrao))
+    except ValueError:
+        return padrao
 
-# Teto de pesquisas. Uma entrevista honesta usa 1 CNPJ + 1 ou 2 páginas; o resto
-# é a Mestre insistindo num site quebrado, ou alguém usando o link público como
-# buscador nosso. Estourado o teto, as ferramentas somem do request — o modelo
-# não fica vendo uma ferramenta que não pode usar.
-MAX_PESQUISAS = 6
 
-# Busca na web: ferramenta SERVER-SIDE da Anthropic — a API executa e cobra por
-# request. `MAX_USOS_BUSCA` limita por chamada (fica no bloco de tools, que é
-# cacheado: variar por turno invalidaria o cache); `MAX_BUSCAS_WEB` é o teto da
-# entrevista inteira, checado no nosso lado. Sem o segundo, 40 turnos × 3 usos
-# seriam 120 buscas pagas por aba aberta de um anônimo.
-MAX_USOS_BUSCA = 3
-MAX_BUSCAS_WEB = 10
+MAX_TURNOS = _teto("ENTREVISTA_MAX_TURNOS")
+MAX_TOKENS_SAIDA = _teto("ENTREVISTA_MAX_TOKENS_SAIDA")
+MAX_PESQUISAS = _teto("ENTREVISTA_MAX_PESQUISAS")
+MAX_BUSCAS_WEB = _teto("ENTREVISTA_MAX_BUSCAS_WEB")
+
+# Este NÃO é teto de entrevista, é por CHAMADA: quantas buscas a Mestre pode fazer
+# enquanto responde UMA mensagem. Fica no bloco de tools, que é cacheado — variar
+# por turno invalidaria o cache. Mantido mesmo com os outros desligados porque o
+# que ele impede é a Mestre entrar em laço de busca dentro de um único turno.
+MAX_USOS_BUSCA = _teto("ENTREVISTA_MAX_USOS_BUSCA", padrao=3)
+
+# Trava de LAÇO, não de produto. `pause_turn` e tool_use podem, em tese, se repetir
+# indefinidamente dentro de um único turno; era `MAX_TURNOS` que segurava isso de
+# carona. Com os tetos desligados, sem esta trava um request nunca responderia e a
+# tela ficaria em "digitando..." para sempre. Não é configurável de propósito: é
+# limite de engenharia, não decisão de produto.
+MAX_VOLTAS_NO_LOOP = 24
 
 
 # Os campos são exatamente os que `public/onboarding.py` coleta — é isso que faz
@@ -299,23 +321,23 @@ class EstadoEntrevista:
         # começo de `avancar`, o turno que estourou ainda é SALVO com o contador
         # certo, e só a tentativa seguinte é recusada. Levantar no meio perderia a
         # conversa e o contador junto — e a busca seria refeita para sempre.
-        return (
-            self.turnos >= MAX_TURNOS
-            or self.tokens_saida >= MAX_TOKENS_SAIDA
-            or self.buscas_web >= MAX_BUSCAS_WEB
+        return bool(
+            (MAX_TURNOS and self.turnos >= MAX_TURNOS)
+            or (MAX_TOKENS_SAIDA and self.tokens_saida >= MAX_TOKENS_SAIDA)
+            or (MAX_BUSCAS_WEB and self.buscas_web >= MAX_BUSCAS_WEB)
         )
 
     @property
     def motivo_do_teto(self) -> str:
-        if self.buscas_web >= MAX_BUSCAS_WEB:
+        if MAX_BUSCAS_WEB and self.buscas_web >= MAX_BUSCAS_WEB:
             return "Esta entrevista já usou todas as pesquisas disponíveis."
-        if self.tokens_saida >= MAX_TOKENS_SAIDA:
+        if MAX_TOKENS_SAIDA and self.tokens_saida >= MAX_TOKENS_SAIDA:
             return "Esta entrevista já usou todo o limite de conversa."
         return "Esta entrevista atingiu o limite de perguntas."
 
     @property
     def pode_pesquisar(self) -> bool:
-        return self.pesquisas < MAX_PESQUISAS
+        return not MAX_PESQUISAS or self.pesquisas < MAX_PESQUISAS
 
 
 class EntrevistaIndisponivel(RuntimeError):
@@ -496,7 +518,17 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
     cliente = AsyncAnthropic(api_key=chave, timeout=120.0, max_retries=2)
     modelo = _modelo()
 
+    voltas = 0
     while True:
+        voltas += 1
+        if voltas > MAX_VOLTAS_NO_LOOP:
+            # Não é o teto da entrevista (esse é configurável e hoje está
+            # desligado): é o que impede um único request de nunca responder.
+            logger.error(f"[ENTREVISTA] Laço não convergiu em {MAX_VOLTAS_NO_LOOP} voltas.")
+            raise EntrevistaIndisponivel(
+                "Não consegui completar essa resposta. Mande sua última mensagem de novo."
+            )
+
         # `tools` é CONSTANTE de propósito, mesmo com o teto de pesquisas estourado.
         # Tirar as ferramentas da lista invalidaria o prefixo cacheado e deixaria o
         # histórico com `tool_use` de ferramenta não declarada — 400 no meio da
