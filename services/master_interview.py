@@ -56,7 +56,20 @@ from services.pesquisa_empresa import (
 from utils.logger import logger
 
 DEFAULT_MODEL = "claude-sonnet-5"
-_MAX_TOKENS = 1500
+
+# Teto POR CHAMADA. É um limite, não uma meta: só se paga o que for gerado, e as
+# perguntas da entrevista medem 150-300 tokens cada.
+#
+# Mas o turno de CONCLUSÃO é outro bicho: `concluir_entrevista` emite os 14 campos
+# de uma vez (FAQ com várias perguntas, diferenciais, descrição), e os blocos
+# `thinking` consomem o MESMO orçamento. Com 1500 aqui, uma entrevista rica chegava
+# ao fim e não conseguia fechar: `stop_reason="max_tokens"` truncava o `tool_use`,
+# o bloco truncado era descartado (senão vira órfão e envenena a conversa) e não
+# sobrava nada. A pessoa recebia "não consegui formular a resposta" e, ao repetir,
+# recebia de novo — entrevista de 15 turnos impossível de concluir.
+#
+# O teto de gasto de verdade é `MAX_TOKENS_SAIDA`, por entrevista.
+_MAX_TOKENS = 8000
 
 # Tetos de segurança. O link público é ANÔNIMO e gasta a NOSSA chave: sem teto,
 # uma aba esquecida (ou um curioso) vira conta aberta. Os números são folgados
@@ -522,12 +535,23 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
         if resp.stop_reason != "tool_use":
             blocos = [b for b in blocos if b.get("type") != "tool_use"]
 
-        if not blocos:
-            # Nada aproveitável (recusa, ou só um tool_use truncado). Mensagem de
-            # content vazio a API também rejeita, então NÃO gravamos nada: o estado
-            # fica no ponto anterior, válido, e a pessoa pode simplesmente tentar de
-            # novo.
-            logger.warning(f"[ENTREVISTA] Turno sem conteúdo aproveitável (stop={resp.stop_reason}).")
+        # `thinking` sozinho não é resposta: sem um `text` ou um `tool_use` junto, o
+        # turno não diz nada a ninguém e ainda volta para a API como assistant vazio
+        # de conteúdo útil. Vale o mesmo tratamento de "nada aproveitável".
+        if not any(b.get("type") in ("text", "tool_use") for b in blocos):
+            # Mensagem de content inútil a API rejeita, então NÃO gravamos nada: o
+            # estado fica no ponto anterior, válido, e a pessoa tenta de novo.
+            logger.warning(
+                f"[ENTREVISTA] Turno sem conteúdo aproveitável (stop={resp.stop_reason}, "
+                f"blocos={[b.get('type') for b in blocos]}). A mensagem do usuário foi devolvida."
+            )
+            # Desfaz o append do começo do turno: sem isto, cada tentativa empilha
+            # outra cópia da mesma frase no histórico, e a conversa fica com "sim
+            # pode fechar" três vezes seguidas.
+            if mensagem_do_usuario is not None and estado.mensagens[-1:] == [
+                {"role": "user", "content": mensagem_do_usuario}
+            ]:
+                estado.mensagens.pop()
             raise EntrevistaIndisponivel(
                 "Não consegui formular a resposta agora. Mande sua última mensagem de novo."
             )

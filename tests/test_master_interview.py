@@ -300,11 +300,59 @@ async def test_max_tokens_no_meio_do_tool_use_nao_grava_orfao(monkeypatch):
     assert revivido.mensagens[-1]["content"][0]["type"] == "text"
 
 
+def test_o_teto_por_chamada_cabe_o_turno_de_conclusao():
+    """
+    REGRESSÃO — entrevista rica ficava IMPOSSÍVEL de concluir.
+
+    `concluir_entrevista` emite os 14 campos de uma vez e os blocos `thinking`
+    consomem o mesmo orçamento. Com 1500, o `tool_use` era truncado, descartado
+    (senão vira órfão) e não sobrava nada: a pessoa recebia "não consegui formular
+    a resposta" e recebia de novo ao repetir. Aconteceu numa entrevista de 15
+    turnos, em produção.
+    """
+    assert mi._MAX_TOKENS >= 6000, "pequeno demais para o turno que fecha a entrevista"
+    assert mi._MAX_TOKENS < mi.MAX_TOKENS_SAIDA, "o teto por chamada nao pode passar o da entrevista"
+
+
+@pytest.mark.asyncio
+async def test_so_bloco_de_thinking_nao_conta_como_resposta(monkeypatch):
+    """`thinking` sozinho não diz nada a ninguém e volta à API como turno inútil."""
+    pensando = SimpleNamespace(
+        type="thinking", model_dump=lambda: {"type": "thinking", "thinking": "hmm"},
+    )
+    _instalar(monkeypatch, [FakeResp([pensando], stop_reason="max_tokens")])
+
+    with pytest.raises(EntrevistaIndisponivel):
+        await avancar(EstadoEntrevista(), "oi")
+
+
+@pytest.mark.asyncio
+async def test_repetir_a_mensagem_depois_da_falha_nao_duplica_no_historico(monkeypatch):
+    """Sem isto a conversa fica com "sim pode fechar" tres vezes seguidas."""
+    _instalar(monkeypatch, [FakeResp([], stop_reason="max_tokens")])
+    estado = EstadoEntrevista(
+        mensagens=[
+            {"role": "user", "content": "Vamos começar."},
+            {"role": "assistant", "content": [{"type": "text", "text": "posso fechar?"}]},
+        ],
+        turnos=1,
+    )
+
+    for _ in range(3):
+        with pytest.raises(EntrevistaIndisponivel):
+            _instalar(monkeypatch, [FakeResp([], stop_reason="max_tokens")])
+            await avancar(estado, "sim pode fechar")
+
+    falas = [m for m in estado.mensagens if m["role"] == "user"]
+    assert len(falas) == 1, f"a mesma frase entrou {len(falas)}x no historico"
+
+
 @pytest.mark.asyncio
 async def test_turno_sem_conteudo_aproveitavel_nao_grava_mensagem_vazia(monkeypatch):
     """
     Recusa (ou só um tool_use truncado) deixaria `content: []`, que a API também
-    rejeita. Não gravar nada mantém o estado no ponto anterior, válido.
+    rejeita. O estado volta EXATAMENTE ao ponto anterior — inclusive desfazendo o
+    append da fala do usuário, senão cada tentativa empilha outra cópia dela.
     """
     _instalar(monkeypatch, [FakeResp([], stop_reason="refusal")])
     estado = EstadoEntrevista(
@@ -319,9 +367,8 @@ async def test_turno_sem_conteudo_aproveitavel_nao_grava_mensagem_vazia(monkeypa
     with pytest.raises(EntrevistaIndisponivel):
         await avancar(estado, "responde ai")
 
-    assert estado.mensagens[-1]["role"] == "user", "última é a fala da pessoa"
+    assert estado.mensagens == antes, "o estado nao voltou ao ponto anterior"
     assert all(m.get("content") for m in estado.mensagens), "gravou content vazio"
-    assert estado.mensagens[:2] == antes
 
 
 @pytest.mark.asyncio
