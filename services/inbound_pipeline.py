@@ -451,10 +451,15 @@ async def _run_ai(adapter, tenant, pm: ParsedMessage, contact_id: Optional[str],
         if audio_url and hasattr(adapter, "media_fetch"):
             audio_url, audio_headers = adapter.media_fetch(tenant, audio_url)
 
+        # QUAL conta recebeu. `resolver` devolve None quando não dá para saber, e aí
+        # o `ai_service` cai no caminho por canal — o de hoje.
+        from services.channel_accounts import resolver as _resolver_conta
+        conta_id = await _resolver_conta(pm.location_id, pm.channel, pm.account_ref)
+
         resposta = await ai_service.process_incoming_message(
             pm.location_id, pm.sender_id, texto,
             is_audio=is_audio, audio_url=audio_url, channel=pm.channel,
-            audio_headers=audio_headers,
+            audio_headers=audio_headers, channel_account_id=conta_id,
         )
         if not resposta:
             return

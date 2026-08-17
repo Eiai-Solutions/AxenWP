@@ -268,6 +268,9 @@ class WAHAChannel:
             provider=self.provider,
             location_id=location_id,
             sender_id=sender_id,
+            # O envelope do WAHA traz a sessão na raiz — é a identidade da conta
+            # que recebeu. Chegava aqui e era descartada.
+            account_ref=payload.get("session") or None,
             provider_message_id=p.get("id"),
             text=text,
             is_audio=is_audio,

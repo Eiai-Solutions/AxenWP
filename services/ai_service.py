@@ -540,17 +540,35 @@ class AIService:
     _engine_cache: dict = {}
 
     def _get_agent_for_tenant_sync(
-        self, location_id: str, channel: str = "whatsapp"
+        self, location_id: str, channel: str = "whatsapp",
+        channel_account_id: Optional[int] = None,
     ) -> Optional[AIEngine]:
         db = SessionLocal()
         try:
-            agent = (
-                db.query(AIAgent)
-                .filter(AIAgent.location_id == location_id, AIAgent.channel == channel)
-                .first()
-            )
+            # Endereça pela CONTA quando o webhook soube dizer qual foi. Enquanto
+            # `uq_ai_agent_location_channel` existir há um agente por canal e os dois
+            # caminhos dão no mesmo — a diferença aparece quando o segundo número
+            # entrar. O fallback por canal fica: adapter que ainda não informa a
+            # conta continua funcionando, e conta sem agente ainda cai no do canal
+            # em vez de a instância ficar muda.
+            agent = None
+            if channel_account_id is not None:
+                agent = (
+                    db.query(AIAgent)
+                    .filter(
+                        AIAgent.location_id == location_id,
+                        AIAgent.channel_account_id == channel_account_id,
+                    )
+                    .first()
+                )
+            if agent is None:
+                agent = (
+                    db.query(AIAgent)
+                    .filter(AIAgent.location_id == location_id, AIAgent.channel == channel)
+                    .first()
+                )
             if not agent:
-                self._engine_cache.pop((location_id, channel), None)
+                self._engine_cache.pop((location_id, channel, channel_account_id), None)
                 return None
 
             # Alias: canal aponta pra outro canal e usa as configs de lá
@@ -568,7 +586,9 @@ class AIService:
                     if target:
                         agent = target
 
-            cache_key = (location_id, channel)
+            # A conta entra na chave: sem isso, o motor do primeiro número serviria
+            # o segundo — o cache é por instância+canal e não sabe distinguir.
+            cache_key = (location_id, channel, getattr(agent, "channel_account_id", None))
             # O agente precisa de is_active e de ALGUM caminho para o modelo:
             # api_key OpenRouter (langchain) OU motor 'claude' (que resolve a chave
             # Anthropic sozinho). Sem afrouxar isto, um agente claude sem OpenRouter
@@ -589,9 +609,12 @@ class AIService:
             db.close()
 
     async def get_agent_for_tenant(
-        self, location_id: str, channel: str = "whatsapp"
+        self, location_id: str, channel: str = "whatsapp",
+        channel_account_id: Optional[int] = None,
     ) -> Optional[AIEngine]:
-        return await asyncio.to_thread(self._get_agent_for_tenant_sync, location_id, channel)
+        return await asyncio.to_thread(
+            self._get_agent_for_tenant_sync, location_id, channel, channel_account_id
+        )
 
     async def process_incoming_message(
         self,
@@ -602,9 +625,10 @@ class AIService:
         audio_url: Optional[str] = None,
         channel: str = "whatsapp",
         audio_headers: Optional[dict] = None,
+        channel_account_id: Optional[int] = None,
     ) -> Optional[dict]:
         """Entry point usado pelos webhooks para processar uma mensagem inbound."""
-        engine = await self.get_agent_for_tenant(location_id, channel)
+        engine = await self.get_agent_for_tenant(location_id, channel, channel_account_id)
         if not engine:
             return None
 

@@ -23,6 +23,12 @@ class ParsedMessage:
     sender_id: str
     provider_message_id: Optional[str]
     text: str
+    # QUAL conta nossa recebeu esta mensagem, na identidade do provedor:
+    # sessão do WAHA, instanceId da Z-API, @username do bot. É o que permite duas
+    # contas do mesmo canal na mesma instância — sem isto, `(location_id, channel)`
+    # é a única chave e o segundo número seria indistinguível do primeiro.
+    # Opcional: adapter que ainda não preenche continua caindo no fallback por canal.
+    account_ref: Optional[str] = None
     is_audio: bool = False
     audio_url: Optional[str] = None
     # `attachments` significa: URLs que O CRM CONSEGUE BAIXAR sozinho, pela
