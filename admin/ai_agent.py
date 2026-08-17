@@ -1752,6 +1752,15 @@ async def wizard_importar(location_id: str, draft_id: int):
     if not is_valid_location_id(location_id):
         return {"success": False, "error": "location_id inválido."}
 
+    # O rascunho é validado ANTES de qualquer chamada paga. Rodar a Mestre e só
+    # depois descobrir que o rascunho é de outro tenant (ou já foi publicado)
+    # gastava uma chamada de LLM para devolver "não encontrado" — num id que é
+    # sequencial e adivinhável.
+    try:
+        await estado(draft_id, location_id)
+    except RascunhoInvalido as e:
+        return {"success": False, "error": str(e)}
+
     sub = await submissao_pendente(location_id)
     if not sub:
         return {
@@ -1787,12 +1796,17 @@ async def wizard_importar(location_id: str, draft_id: int):
     }
     if form_data.get("agent_name"):
         mudancas["agent_name"] = form_data["agent_name"]
-    if campos:
-        # A Mestre disse QUAIS dados coletar. Sem isto, `build_agent_provisioning`
-        # recebia spec vazio e devolvia `qualification_enabled: False` — o checkbox
-        # "Qualificar leads" era uma promessa que nunca se cumpria.
-        mudancas["qualification_fields"] = campos
-        mudancas["qualificar"] = True
+
+    # A Mestre disse QUAIS dados coletar. Sem isto, `build_agent_provisioning`
+    # recebia spec vazio e devolvia `qualification_enabled: False` — o checkbox
+    # "Qualificar leads" era uma promessa que nunca se cumpria.
+    #
+    # As duas chaves entram SEMPRE, inclusive vazias. Escrevê-las só quando havia
+    # campos fazia a importação ligar e nunca desligar: reimportar depois de uma
+    # entrevista que não pede qualificação deixava no rascunho os campos da
+    # importação ANTERIOR, de outro negócio.
+    mudancas["qualification_fields"] = list(campos or [])
+    mudancas["qualificar"] = bool(campos)
 
     try:
         await salvar(draft_id, location_id, mudancas)

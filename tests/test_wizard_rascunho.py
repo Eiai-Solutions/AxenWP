@@ -650,3 +650,103 @@ def test_agente_novo_sem_qualificacao_nasce_sem_ela(ambiente):
     ligada = bool(a.qualification_enabled)
     db.close()
     assert ligada is False
+
+
+def test_publicar_nao_apaga_funil_curado_em_tenant_whatsapp_only(ambiente, mestre_falsa):
+    """
+    REGRESSÃO da minha própria correção — a preservação era all-or-nothing.
+
+    Em `whatsapp_only`, `agent_provisioning` devolve `pronto=True` mesmo SEM funil
+    (deliberado: lá o QualifiedLead É o portão). Com a preservação chaveada só em
+    `qualification_enabled`, isso entrava no ramo de escrita e gravava
+    `pipeline_id=None` por cima do funil que o operador curou — o agente parava de
+    criar oportunidade no CRM, em silêncio. Pior: a idempotência do
+    `qualification_handler` impede o reenvio mesmo depois de restaurar o funil.
+    """
+    db = ambiente.Session()
+    db.add(AIAgent(
+        location_id=LOC_B, channel="whatsapp", name="Sofia", prompt="prompt antigo",
+        is_active=True, qualification_enabled=True,
+        qualification_fields=[{"label": "Qual o orcamento?", "key": "orcamento",
+                               "ghl_field_id": "cf_orc"}],
+        qualification_pipeline_id="pipe-123", qualification_stage_id="stage-456",
+    ))
+    db.commit()
+    db.close()
+
+    _submissao(ambiente, loc=LOC_B)
+    d = _abrir(ambiente, LOC_B)["rascunho"]["id"]
+    _importar(ambiente, d, LOC_B)          # traz qualificar=True + campos novos
+    r = _publicar(ambiente, d, LOC_B)
+    assert r["success"] is True, r
+
+    db = ambiente.Session()
+    a = db.query(AIAgent).filter_by(location_id=LOC_B, channel="whatsapp").first()
+    pipe, stage = a.qualification_pipeline_id, a.qualification_stage_id
+    campos = list(a.qualification_fields or [])
+    db.close()
+
+    assert pipe == "pipe-123", "funil curado foi apagado"
+    assert stage == "stage-456", "etapa curada foi apagada"
+    assert campos[0].get("ghl_field_id") == "cf_orc", "mapeamento do CRM foi perdido"
+    assert r["qualificacao_preservada"] is True
+
+
+def test_segundo_canal_ainda_consegue_importar_o_que_o_cliente_respondeu(ambiente, mestre_falsa):
+    """
+    Publicar o WhatsApp marcava a submissão como 'processed', e o Telegram
+    respondia "nada para trazer" para sempre — com as respostas do cliente
+    intactas no banco. As mesmas respostas servem aos dois canais.
+    """
+    _submissao(ambiente)
+    d1 = _abrir(ambiente)["rascunho"]["id"]
+    _importar(ambiente, d1)
+    _publicar(ambiente, d1)
+
+    r = _importar(ambiente, _abrir(ambiente)["rascunho"]["id"])
+    assert r["success"] is True, r
+    assert "Sofia" in r["rascunho"]["prompt"]
+
+
+def test_reimportar_sem_qualificacao_limpa_os_campos_da_importacao_anterior(ambiente, monkeypatch):
+    """Importar só ligava, nunca desligava — sobravam campos de OUTRO negócio."""
+    import admin.ai_agent as aa
+
+    campos = [{"label": "Qual o seu bairro?", "description": "", "type": "text"}]
+
+    async def _com(settings, form_data):
+        return "prompt A", campos
+
+    async def _sem(settings, form_data):
+        return "prompt B", []
+
+    _submissao(ambiente)
+    d = _abrir(ambiente)["rascunho"]["id"]
+
+    monkeypatch.setattr(aa, "_run_master", _com, raising=True)
+    assert _importar(ambiente, d)["rascunho"]["qualificar"] is True
+
+    monkeypatch.setattr(aa, "_run_master", _sem, raising=True)
+    r = _importar(ambiente, d)
+    assert r["rascunho"]["qualificar"] is False, "continuou ligado"
+    assert r["rascunho"]["qualification_fields"] == [], "sobraram campos do negocio anterior"
+
+
+def test_importar_para_rascunho_de_outro_tenant_nao_gasta_a_mestre(ambiente, monkeypatch):
+    """Id sequencial e adivinhavel: nao pode custar uma chamada de LLM para dizer nao."""
+    import admin.ai_agent as aa
+
+    chamadas = []
+
+    async def _conta(settings, form_data):
+        chamadas.append(1)
+        return "prompt", []
+
+    monkeypatch.setattr(aa, "_run_master", _conta, raising=True)
+    _submissao(ambiente, loc=LOC_A)
+    alheio = _abrir(ambiente, LOC_B)["rascunho"]["id"]
+
+    r = _importar(ambiente, alheio, LOC_A)
+
+    assert r["success"] is False
+    assert chamadas == [], "gastou a Mestre antes de validar o dono do rascunho"

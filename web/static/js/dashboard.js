@@ -843,7 +843,7 @@
                     <textarea id="wz_prompt" rows="8" title="O que o agente sabe e como ele fala"
                         class="input-dark w-full py-3 px-3 rounded-lg text-sm leading-relaxed"
                         placeholder="Cole aqui, ou use uma das opcoes acima para a Mestre escrever."
-                        onchange="wizardSalvar({prompt: this.value, origem: 'manual'})">${(r.prompt || '').replace(/</g, '&lt;')}</textarea>
+                        onchange="wizardSalvar({prompt: this.value, origem: 'manual'}).then(wizardRender)">${(r.prompt || '').replace(/</g, '&lt;')}</textarea>
                 </div>`;
                 return portas + trazer + prompt;
             }
@@ -957,7 +957,15 @@
             const r = await fetch(`/admin/agents/${encodeURIComponent(_wz.loc)}/wizard/${_wz.draftId}/publicar`, { method: 'POST' });
             const d = await r.json();
             if (!d.success) { wizardErro(d.error || 'Nao foi possivel publicar.'); return; }
-            const pend = (d.pendencias || []).join(' · ');
+            // `qualificacao_preservada` vem do servidor e conta o que REALMENTE
+            // aconteceu. As pendencias sao da derivacao e podem dizer "nenhuma
+            // oportunidade e criada" justamente quando a config antiga foi mantida
+            // e continua criando — informar so as pendencias mentiria.
+            const avisos = (d.pendencias || []).slice();
+            if (d.qualificacao_preservada) {
+                avisos.unshift('A qualificacao ja configurada foi PRESERVADA (nao foi alterada).');
+            }
+            const pend = avisos.join(' · ');
             closeWizard();
             window.location.href = `/admin/dashboard?msg=${encodeURIComponent(
                 'Agente publicado.' + (pend ? ' ' + pend : ''))}`;

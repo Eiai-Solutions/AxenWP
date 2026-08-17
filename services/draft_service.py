@@ -271,18 +271,49 @@ def _publicar_sync(draft_id: int, location_id: str, config_qualif: dict) -> dict
         # quando a derivação de fato ligou a qualificação (intenção realizada).
         # Caso contrário, preserva o que está lá e devolve isso como pendência —
         # em vez de decidir em silêncio pelo operador.
+        # A escrita é COLUNA A COLUNA, e não um `if` que decide pelas quatro. Chavear
+        # tudo em `qualification_enabled` era metade da disciplina: em tenant
+        # `whatsapp_only`, `agent_provisioning` devolve `pronto=True` mesmo SEM funil
+        # (decisão deliberada — lá o QualifiedLead É o portão). Com isso `enabled=True`
+        # entrava no ramo de escrita e gravava `pipeline_id=None` por cima do funil que
+        # o operador curou na tela de Configurar Agente. O agente parava de criar
+        # oportunidade no CRM em silêncio, e a idempotência de `qualification_handler`
+        # impede o reenvio mesmo depois de o funil ser restaurado — os leads daquele
+        # intervalo não chegam nunca.
+        #
+        # A regra é a mesma que `admin/ai_agent.py` já aplicava no caminho da
+        # submissão, e que este arquivo tinha copiado pela metade.
         qualificacao_preservada = False
-        if criou or config_qualif.get("qualification_enabled"):
+        if criou:
+            # Nascendo: aplica o derivado inteiro, não há o que perder.
             agente.qualification_enabled = bool(config_qualif.get("qualification_enabled"))
             agente.qualification_fields = config_qualif.get("qualification_fields") or []
             agente.qualification_pipeline_id = config_qualif.get("qualification_pipeline_id")
             agente.qualification_stage_id = config_qualif.get("qualification_stage_id")
-        elif agente.qualification_enabled or agente.qualification_fields:
+        elif agente.qualification_fields:
+            # Campos curados pelo operador mandam — inclusive os `ghl_field_id`
+            # resolvidos contra o CRM real. Trocá-los por campos sem mapeamento (o que
+            # a derivação produz quando o catálogo do CRM está fora) quebra a escrita
+            # no CRM sem avisar. Com campos curados, a qualificação inteira fica como
+            # está; mexer nela é pela tela de Configurar Agente.
             qualificacao_preservada = True
             logger.info(
-                f"[WIZARD] {location_id}/{canal}: qualificação existente PRESERVADA "
-                f"(o rascunho não pediu qualificação)."
+                f"[WIZARD] {location_id}/{canal}: qualificação PRESERVADA "
+                f"(o agente tem campos curados)."
             )
+        else:
+            # Sem campos curados: o wizard só PREENCHE BURACO. Valor vazio nunca
+            # sobrescreve valor existente — é isso que salva funil e etapa.
+            for chave in ("qualification_fields", "qualification_pipeline_id",
+                          "qualification_stage_id", "qualification_enabled"):
+                valor = config_qualif.get(chave)
+                if valor in (None, [], False, ""):
+                    continue
+                setattr(agente, chave, valor)
+            if agente.qualification_enabled and not config_qualif.get("qualification_enabled"):
+                # Derivação não conseguiu ligar, mas o agente já estava ligado: isso é
+                # preservação, não falha silenciosa.
+                qualificacao_preservada = True
 
         # Publicar por cima NÃO religa agente que a equipe pausou de propósito
         # (durante um incidente, por exemplo). Só nasce ligado quem é novo.
@@ -407,7 +438,13 @@ async def estado(draft_id: int, location_id: str) -> dict:
 
 def _submissao_pendente_sync(location_id: str) -> Optional[dict]:
     """
-    A resposta mais recente do cliente que ainda não virou agente.
+    A resposta mais recente do cliente, para trazer ao rascunho.
+
+    Prefere a que ainda não virou agente, mas ACEITA uma já processada: publicar o
+    primeiro canal marca a submissão como `processed`, e sem esse fallback o
+    segundo canal (Telegram, tipicamente) respondia "nada para trazer" para
+    sempre — com as respostas do cliente intactas no banco. As mesmas respostas
+    servem aos dois canais; é o mesmo negócio.
 
     Sem filtro de data de propósito: o cliente pode ter preenchido ontem, e exigir
     que fosse depois de o rascunho abrir esconderia justamente o que o operador
@@ -415,16 +452,18 @@ def _submissao_pendente_sync(location_id: str) -> Optional[dict]:
     """
     db = SessionLocal()
     try:
-        s = (
-            db.query(OnboardingSubmission)
-            .filter(
-                OnboardingSubmission.tenant_location_id == location_id,
-                OnboardingSubmission.status == "pending",
-            )
-            .order_by(OnboardingSubmission.id.desc())
-            .first()
+        base = db.query(OnboardingSubmission).filter(
+            OnboardingSubmission.tenant_location_id == location_id
         )
-        return {"id": s.id, "form_data": dict(s.form_data or {})} if s else None
+        s = (
+            base.filter(OnboardingSubmission.status == "pending")
+            .order_by(OnboardingSubmission.id.desc()).first()
+            or base.order_by(OnboardingSubmission.id.desc()).first()
+        )
+        return (
+            {"id": s.id, "form_data": dict(s.form_data or {}), "ja_usada": s.status != "pending"}
+            if s else None
+        )
     finally:
         db.close()
 
