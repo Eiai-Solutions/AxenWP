@@ -125,6 +125,33 @@ diferentes e eu tinha só uma. Derivar protege contra o cliente mandar config
 mentirosa; não escrever quando não há intenção protege contra apagar o que já
 funcionava.
 
+### E a primeira correção ainda estava errada
+
+A varredura adversarial em cima do próprio fix pegou o furo: eu tinha chaveado a
+preservação **inteira** em `qualification_enabled`, e isso é all-or-nothing. Em
+tenant `whatsapp_only`, `agent_provisioning` devolve `pronto=True` **mesmo sem
+funil** — deliberado, porque lá o `QualifiedLead` É o portão. Resultado:
+`enabled=True` entrava no ramo de escrita e gravava `pipeline_id=None` por cima do
+funil curado, além de trocar campos com `ghl_field_id` por campos sem mapeamento.
+
+O agente parava de criar oportunidade no CRM **em silêncio**, e a idempotência de
+`qualification_handler` impede o reenvio mesmo depois de o funil ser restaurado: os
+leads daquele intervalo não chegam nunca.
+
+A regra correta é a de `admin/ai_agent.py`, que eu tinha copiado pela metade —
+**coluna a coluna**:
+
+| situação | o que acontece |
+|---|---|
+| agente nascendo | recebe o derivado inteiro (não há o que perder) |
+| agente com campos curados | não é tocado — mexer é pela tela de Configurar Agente |
+| demais | o wizard só **preenche buraco**: valor vazio nunca sobrescreve valor existente |
+
+A lição de segunda ordem: **"não destrutivo" é uma propriedade por coluna, não por
+bloco.** Um `if` que decide pelas quatro de uma vez erra assim que uma delas tem
+semântica diferente das outras — que é exatamente o caso de `enabled` num tenant
+onde ligar sem funil é legítimo.
+
 Correção de camada que veio junto: a consulta da submissão foi para o
 `draft_service` (`submissao_pendente`), porque todo o resto do wizard acessa banco só
 pelo service. A rota orquestra e roda a Mestre; quem fala com o banco é o service.
@@ -137,6 +164,9 @@ pelo service. A rota orquestra e roda a Mestre; quem fala com o banco é o servi
   preserva, e o caminho para desligar é a tela de Configurar Agente. A tela diz
   isso no aviso, mas é uma lacuna consciente, não um acabamento.
 - Rascunho travado num canal que sumiu continua sem saída pela tela.
+- A importação pega a submissão mais recente do tenant, **sem vínculo com esta
+  entrevista**: a coluna `interview_token` existe para isso e segue sem produtor.
+  Com um cliente por instância dá no mesmo; com dois formulários abertos, não.
 
 Relacionado: [[decisoes/entrevista-da-mestre]] (a outra porta de criação) ·
 [[decisoes/isolamento-operador-cliente]] (quem pode abrir rascunho de quem) ·
