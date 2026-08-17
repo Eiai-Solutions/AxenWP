@@ -290,6 +290,8 @@ def _publicar_sync(draft_id: int, location_id: str, config_qualif: dict) -> dict
             agente.qualification_fields = config_qualif.get("qualification_fields") or []
             agente.qualification_pipeline_id = config_qualif.get("qualification_pipeline_id")
             agente.qualification_stage_id = config_qualif.get("qualification_stage_id")
+            if config_qualif.get("qualification_summary_prompt"):
+                agente.qualification_summary_prompt = config_qualif["qualification_summary_prompt"]
         elif agente.qualification_fields:
             # Campos curados pelo operador mandam — inclusive os `ghl_field_id`
             # resolvidos contra o CRM real. Trocá-los por campos sem mapeamento (o que
@@ -305,7 +307,8 @@ def _publicar_sync(draft_id: int, location_id: str, config_qualif: dict) -> dict
             # Sem campos curados: o wizard só PREENCHE BURACO. Valor vazio nunca
             # sobrescreve valor existente — é isso que salva funil e etapa.
             for chave in ("qualification_fields", "qualification_pipeline_id",
-                          "qualification_stage_id", "qualification_enabled"):
+                          "qualification_stage_id", "qualification_summary_prompt",
+                          "qualification_enabled"):
                 valor = config_qualif.get(chave)
                 if valor in (None, [], False, ""):
                     continue
@@ -508,6 +511,14 @@ async def publicar(draft_id: int, location_id: str) -> dict:
         )
         config_qualif = prov["config"]
         pendencias = prov["report"].get("pendencias") or []
+        # Paridade com o caminho da submissão (`admin/ai_agent.py`): o resumo de
+        # qualificação é decisão SEGURA da Mestre (texto, não ID de CRM), e é o que
+        # o agente usa para fechar o lead. Sem esta linha o wizard descartava o que
+        # ela escreveu e o agente caía no resumo genérico — duas portas produzindo
+        # agentes diferentes, que é justamente o que o desenho evita.
+        resumo = (rascunho.get("spec") or {}).get("_spec_summary_prompt")
+        if resumo and config_qualif.get("qualification_enabled"):
+            config_qualif["qualification_summary_prompt"] = resumo
 
     resultado = await asyncio.to_thread(
         _publicar_sync, draft_id, location_id, config_qualif

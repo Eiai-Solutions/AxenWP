@@ -750,3 +750,27 @@ def test_importar_para_rascunho_de_outro_tenant_nao_gasta_a_mestre(ambiente, mon
 
     assert r["success"] is False
     assert chamadas == [], "gastou a Mestre antes de validar o dono do rascunho"
+
+
+def test_o_resumo_de_qualificacao_que_a_mestre_escreveu_chega_no_agente(ambiente, monkeypatch):
+    """
+    Paridade com o caminho da submissão: sem isto o wizard descartava o resumo e o
+    agente caía no genérico — duas portas produzindo agentes diferentes.
+    """
+    import admin.ai_agent as aa
+
+    async def _com_resumo(settings, form_data):
+        form_data["_spec_summary_prompt"] = "Resuma em 3 linhas: bairro, urgencia e orcamento."
+        return "prompt da Sofia", [{"label": "Qual o seu bairro?", "description": "", "type": "text"}]
+
+    monkeypatch.setattr(aa, "_run_master", _com_resumo, raising=True)
+    _submissao(ambiente, loc=LOC_B)
+    d = _abrir(ambiente, LOC_B)["rascunho"]["id"]
+    _importar(ambiente, d, LOC_B)
+    assert _publicar(ambiente, d, LOC_B)["success"] is True
+
+    db = ambiente.Session()
+    a = db.query(AIAgent).filter_by(location_id=LOC_B, channel="whatsapp").first()
+    resumo = a.qualification_summary_prompt
+    db.close()
+    assert resumo == "Resuma em 3 linhas: bairro, urgencia e orcamento."
