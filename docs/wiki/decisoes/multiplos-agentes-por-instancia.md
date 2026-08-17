@@ -82,6 +82,45 @@ sem `await`, e `switchChannel` re-renderiza as abas a partir do DOM. Se a carga
 terminasse depois, a aba destacada voltava para WhatsApp com o formulário mostrando
 outro agente. A promise agora fica guardada em `window._canaisCarregando`.
 
+### O XSS que a lista introduziu
+
+A revisão adversarial sobre os commits da metade A achou **8 problemas, 1 deles grave
+e meu**: XSS armazenado no painel.
+
+O `name` do agente ia para `title="…de ${nome}"` escapando **só `<`**. Aspa dupla no
+nome fecha o atributo, e o resto vira **atributo do próprio `<button>`** —
+`onmouseover=` executando na mesma página onde `#ai_api_key` e
+`#ai_anthropic_api_key` são renderizados. Não há CSP no projeto.
+
+Três coisas que valem virar regra:
+
+1. **Escapar `<` não protege em contexto de atributo.** O perigo ali é a aspa, e o
+   ataque não precisa abrir tag nenhuma.
+2. **`_escapeHtml` deste projeto NÃO serve para atributo.** Ele é
+   `textContent → innerHTML`, que escapa `&`, `<` e `>` — a aspa passa intacta.
+   Trocar o escape manual por ele só deslocaria o buraco. Medido: `_escapeHtml('a"b')`
+   devolve `a"b`.
+3. **`agent_validators.py` só limita o TAMANHO do `name`** (1..200). O contraste está
+   no mesmo arquivo: `QualificationField.key` rejeita aspas explicitamente. O `name`
+   não ganhou o mesmo cuidado — e a IA Mestre escreve nesse campo a partir da
+   entrevista **pública e anônima**.
+
+A correção não foi escapar melhor: a lista passou a ser montada por **DOM**
+(`setAttribute` / `textContent` / listener), que é imune aos três contextos de uma vez
+— atributo, aspas simples do `onclick`, e conteúdo. Verificado em navegador com a
+carga do achado: nenhum handler injetado, nada dispara.
+
+**Regra para o projeto: nada de dado vindo do banco dentro de template string que
+vira `innerHTML`.** Se precisar de elemento com dado variável, monte por DOM.
+
+Os outros sete, resumidos: a snapshot do próprio `restore` nascia órfã (reintroduzindo
+a ambiguidade que a correção veio resolver); clicar no agente de WhatsApp não buscava
+nada e abria com o `dataset` do carregamento da página; a lista não carimbava a
+requisição (resposta de uma instância podia pintar dentro do modal de outra); o DELETE
+virou erro para canal sem registro e deixava aba fantasma na tela; o tester nunca
+recebeu `channel` — **a mensagem do commit afirmava que a tela mandava, e não
+mandava**; e `_agente_da_tela` não resolvia alias.
+
 ## Metade B: as decisões que são do dono
 
 Estão detalhadas em [[decisoes/multi-agente-plano-completo]]. As três que travam o resto:
