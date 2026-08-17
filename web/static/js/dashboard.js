@@ -824,6 +824,20 @@
                             ${pt.recomendado ? '<span class="text-[9px] text-brand-primary font-mono uppercase ml-1">recomendado</span>' : ''}</p>
                         <p class="text-[10px] text-gray-500 font-mono mt-0.5">${pt.detalhe}</p>
                     </button>`).join('');
+                // Retorno das portas: sem isto o operador conduzia a entrevista
+                // inteira, voltava, e o rascunho continuava vazio — a porta
+                // RECOMENDADA nao tinha como terminar.
+                const trazer = (r.origem === 'entrevista' || r.origem === 'formulario') ? `
+                    <div class="rounded-xl border border-gray-800 p-4 mt-2">
+                        <p class="text-sm font-bold text-white">Ja terminou ${r.origem === 'entrevista' ? 'a conversa' : 'o formulario'}?</p>
+                        <p class="text-[11px] text-gray-400 leading-relaxed mt-0.5 mb-3">
+                            Traga o que a Mestre apurou para ca. Voce revisa e ajusta antes de publicar.</p>
+                        <button type="button" id="wz_importar" onclick="wizardImportar()"
+                            title="Buscar as respostas do cliente e gerar o prompt"
+                            class="btn-brand text-xs font-bold px-4 py-2 rounded-lg">
+                            TRAZER O QUE A MESTRE ESCREVEU</button>
+                        <p id="wz_importar_msg" class="text-[11px] text-gray-500 mt-2 hidden"></p>
+                    </div>` : '';
                 const prompt = `<div class="pt-2">
                     <label class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest">Prompt do agente</label>
                     <textarea id="wz_prompt" rows="8" title="O que o agente sabe e como ele fala"
@@ -831,7 +845,7 @@
                         placeholder="Cole aqui, ou use uma das opcoes acima para a Mestre escrever."
                         onchange="wizardSalvar({prompt: this.value, origem: 'manual'})">${(r.prompt || '').replace(/</g, '&lt;')}</textarea>
                 </div>`;
-                return portas + prompt;
+                return portas + trazer + prompt;
             }
             if (e.id === 'qualificacao') {
                 const semCrm = e.variante === 'sem_crm';
@@ -859,7 +873,8 @@
                     <p class="text-[11px] text-gray-400 leading-relaxed mt-1">
                         <strong>${sub.nome}</strong>, ${sub.tamanho_prompt} caracteres de prompt,
                         ${sub.ativo ? 'no ar' : 'pausado'}${sub.qualificacao_ligada ? ', com qualificacao ligada' : ''}${sub.e_alias_de ? `, hoje espelhando o canal ${sub.e_alias_de}` : ''}.
-                        Publicar substitui o prompt dele — a versao atual fica no historico.</p>
+                        Publicar substitui o prompt dele — a versao atual fica no historico.
+                        ${sub.qualificacao_ligada && !r.qualificar ? '<br><strong>A qualificacao ja configurada sera preservada.</strong> Para desliga-la, use Configurar Agente.' : ''}</p>
                 </div>` : '';
                 const impedimento = !_wz.podePublicar ? `<div class="rounded-xl border border-danger/40 bg-danger/5 p-4 mb-4 text-sm text-danger">${_wz.impedimento}</div>` : '';
                 return aviso + impedimento + `
@@ -894,6 +909,31 @@
                 window.open(porta === 'entrevista' ? data.url.replace(/\/$/, '') + '/entrevista' : data.url, '_blank');
             } catch (e) {
                 wizardErro('Erro de rede ao gerar o link.');
+            }
+        }
+
+        async function wizardImportar() {
+            const $b = document.getElementById('wz_importar');
+            const $m = document.getElementById('wz_importar_msg');
+            if ($b) { $b.disabled = true; $b.textContent = 'BUSCANDO...'; }
+            if ($m) { $m.classList.add('hidden'); }
+            try {
+                const resp = await fetch(
+                    `/admin/agents/${encodeURIComponent(_wz.loc)}/wizard/${_wz.draftId}/importar`,
+                    { method: 'POST' });
+                const data = await resp.json();
+                if (!data.success) {
+                    // A causa comum e "ainda nao concluiu" — vale explicar ali mesmo,
+                    // sem tirar o operador da etapa.
+                    if ($m) { $m.textContent = data.error || 'Nao consegui trazer agora.'; $m.classList.remove('hidden'); }
+                    if ($b) { $b.disabled = false; $b.textContent = 'TRAZER O QUE A MESTRE ESCREVEU'; }
+                    return;
+                }
+                _aplicarEstado(data);
+                wizardRender();
+            } catch (e) {
+                if ($m) { $m.textContent = 'Erro de rede ao trazer as respostas.'; $m.classList.remove('hidden'); }
+                if ($b) { $b.disabled = false; $b.textContent = 'TRAZER O QUE A MESTRE ESCREVEU'; }
             }
         }
 

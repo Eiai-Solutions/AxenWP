@@ -16,7 +16,9 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 
 from data.database import SessionLocal
-from data.models import AgentDraft, AgentPromptHistory, AIAgent, Tenant
+from data.models import (
+    AgentDraft, AgentPromptHistory, AIAgent, OnboardingSubmission, Tenant,
+)
 from services.agent_wizard import como_json, etapas_para, pode_publicar
 from utils.logger import logger
 
@@ -255,11 +257,32 @@ def _publicar_sync(draft_id: int, location_id: str, config_qualif: dict) -> dict
         if d.spec:
             agente.form_data = d.spec
 
-        # Qualificação SEMPRE derivada, nunca copiada.
-        agente.qualification_enabled = bool(config_qualif.get("qualification_enabled"))
-        agente.qualification_fields = config_qualif.get("qualification_fields") or []
-        agente.qualification_pipeline_id = config_qualif.get("qualification_pipeline_id")
-        agente.qualification_stage_id = config_qualif.get("qualification_stage_id")
+        # Qualificação SEMPRE derivada, nunca copiada — e NUNCA destrutiva.
+        #
+        # O wizard publica o PROMPT. A qualificação de um agente que já atende pode
+        # ter vindo de outro lugar (formulário, tela de Configurar Agente, curadoria
+        # do operador). Escrever as quatro colunas incondicionalmente APAGAVA isso:
+        # `qualification_enabled` virava False, pipeline e stage viravam None, e o
+        # agente seguia conversando normalmente — só parava de registrar lead, sem
+        # um único erro no log. `admin/ai_agent.py` já preservava de propósito no
+        # caminho da submissão; aqui não preservava.
+        #
+        # Regra: só escreve quando o agente está NASCENDO (não há o que perder) ou
+        # quando a derivação de fato ligou a qualificação (intenção realizada).
+        # Caso contrário, preserva o que está lá e devolve isso como pendência —
+        # em vez de decidir em silêncio pelo operador.
+        qualificacao_preservada = False
+        if criou or config_qualif.get("qualification_enabled"):
+            agente.qualification_enabled = bool(config_qualif.get("qualification_enabled"))
+            agente.qualification_fields = config_qualif.get("qualification_fields") or []
+            agente.qualification_pipeline_id = config_qualif.get("qualification_pipeline_id")
+            agente.qualification_stage_id = config_qualif.get("qualification_stage_id")
+        elif agente.qualification_enabled or agente.qualification_fields:
+            qualificacao_preservada = True
+            logger.info(
+                f"[WIZARD] {location_id}/{canal}: qualificação existente PRESERVADA "
+                f"(o rascunho não pediu qualificação)."
+            )
 
         # Publicar por cima NÃO religa agente que a equipe pausou de propósito
         # (durante um incidente, por exemplo). Só nasce ligado quem é novo.
@@ -297,6 +320,24 @@ def _publicar_sync(draft_id: int, location_id: str, config_qualif: dict) -> dict
             source="wizard_publish", prompt=d.prompt or "",
         ))
 
+        # A submissão que originou este rascunho vira 'processed' só AGORA. Marcar
+        # na importação faria o operador que importa e desiste consumir o trabalho
+        # que o cliente teve de responder — a submissão sumiria da aba sem nunca
+        # ter virado agente. Na mesma transação do publish: ou os dois landam, ou
+        # nenhum.
+        if d.submission_id:
+            sub = (
+                db.query(OnboardingSubmission)
+                .filter(
+                    OnboardingSubmission.id == d.submission_id,
+                    OnboardingSubmission.tenant_location_id == location_id,
+                )
+                .first()
+            )
+            if sub and sub.status == "pending":
+                sub.status = "processed"
+                sub.processed_at = _agora()
+
         d.status = "publicado"
         d.agent_id = agente.id
         d.updated_at = _agora()
@@ -305,7 +346,10 @@ def _publicar_sync(draft_id: int, location_id: str, config_qualif: dict) -> dict
             f"[WIZARD] Rascunho {draft_id} publicado: agente {agente.id} "
             f"({'criado' if criou else 'atualizado'}) em {location_id}/{canal}."
         )
-        return {"agent_id": agente.id, "criado": criou, "channel": canal}
+        return {
+            "agent_id": agente.id, "criado": criou, "channel": canal,
+            "qualificacao_preservada": qualificacao_preservada,
+        }
     except RascunhoInvalido:
         raise
     except Exception as e:
@@ -359,6 +403,35 @@ async def estado(draft_id: int, location_id: str) -> dict:
         # é que não é.
         "vai_substituir": existente,
     }
+
+
+def _submissao_pendente_sync(location_id: str) -> Optional[dict]:
+    """
+    A resposta mais recente do cliente que ainda não virou agente.
+
+    Sem filtro de data de propósito: o cliente pode ter preenchido ontem, e exigir
+    que fosse depois de o rascunho abrir esconderia justamente o que o operador
+    está procurando.
+    """
+    db = SessionLocal()
+    try:
+        s = (
+            db.query(OnboardingSubmission)
+            .filter(
+                OnboardingSubmission.tenant_location_id == location_id,
+                OnboardingSubmission.status == "pending",
+            )
+            .order_by(OnboardingSubmission.id.desc())
+            .first()
+        )
+        return {"id": s.id, "form_data": dict(s.form_data or {})} if s else None
+    finally:
+        db.close()
+
+
+async def submissao_pendente(location_id: str) -> Optional[dict]:
+    """Acesso a banco mora no service — a rota só orquestra (e roda a Mestre)."""
+    return await asyncio.to_thread(_submissao_pendente_sync, location_id)
 
 
 async def salvar(draft_id: int, location_id: str, mudancas: dict) -> dict:

@@ -1728,6 +1728,90 @@ async def wizard_salvar_etapa(location_id: str, draft_id: int, request: Request)
         return {"success": False, "error": str(e)}
 
 
+@router.post("/{location_id}/wizard/{draft_id}/importar")
+async def wizard_importar(location_id: str, draft_id: int):
+    """
+    Traz para o rascunho o que o cliente respondeu na entrevista ou no formulário.
+
+    Esta rota é o retorno que faltava. As portas "Conversar com a Mestre" e
+    "Preencher formulário" abriam uma aba e gravavam só `origem`: a entrevista
+    concluía, criava a `OnboardingSubmission`, e o rascunho continuava com
+    `prompt=None`. `pode_publicar` reprovava para sempre — a porta marcada como
+    RECOMENDADA não tinha como terminar. As colunas `submission_id`/`spec` já
+    existiam e já eram lidas no publish: consumidor sem produtor.
+
+    Roda a mesma IA Mestre do caminho da submissão (`_run_master`) — um gerador só,
+    como manda `decisoes/entrevista-da-mestre`. A submissão só é marcada como
+    processada no PUBLISH, não aqui: importar e desistir não pode consumir o
+    trabalho que o cliente teve de responder.
+    """
+    from services.draft_service import (
+        RascunhoInvalido, estado, salvar, submissao_pendente,
+    )
+
+    if not is_valid_location_id(location_id):
+        return {"success": False, "error": "location_id inválido."}
+
+    sub = await submissao_pendente(location_id)
+    if not sub:
+        return {
+            "success": False,
+            "error": "Nada para trazer ainda — conclua a entrevista ou o formulário do cliente.",
+        }
+    submission_id, form_data = sub["id"], sub["form_data"]
+
+    db = SessionLocal()
+    try:
+        settings = db.query(SystemSettings).first()
+    finally:
+        db.close()
+
+    form_data.setdefault("agent_name", "")
+    form_data.setdefault("agent_type", "inbound")
+    form_data.setdefault("tone_register", None)
+    form_data.setdefault("restrictions", "")
+    form_data.setdefault("qualification_questions", "")
+
+    try:
+        prompt_gerado, campos = await _run_master(settings, form_data)
+    except _MasterError as e:
+        # A submissão continua 'pending' — o dado do cliente não se perde porque a
+        # Mestre falhou.
+        logger.error(f"[WIZARD] IA Mestre falhou ao importar para o rascunho {draft_id}: {e}")
+        return {"success": False, "error": str(e)}
+
+    mudancas = {
+        "prompt": prompt_gerado,
+        "spec": form_data,
+        "submission_id": submission_id,
+    }
+    if form_data.get("agent_name"):
+        mudancas["agent_name"] = form_data["agent_name"]
+    if campos:
+        # A Mestre disse QUAIS dados coletar. Sem isto, `build_agent_provisioning`
+        # recebia spec vazio e devolvia `qualification_enabled: False` — o checkbox
+        # "Qualificar leads" era uma promessa que nunca se cumpria.
+        mudancas["qualification_fields"] = campos
+        mudancas["qualificar"] = True
+
+    try:
+        await salvar(draft_id, location_id, mudancas)
+        atual = await estado(draft_id, location_id)
+    except RascunhoInvalido as e:
+        return {"success": False, "error": str(e)}
+
+    logger.info(
+        f"[WIZARD] Rascunho {draft_id} importou a submissão {submission_id} "
+        f"({len(prompt_gerado or '')} chars, {len(campos or [])} campos)."
+    )
+    return {
+        "success": True,
+        "empresa": form_data.get("company_name") or "",
+        "campos_de_qualificacao": len(campos or []),
+        **atual,
+    }
+
+
 @router.post("/{location_id}/wizard/{draft_id}/publicar")
 async def wizard_publicar(location_id: str, draft_id: int):
     """

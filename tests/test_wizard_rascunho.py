@@ -46,6 +46,10 @@ def ambiente(tmp_path, monkeypatch):
         return {"ok": False, "error": "CRM indisponível no teste"}
     monkeypatch.setattr(ap, "fetch_crm_catalog", _sem_crm, raising=True)
     monkeypatch.setattr(auth, "SessionLocal", Session, raising=True)
+    # As rotas do wizard também abrem sessão própria (SystemSettings, na
+    # importação). Sem este patch elas caem no banco real e o teste vira 500.
+    import admin.ai_agent as aa
+    monkeypatch.setattr(aa, "SessionLocal", Session, raising=True)
     monkeypatch.setattr(settings, "debug", True, raising=False)
     monkeypatch.setattr(limiter, "enabled", False, raising=False)
 
@@ -474,3 +478,175 @@ def test_pode_publicar_falha_FECHADO_sem_etapas():
 
     ok, motivo = pode_publicar({"channel": "whatsapp", "prompt": "x" * 40}, [])
     assert ok is False and motivo
+
+
+# --------------------------------------------------------------------------- #
+# O ciclo das portas: o que o cliente respondeu precisa VOLTAR para o rascunho
+# --------------------------------------------------------------------------- #
+def _importar(a, draft_id, loc=LOC_A):
+    return a.c.post(f"/admin/agents/{loc}/wizard/{draft_id}/importar",
+                    cookies={"admin_session": a.cookie}).json()
+
+
+def _submissao(a, loc=LOC_A, **campos):
+    from data.models import OnboardingSubmission
+    db = a.Session()
+    dados = {"company_name": "Padaria Aurora", "products_services": "paes e bolos",
+             "agent_goal": "tirar duvida e anotar pedido", **campos}
+    s = OnboardingSubmission(tenant_location_id=loc, form_data=dados, status="pending")
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    sid = s.id
+    db.close()
+    return sid
+
+
+@pytest.fixture
+def mestre_falsa(monkeypatch):
+    """A Mestre de verdade custa dinheiro; o que testamos aqui é o encanamento."""
+    import admin.ai_agent as aa
+
+    async def _fake(settings, form_data):
+        form_data["agent_name"] = "Sofia"
+        return (
+            f"Voce e a Sofia, atendente da {form_data.get('company_name')}.",
+            [{"label": "Qual o seu bairro?", "description": "para a entrega", "type": "text"}],
+        )
+
+    monkeypatch.setattr(aa, "_run_master", _fake, raising=True)
+    return _fake
+
+
+def test_a_porta_recomendada_fecha_o_ciclo(ambiente, mestre_falsa):
+    """
+    REGRESSÃO — a porta marcada como RECOMENDADA não tinha como terminar.
+
+    `wizardPorta` gravava só `{origem}` e abria uma aba. A entrevista concluía e
+    criava a submissão, mas nada voltava: `prompt` ficava None e `pode_publicar`
+    reprovava para sempre. As colunas `submission_id`/`spec` já existiam e já eram
+    lidas no publish — consumidor sem produtor.
+    """
+    sid = _submissao(ambiente)
+    d = _abrir(ambiente)["rascunho"]["id"]
+    _salvar(ambiente, d, {"origem": "entrevista", "etapa_atual": "identidade"})
+
+    assert _abrir(ambiente)["rascunho"]["prompt"] is None
+    assert _abrir(ambiente)["pode_publicar"] is False
+
+    r = _importar(ambiente, d)
+
+    assert r["success"] is True, r
+    assert r["empresa"] == "Padaria Aurora"
+    assert "Sofia" in r["rascunho"]["prompt"]
+    assert r["rascunho"]["submission_id"] == sid
+    assert r["rascunho"]["spec"]["products_services"] == "paes e bolos"
+    assert r["pode_publicar"] is True, r.get("impedimento")
+
+
+def test_importar_sem_o_cliente_ter_respondido_explica_o_que_falta(ambiente, mestre_falsa):
+    d = _abrir(ambiente)["rascunho"]["id"]
+    r = _importar(ambiente, d)
+
+    assert r["success"] is False
+    assert "conclua a entrevista" in r["error"].lower()
+
+
+def test_a_submissao_so_e_consumida_no_publish(ambiente, mestre_falsa):
+    """
+    Importar e desistir não pode queimar o trabalho que o cliente teve de
+    responder — a submissão sumiria da aba sem nunca ter virado agente.
+    """
+    from data.models import OnboardingSubmission
+
+    sid = _submissao(ambiente)
+    d = _abrir(ambiente)["rascunho"]["id"]
+    _importar(ambiente, d)
+
+    db = ambiente.Session()
+    assert db.query(OnboardingSubmission).get(sid).status == "pending"
+    db.close()
+
+    _publicar(ambiente, d)
+
+    db = ambiente.Session()
+    assert db.query(OnboardingSubmission).get(sid).status == "processed"
+    db.close()
+
+
+def test_importar_liga_a_qualificacao_que_a_mestre_pediu(ambiente, mestre_falsa):
+    """
+    REGRESSÃO — o checkbox "Qualificar leads" era uma promessa que nunca se
+    cumpria. A tela mandava só `{qualificar: true}`, mas `spec` e
+    `qualification_fields` nunca eram escritos, então `build_agent_provisioning`
+    recebia `{}` e devolvia `qualification_enabled: False`.
+    """
+    _submissao(ambiente, loc=LOC_B)
+    d = _abrir(ambiente, LOC_B)["rascunho"]["id"]
+    r = _importar(ambiente, d, LOC_B)
+
+    assert r["rascunho"]["qualificar"] is True
+    assert r["rascunho"]["qualification_fields"][0]["label"] == "Qual o seu bairro?"
+
+    _publicar(ambiente, d, LOC_B)
+
+    db = ambiente.Session()
+    a = db.query(AIAgent).filter_by(location_id=LOC_B, channel="whatsapp").first()
+    ligada, campos = bool(a.qualification_enabled), list(a.qualification_fields or [])
+    db.close()
+    assert ligada is True, "o checkbox continua sem ligar nada"
+    assert campos and campos[0]["label"] == "Qual o seu bairro?"
+
+
+# --------------------------------------------------------------------------- #
+# Publicar não pode ser destrutivo
+# --------------------------------------------------------------------------- #
+def test_publicar_por_cima_preserva_a_qualificacao_de_quem_ja_atende(ambiente):
+    """
+    REGRESSÃO — o agente parava de registrar lead, sem um único erro no log.
+
+    Publicar escrevia as quatro colunas de qualificação incondicionalmente. Com o
+    rascunho sem `qualificar`, isso zerava a config que veio do formulário ou da
+    curadoria do operador: o agente seguia conversando e só deixava de qualificar.
+    """
+    db = ambiente.Session()
+    db.add(AIAgent(
+        location_id=LOC_A, channel="whatsapp", name="Sofia",
+        prompt="prompt de producao", is_active=True,
+        qualification_enabled=True,
+        qualification_fields=[{"label": "Qual o orcamento?", "key": "orcamento"}],
+        qualification_pipeline_id="pipe-123", qualification_stage_id="stage-456",
+    ))
+    db.commit()
+    db.close()
+
+    d = _abrir(ambiente)["rascunho"]["id"]
+    _salvar(ambiente, d, {"prompt": "prompt novo colado pelo operador", "origem": "manual"})
+    r = _publicar(ambiente, d)
+    assert r["success"] is True, r
+    assert r["qualificacao_preservada"] is True
+
+    db = ambiente.Session()
+    a = db.query(AIAgent).filter_by(location_id=LOC_A, channel="whatsapp").first()
+    estado = (bool(a.qualification_enabled), a.qualification_pipeline_id,
+              a.qualification_stage_id, list(a.qualification_fields or []), a.prompt)
+    db.close()
+
+    assert estado[0] is True, "publicar desligou a qualificacao"
+    assert estado[1] == "pipe-123" and estado[2] == "stage-456", "funil apagado"
+    assert estado[3][0]["label"] == "Qual o orcamento?", "campos curados apagados"
+    assert estado[4] == "prompt novo colado pelo operador", "o prompt era pra ter trocado"
+
+
+def test_agente_novo_sem_qualificacao_nasce_sem_ela(ambiente):
+    """Controle: preservar não pode virar 'nunca escrever'."""
+    d = _abrir(ambiente)["rascunho"]["id"]
+    _salvar(ambiente, d, {"prompt": "um prompt qualquer", "origem": "manual"})
+    r = _publicar(ambiente, d)
+
+    assert r["qualificacao_preservada"] is False
+    db = ambiente.Session()
+    a = db.query(AIAgent).filter_by(location_id=LOC_A, channel="whatsapp").first()
+    ligada = bool(a.qualification_enabled)
+    db.close()
+    assert ligada is False
