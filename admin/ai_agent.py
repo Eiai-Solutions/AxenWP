@@ -217,7 +217,24 @@ def _agente_da_tela(db, location_id: str, channel: Optional[str] = None):
     q = db.query(AIAgent).filter(AIAgent.location_id == location_id)
     if channel:
         q = q.filter(AIAgent.channel == channel)
-    return q.order_by(AIAgent.id).first()
+    agente = q.order_by(AIAgent.id).first()
+
+    # Alias resolvido, como `ai_service` faz antes de usar a config. A linha-espelho
+    # criada por `link_channel` tem só name/prompt/linked_to_channel: sem resolver, a
+    # tela lia `qualification_fields=None` de um canal que, no runtime, usa os campos
+    # reais do agente apontado — e mostrava "sem qualificação" para um agente que
+    # qualifica.
+    alvo = getattr(agente, "linked_to_channel", None)
+    if agente is not None and alvo:
+        real = (
+            db.query(AIAgent)
+            .filter(AIAgent.location_id == location_id, AIAgent.channel == alvo)
+            .order_by(AIAgent.id)
+            .first()
+        )
+        if real is not None:
+            return real
+    return agente
 
 
 @router.get("/{location_id}/list")
@@ -318,7 +335,12 @@ async def delete_agent_by_channel(location_id: str, channel: str, agent_id: Opti
         q = q.filter(AIAgent.id == agent_id) if agent_id is not None else q.filter(AIAgent.channel == channel)
         agente = q.first()
         if agente is None:
-            return {"success": False, "error": "Agente nao encontrado."}
+            # Sucesso com `deleted: 0`, não erro. Remover uma aba de canal ainda NÃO
+            # SALVA (que existe só na tela) caía aqui: o front tratava como falha,
+            # mostrava alerta e não recarregava as abas — a aba fantasma ficava na
+            # tela com `ai_channel` apontando para ela. Não há nada a remover, e isso
+            # não é uma falha.
+            return {"success": True, "deleted": 0}
         if agente.channel == "whatsapp":
             # O guard vale pelo canal do agente ENCONTRADO, não pelo que o
             # chamador disse — senão passar `agent_id` contornaria a regra.

@@ -172,6 +172,9 @@ def restore_version(history_id: int) -> Optional[dict]:
 
         agent.prompt = version["prompt"]
         db.commit()
+        # Guardados ANTES de fechar a sessão: depois do `db.close()` o objeto está
+        # desanexado e tocar nos atributos levanta.
+        agente_id, agente_canal = agent.id, agent.channel
     except Exception as e:
         logger.error(f"Erro ao restaurar prompt versão {history_id}: {e}")
         db.rollback()
@@ -179,11 +182,16 @@ def restore_version(history_id: int) -> Optional[dict]:
     finally:
         db.close()
 
+    # `agent_id` e o canal do AGENTE, não os da versão restaurada. Sem isso a própria
+    # linha 'restore' nascia órfã (agent_id=None) — reintroduzindo, na versão mais
+    # recente, exatamente a ambiguidade que ler `agent_id` veio resolver. E o canal da
+    # versão pode ser antigo: quem manda é o agente onde o prompt foi de fato escrito.
     snapshot_prompt(
         location_id=version["location_id"],
-        channel=version["channel"],
+        channel=agente_canal,
         prompt=version["prompt"],
         source="restore",
+        agent_id=agente_id,
         note=f"Restaurado da versão #{history_id}",
     )
 

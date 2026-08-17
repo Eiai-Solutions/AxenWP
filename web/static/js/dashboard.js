@@ -305,14 +305,25 @@
         // Lista os agentes da instância PELO NOME. O endpoint `/list` já devolvia
         // id, name, channel, is_active e model — o front é que jogava tudo fora e
         // ficava só com `a.channel`.
+        let _listaAgentesFetchId = 0;
+
         async function _carregarListaDeAgentes() {
             const alvo = document.getElementById('itab_agentes_lista');
             const d = window._instanceSettingsData;
             if (!alvo || !d) return;
+            // Carimbo de requisicao, igual ao `_canaisFetchId` de `renderCanaisStatus`:
+            // `#itab_agentes_lista` e UM elemento compartilhado, entao abrir a
+            // instancia A e logo a B fazia a resposta atrasada de A pintar os agentes
+            // de A dentro do modal de B — e clicar levaria ao agente do outro cliente.
+            const meuId = ++_listaAgentesFetchId;
+            const loc = d.locationId;
+            const meu = () => meuId === _listaAgentesFetchId
+                && (window._instanceSettingsData || {}).locationId === loc;
             alvo.innerHTML = '<p class="text-[10px] text-gray-600 font-mono">carregando...</p>';
             try {
-                const r = await fetch(`/admin/agents/${encodeURIComponent(d.locationId)}/list`);
+                const r = await fetch(`/admin/agents/${encodeURIComponent(loc)}/list`);
                 const data = await r.json();
+                if (!meu()) return;
                 if (!data.success) {
                     alvo.innerHTML = '<p class="text-[11px] text-danger font-mono">nao consegui carregar os agentes</p>';
                     return;
@@ -324,30 +335,62 @@
                         a Mestre monta a partir do que voce contar sobre o negocio.</p>`;
                     return;
                 }
-                alvo.innerHTML = agentes.map(a => {
+                // MONTADO POR DOM, não por template string. O `name` do agente é texto
+                // livre (`agent_validators.py` só limita tamanho) e ia parar dentro de
+                // `title="…"`: uma aspa dupla no nome fechava o atributo e o resto virava
+                // ATRIBUTO do próprio <button> — `onmouseover=` executando no painel,
+                // que é a mesma página onde as chaves de API são renderizadas. Escapar
+                // só `<` não ajuda em contexto de atributo, e `_escapeHtml` deste arquivo
+                // também não trata aspas (é textContent→innerHTML). `setAttribute` +
+                // `textContent` é imune aos três contextos de uma vez — atributo, aspas
+                // simples do onclick, e conteúdo.
+                alvo.replaceChildren(...agentes.map(a => {
                     const meta = CHANNEL_LABELS[a.channel] || { label: a.channel, icon: '🔌' };
-                    // Ponto cheio = no ar; oco = pausado. Mesmo vocabulario da tela
-                    // de instancias, para o operador nao precisar reaprender.
-                    const ponto = a.is_active
-                        ? '<span class="w-2 h-2 rounded-full bg-brand-primary inline-block" title="No ar"></span>'
-                        : '<span class="w-2 h-2 rounded-full border border-gray-600 inline-block" title="Pausado"></span>';
-                    const alias = a.linked_to_channel
-                        ? `<span class="text-[9px] text-ocre font-mono uppercase ml-1" title="Usa a configuracao do canal ${a.linked_to_channel}">espelha ${a.linked_to_channel}</span>`
-                        : '';
-                    const nome = (a.name || 'Agente IA').replace(/</g, '&lt;');
-                    return `<button type="button" onclick="abrirAgente('${a.channel}')"
-                        title="Abrir prompt, modelo, voz e qualificacao de ${nome}"
-                        class="corrente w-full flex items-center gap-3 p-3 bg-[#211C17] border border-gray-800 hover:border-brand-primary/40 rounded-xl transition-all group text-left">
-                        <span class="w-8 h-8 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center flex-shrink-0">${meta.icon}</span>
-                        <span class="flex-1 min-w-0">
-                            <span class="text-sm font-bold text-white group-hover:text-brand-primary transition-colors block truncate">${nome}${alias}</span>
-                            <span class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">${meta.label}</span>
-                        </span>
-                        ${ponto}
-                    </button>`;
-                }).join('');
+                    const nome = a.name || 'Agente IA';
+
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = 'corrente w-full flex items-center gap-3 p-3 bg-[#211C17] border border-gray-800 hover:border-brand-primary/40 rounded-xl transition-all group text-left';
+                    btn.setAttribute('title', `Abrir prompt, modelo, voz e qualificacao de ${nome}`);
+                    btn.addEventListener('click', () => abrirAgente(a.channel));
+
+                    const icone = document.createElement('span');
+                    icone.className = 'w-8 h-8 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center flex-shrink-0';
+                    icone.textContent = meta.icon;
+
+                    const corpo = document.createElement('span');
+                    corpo.className = 'flex-1 min-w-0';
+
+                    const linhaNome = document.createElement('span');
+                    linhaNome.className = 'text-sm font-bold text-white group-hover:text-brand-primary transition-colors block truncate';
+                    linhaNome.textContent = nome;
+                    if (a.linked_to_channel) {
+                        const alias = document.createElement('span');
+                        alias.className = 'text-[9px] text-ocre font-mono uppercase ml-1';
+                        alias.setAttribute('title', `Usa a configuracao do canal ${a.linked_to_channel}`);
+                        alias.textContent = ` espelha ${a.linked_to_channel}`;
+                        linhaNome.appendChild(alias);
+                    }
+
+                    const linhaCanal = document.createElement('span');
+                    linhaCanal.className = 'text-[10px] text-gray-500 font-mono uppercase tracking-widest';
+                    linhaCanal.textContent = meta.label;
+
+                    corpo.append(linhaNome, linhaCanal);
+
+                    // Ponto cheio = no ar; oco = pausado. Mesmo vocabulário da tela de
+                    // instâncias, para o operador não precisar reaprender.
+                    const ponto = document.createElement('span');
+                    ponto.className = a.is_active
+                        ? 'w-2 h-2 rounded-full bg-brand-primary inline-block flex-shrink-0'
+                        : 'w-2 h-2 rounded-full border border-gray-600 inline-block flex-shrink-0';
+                    ponto.setAttribute('title', a.is_active ? 'No ar' : 'Pausado');
+
+                    btn.append(icone, corpo, ponto);
+                    return btn;
+                }));
             } catch (e) {
-                alvo.innerHTML = '<p class="text-[11px] text-danger font-mono">erro de rede</p>';
+                if (meu()) alvo.innerHTML = '<p class="text-[11px] text-danger font-mono">erro de rede</p>';
             }
         }
 
@@ -361,7 +404,12 @@
             if (!row) { alert('Nao encontrei a instancia na tela. Recarregue a pagina.'); return; }
             openAIAgentModal(row);
             try { await window._canaisCarregando; } catch (e) { /* a aba certa e best-effort */ }
-            if (channel && channel !== 'whatsapp') await switchChannel(channel);
+            // SEMPRE busca, inclusive no WhatsApp. Pular o fetch deixava o formulario
+            // com o que o Jinja gravou em `row.dataset.*` no CARREGAMENTO DA PAGINA:
+            // depois de publicar pelo wizard ou salvar noutra aba, a lista mostrava o
+            // nome novo e o formulario abria com o prompt velho — e salvar por cima
+            // desfazia a alteracao sem aviso.
+            if (channel) await switchChannel(channel);
         }
 
         function instanceAction(action) {
@@ -3118,7 +3166,12 @@
             const agentData = {
                 prompt: document.getElementById('ai_prompt').value,
                 model: document.getElementById('ai_model').value,
-                api_key: document.getElementById('ai_api_key').value
+                api_key: document.getElementById('ai_api_key').value,
+                // O backend le `agent_data["channel"]` para saber de QUAL agente
+                // pegar o `form_data` (que decide o guardrail de outbound). A tela
+                // nunca mandava, entao ele caia no agente de menor id — testar o
+                // Telegram aplicava a regra do WhatsApp.
+                channel: (document.getElementById('ai_channel') || {}).value || 'whatsapp'
             };
 
             // Loading bubble

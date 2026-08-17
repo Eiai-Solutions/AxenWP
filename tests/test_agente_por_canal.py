@@ -241,3 +241,88 @@ def test_versao_legada_sem_agent_id_ainda_restaura(dois_agentes, monkeypatch):
     tg = db.query(A).filter(A.location_id == LOC, A.channel == "telegram").first().prompt
     db.close()
     assert tg == "VERSAO ANTIGA", "historico legado ficou impossivel de restaurar"
+
+
+# ── Lacunas que a revisão adversarial pegou na própria correção ──
+
+def test_a_tela_resolve_o_alias_como_o_runtime_resolve(dois_agentes):
+    """
+    `ai_service` resolve `linked_to_channel` antes de usar a config. A tela não
+    resolvia: com Telegram espelhando o WhatsApp, ela lia a linha-espelho — que só
+    tem name/prompt/linked_to_channel — e mostrava "sem qualificação" para um
+    agente que, no runtime, qualifica.
+    """
+    from admin.ai_agent import _agente_da_tela
+
+    db = dois_agentes.Session()
+    try:
+        wpp = db.query(AIAgent).filter_by(location_id=LOC, channel="whatsapp").first()
+        wpp.qualification_fields = [{"label": "Qual o orcamento?", "key": "orcamento"}]
+        espelho = db.query(AIAgent).filter_by(location_id=LOC, channel="telegram").first()
+        espelho.linked_to_channel = "whatsapp"
+        espelho.qualification_fields = None
+        db.commit()
+
+        achado = _agente_da_tela(db, LOC, "telegram")
+        assert achado.channel == "whatsapp", "a tela leu o espelho, nao o agente real"
+        assert achado.qualification_fields[0]["label"] == "Qual o orcamento?"
+    finally:
+        db.close()
+
+
+def test_alias_apontando_para_canal_inexistente_nao_derruba(dois_agentes):
+    """Espelho órfão devolve a própria linha em vez de estourar."""
+    from admin.ai_agent import _agente_da_tela
+
+    db = dois_agentes.Session()
+    try:
+        espelho = db.query(AIAgent).filter_by(location_id=LOC, channel="telegram").first()
+        espelho.linked_to_channel = "canal_que_sumiu"
+        db.commit()
+
+        assert _agente_da_tela(db, LOC, "telegram").channel == "telegram"
+    finally:
+        db.close()
+
+
+def test_restore_grava_a_propria_snapshot_com_o_dono(tmp_path, monkeypatch):
+    """
+    A correção fez o restore LER `agent_id` para achar o dono — e a snapshot que ele
+    grava logo depois nascia com `agent_id=None`, reintroduzindo na versão mais
+    recente a ambiguidade que a leitura veio resolver.
+    """
+    import data.database as dbmod
+    import services.prompt_history as ph
+    from data.models import AgentPromptHistory
+
+    engine = create_engine(f"sqlite:///{tmp_path}/hist.db",
+                           connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    monkeypatch.setattr(dbmod, "SessionLocal", Session, raising=True)
+    monkeypatch.setattr(ph, "SessionLocal", Session, raising=True)
+
+    db = Session()
+    db.add(Tenant(location_id=LOC, company_name="X"))
+    ag = AIAgent(location_id=LOC, channel="whatsapp", name="Sofia", prompt="atual")
+    db.add(ag)
+    db.commit()
+    db.refresh(ag)
+    antiga = AgentPromptHistory(location_id=LOC, channel="whatsapp", agent_id=ag.id,
+                                source="manual_save", prompt="prompt antigo")
+    db.add(antiga)
+    db.commit()
+    hid, agente_id = antiga.id, ag.id
+    db.close()
+
+    assert ph.restore_version(hid) is not None
+
+    db = Session()
+    try:
+        nova = (db.query(AgentPromptHistory)
+                  .filter_by(source="restore").order_by(AgentPromptHistory.id.desc()).first())
+        assert nova is not None, "o restore nao gravou snapshot"
+        assert nova.agent_id == agente_id, "a snapshot do restore nasceu orfa"
+        assert nova.channel == "whatsapp"
+    finally:
+        db.close()
