@@ -83,6 +83,11 @@ class AIAgent(Base):
     id = Column(Integer, primary_key=True, index=True)
     location_id = Column(String, ForeignKey("tenants.location_id", ondelete="CASCADE"), index=True, nullable=False)
     channel = Column(String, nullable=False, default="whatsapp", server_default="whatsapp", index=True)
+    # A CONTA de canal em que este agente atende (`channel_accounts`). NULLABLE de
+    # propósito durante a transição: o backfill preenche, mas nada lê ainda — quem
+    # decide o roteamento continua sendo `(location_id, channel)` até todo call site
+    # endereçar por conta. Ver decisoes/multi-agente-plano-completo.
+    channel_account_id = Column(Integer, ForeignKey("channel_accounts.id"), nullable=True, index=True)
     # Se preenchido, este "agente" é apenas um alias e usa as configs do canal indicado
     # (ex: telegram linked_to_channel=whatsapp → mesmo prompt, mesmas chaves, mesmo form_data)
     linked_to_channel = Column(String, nullable=True)
@@ -517,5 +522,70 @@ class AgentDraft(Base):
     # 'rascunho' | 'publicado'. Publicado fica como histórico do que gerou o agente.
     status = Column(String(20), default="rascunho", server_default="rascunho", nullable=False)
     agent_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ChannelAccount(Base):
+    """
+    Uma CONTA de canal: um número de WhatsApp, um bot de Telegram.
+
+    Existe porque a instância guardava UMA credencial por canal, em colunas planas
+    do `Tenant` — então "dois números na mesma empresa" não tinha onde morar. Com
+    esta tabela, a instância passa a ter N conexões e o agente aponta para uma.
+
+    DUAS DECISÕES DO DONO estão codificadas aqui, e valem ser lidas antes de mexer:
+
+    1. **O provedor é herdado da instância**, não escolhido por conta: não existe
+       coluna `provider` aqui de propósito. Quem decide é `tenant.whatsapp_provider`,
+       como sempre foi, e `channel_policy` continua valendo. O preço aceito é que
+       migrar um número de Z-API para WAHA obriga migrar a instância inteira.
+    2. **Credencial em colunas tipadas**, não num JSON. As chaves do WAHA já estão
+       marcadas para cifrar em repouso; cifrar campo a campo é mais fino que cifrar
+       um blob, e auditar coluna é mais fácil que auditar JSON.
+
+    As colunas espelham `Tenant` 1:1 porque o backfill é cópia direta — e porque,
+    durante a transição, o `Tenant` continua sendo escrito (dual-write) para que um
+    rollback para o release anterior não perca credencial.
+    """
+
+    __tablename__ = "channel_accounts"
+    __table_args__ = (
+        # A chave natural. `external_ref` é o que o provedor usa para se referir à
+        # conta (instância Z-API, sessão WAHA, @username do bot) — é por ele que o
+        # webhook vai identificar quem recebeu a mensagem.
+        UniqueConstraint("location_id", "channel", "external_ref",
+                         name="uq_channel_account_ref"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    location_id = Column(
+        String, ForeignKey("tenants.location_id", ondelete="CASCADE"),
+        index=True, nullable=False,
+    )
+    channel = Column(String(20), nullable=False, index=True)
+    # O que o operador lê na tela ("Comercial — 11 99999"). Livre, porque derivar do
+    # número dá rótulo que ninguém reconhece na hora de escolher.
+    label = Column(String(120), nullable=True)
+    external_ref = Column(String(160), nullable=True)
+    # `server_default` além do `default`: o backfill da migration insere por SQL
+    # cru, sem passar pelo ORM, e sem default no BANCO o INSERT bate na constraint.
+    is_active = Column(Boolean, default=True, server_default="true", nullable=False)
+
+    # Z-API
+    zapi_instance_id = Column(String, nullable=True)
+    zapi_token = Column(String, nullable=True)
+    zapi_client_token = Column(String, nullable=True)
+
+    # WAHA
+    waha_base_url = Column(String, nullable=True)
+    waha_session = Column(String, nullable=True)
+    waha_engine = Column(String, nullable=True)
+    waha_api_key = Column(String, nullable=True)   # cifrar em repouso no WS1
+
+    # Telegram
+    telegram_bot_token = Column(String, nullable=True)
+    telegram_bot_username = Column(String, nullable=True)
+
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
