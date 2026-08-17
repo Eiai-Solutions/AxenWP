@@ -87,7 +87,10 @@ class AIAgent(Base):
     # propósito durante a transição: o backfill preenche, mas nada lê ainda — quem
     # decide o roteamento continua sendo `(location_id, channel)` até todo call site
     # endereçar por conta. Ver decisoes/multi-agente-plano-completo.
-    channel_account_id = Column(Integer, ForeignKey("channel_accounts.id"), nullable=True, index=True)
+    channel_account_id = Column(
+        Integer, ForeignKey("channel_accounts.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
     # Se preenchido, este "agente" é apenas um alias e usa as configs do canal indicado
     # (ex: telegram linked_to_channel=whatsapp → mesmo prompt, mesmas chaves, mesmo form_data)
     linked_to_channel = Column(String, nullable=True)

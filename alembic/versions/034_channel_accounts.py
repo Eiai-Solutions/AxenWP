@@ -111,6 +111,22 @@ def _backfill(bind) -> None:
     a trava é `UNIQUE(location_id, channel, external_ref)` e vários NULLs convivem
     em Postgres e SQLite. Preferível a pular a conta e deixar o agente órfão.
     """
+    from datetime import datetime, timezone
+    agora = datetime.now(timezone.utc)
+
+    def _cabe(valor, limite):
+        """
+        Trunca antes de inserir.
+
+        As colunas de origem no tenant sao `String` SEM tamanho; as de destino tem
+        limite. O SQLite ignora VARCHAR(n) e o Postgres RECUSA — e como a migration
+        roda no boot, um unico tenant com dado gordo tiraria o app do ar para todos,
+        com erro que nao diz de quem e a linha.
+        """
+        if valor is None:
+            return None
+        return str(valor)[:limite]
+
     tenants = bind.execute(sa.text("""
         SELECT location_id, company_name, whatsapp_provider,
                zapi_instance_id, zapi_token, zapi_client_token,
@@ -131,16 +147,16 @@ def _backfill(bind) -> None:
         if provedor == "waha" and (t["waha_base_url"] or t["waha_session"]):
             contas.append({
                 "channel": "whatsapp",
-                "label": f"WhatsApp — {empresa}",
-                "external_ref": t["waha_session"],
+                "label": _cabe(f"WhatsApp — {empresa}", 120),
+                "external_ref": _cabe(t["waha_session"], 160),
                 "waha_base_url": t["waha_base_url"], "waha_session": t["waha_session"],
                 "waha_engine": t["waha_engine"], "waha_api_key": t["waha_api_key"],
             })
         elif provedor != "waha" and t["zapi_instance_id"]:
             contas.append({
                 "channel": "whatsapp",
-                "label": f"WhatsApp — {empresa}",
-                "external_ref": t["zapi_instance_id"],
+                "label": _cabe(f"WhatsApp — {empresa}", 120),
+                "external_ref": _cabe(t["zapi_instance_id"], 160),
                 "zapi_instance_id": t["zapi_instance_id"], "zapi_token": t["zapi_token"],
                 "zapi_client_token": t["zapi_client_token"],
             })
@@ -148,8 +164,8 @@ def _backfill(bind) -> None:
         if t["telegram_bot_token"]:
             contas.append({
                 "channel": "telegram",
-                "label": f"Telegram — {t['telegram_bot_username'] or empresa}",
-                "external_ref": t["telegram_bot_username"],
+                "label": _cabe(f"Telegram — {t['telegram_bot_username'] or empresa}", 120),
+                "external_ref": _cabe(t["telegram_bot_username"], 160),
                 "telegram_bot_token": t["telegram_bot_token"],
                 "telegram_bot_username": t["telegram_bot_username"],
             })
@@ -165,8 +181,13 @@ def _backfill(bind) -> None:
             else:
                 # `is_active` explícito: este INSERT é SQL cru e não passa pelo
                 # `default=True` do ORM.
-                colunas = ["location_id", "is_active"] + list(conta.keys())
-                valores = {"location_id": loc, "is_active": True, **conta}
+                # `is_active` e as datas explicitos: este INSERT e SQL cru e nao
+                # passa pelos defaults do ORM. Sem isto a conta nasce sem data de
+                # criacao, e essa informacao nao da para reconstruir depois.
+                fixos = {"location_id": loc, "is_active": True,
+                         "created_at": agora, "updated_at": agora}
+                colunas = list(fixos.keys()) + list(conta.keys())
+                valores = {**fixos, **conta}
                 bind.execute(
                     sa.text(
                         f"INSERT INTO channel_accounts ({', '.join(colunas)}) "
