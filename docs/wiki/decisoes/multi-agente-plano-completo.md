@@ -281,3 +281,53 @@ Ordenado por "quanto tempo até alguém notar".
 3. **Fase 1** — id como identidade + lista por nome. **Entrega o pedido visível**, reversível, sem migration de dados. Inclui a correção grátis do `prompt_history`.
 4. **Dono responde D1–D7.** D2 (GHL) é a que pode inviabilizar a metade B como produto.
 5. **Fases 2→6** — só depois das respostas, nesta ordem: schema → inbound → outbound → escopos → wizard. Cada fase é deployável isolada, com dual-write como rede.
+---
+
+## Decisões TOMADAS pelo dono (2026-08-17)
+
+Respostas dadas em conversa, na numeração deste arquivo. O que não está aqui segue aberto.
+
+### D3 — memória: **DUAS** (separada por canal e número)
+> *"o histórico de conversa vai ser separado por canal e numero se for o caso"*
+
+Confirma o caminho caro: a chave de `chat_memory` muda **e** `_add_message_sync` re-deriva o
+`location_id` com `split("_", 1)` — o segmento novo tem que vir **depois** do location_id.
+`{location_id}_{account}_{phone}` quebra; `{location_id}_{phone}@{account}` não. Chaves antigas
+precisam continuar legíveis.
+
+### D4 — pausa: **só na conversa onde a qualificação ocorreu**
+> *"o lead vai ser um só quando for para a mesma empresa, o ia vai ter acesso as informações do lead"*
+
+Esta é a decisão que **separa duas coisas que o `QualifiedLead` hoje acumula**:
+
+| hoje, numa coluna só | depois |
+|---|---|
+| registro da qualificação (dado) | **compartilhado** por empresa — qualquer agente lê |
+| gate que pausa a IA (handoff) | **por conversa** — vale só no canal/número onde aconteceu |
+
+`UniqueConstraint("location_id","phone")` **permanece** — o lead continua um só. O que sai de
+lá é o gate: `inbound_pipeline.py:388` e `qualification_engine.py:43-55` param de tratar
+"existe QualifiedLead" como "IA calada em toda parte". Sem isso, qualificar pelo comercial
+silencia o suporte e ninguém relaciona a causa.
+
+### D5 — um contato no CRM
+Carimbado: `ContactMapping` PK `location_id + phone` permanece. Deixa de ser premissa implícita.
+
+### D7 — fora de escopo
+Dois agentes **na mesma conta** (roteador de intenção) não entra. "Mais de um agente" significa
+contas diferentes.
+
+### Decisões extras, fora da numeração deste arquivo
+
+- **Provedor por conta? NÃO — a conta herda o da instância.** `channel_policy` sobrevive quase
+  intacta e os locks da tela ficam. Encolhe bastante a Fase 2. O preço: migrar um número de
+  Z-API para WAHA obriga migrar a instância inteira.
+- **Credencial da conta: COLUNAS TIPADAS**, não JSON. As chaves do WAHA já estão marcadas para
+  *cifrar em repouso* (`data/models.py:32`); cifrar campo a campo é mais fino que cifrar um blob,
+  e auditar coluna é mais fácil que auditar JSON.
+
+### Ainda em aberto
+
+- **D2** (espelho no CRM: um conversation provider por conta, inferir, ou só a primária espelha)
+  — a mais dura, e a única com incógnita externa que não deu para verificar.
+- **D6** (dois bots de Telegram entram no escopo?) — se não, economiza uma fase inteira.
