@@ -208,6 +208,19 @@ uma hora antes do deploy das **18:52**, e tinha `buscas_web=None` no estado — 
 pelo código antigo. Foi isso que separou "bug meu de agora" de "bug preexistente que
 o deploy expôs". Ler a linha no banco custou menos que teorizar.
 
+**E reabrir sem recomeçar também não servia.** Corrigir o 502 deixou o outro lado
+do problema à mostra: o token vive no `localStorage` de propósito (fechar a aba e
+voltar não pode regastar), mas não havia saída — o link devolvia a conversa antiga
+para sempre, inclusive depois de concluída. Hoje há "Começar de novo", que só
+aparece quando **a pessoa já respondeu algo** (na saudação não há o que descartar)
+e que também aparece **quando o turno falha**: com teto estourado ou entrevista
+sumida do servidor, insistir no mesmo token só repete o erro.
+
+**A resposta chegava quebrada no meio da frase.** Com citações — o que a busca na
+web produz — a resposta vem em vários blocos de texto CONTÍGUOS, um por trecho
+citado, e o código juntava com `\n`: *"…nas Américas / , com / fabricação de
+talheres"*. A Mestre parecia quebrada exatamente quando acertava.
+
 Resto anotado: `interview_session.carregar_para_exibir` existe exatamente para
 reabrir sem gastar LLM, e continua **sem endpoint que a chame**.
 

@@ -159,11 +159,16 @@
             $form.classList.add('hidden');
         }
 
-        // Só aparece quando há conversa para descartar — num começo em branco o
-        // botão seria ruído, e ainda daria a impressão de que algo ficou pendurado.
+        // Só aparece quando há o que DESCARTAR, e o que conta é a pessoa ter
+        // respondido: na saudação inicial ainda não há nada para perder, e um botão
+        // de descarte ali é ruído — dá a impressão de que algo ficou pendurado.
         function mostrarRecomecar(temConversa) {
             const $b = document.getElementById('recomecar');
             if ($b) $b.classList.toggle('hidden', !temConversa);
+        }
+
+        function jaRespondeu(historico) {
+            return (historico || []).some(m => m.de === 'usuario');
         }
 
         function recomecar() {
@@ -204,7 +209,7 @@
                     localStorage.setItem(CHAVE, token);
                 }
                 render(d.historico);
-                mostrarRecomecar((d.historico || []).length > 0);
+                mostrarRecomecar(jaRespondeu(d.historico));
                 if (d.concluida) encerrar();
             } catch (e) {
                 falhou('Falha de conexão. Verifique a internet e tente de novo.');
