@@ -202,6 +202,24 @@ async def save_agent_settings(
     finally:
         db.close()
 
+def _agente_da_tela(db, location_id: str, channel: Optional[str] = None):
+    """
+    O agente que uma tela POR INSTÂNCIA deve usar.
+
+    Estas telas (conversas, progresso de qualificação, tester) são de instância, não
+    de canal — mas leem config que é POR AGENTE. Com um agente só, tanto faz; com
+    dois, o `.first()` sem ordem escolhia um arbitrário e a tela mostrava o campo de
+    qualificação do agente errado.
+
+    Enquanto não há seletor de agente nessas telas, a regra é: usa o canal pedido se
+    vier; senão, o de MENOR id — determinístico, e é o primeiro que o operador criou.
+    """
+    q = db.query(AIAgent).filter(AIAgent.location_id == location_id)
+    if channel:
+        q = q.filter(AIAgent.channel == channel)
+    return q.order_by(AIAgent.id).first()
+
+
 @router.get("/{location_id}/list")
 async def list_agents(location_id: str):
     """Lista todos os agentes (canais) configurados para um tenant."""
@@ -450,7 +468,8 @@ async def get_ghl_custom_fields(location_id: str, model: str = "all"):
 
 
 @router.get("/{location_id}/conversations")
-async def get_conversations(location_id: str, offset: int = 0, limit: int = 20):
+async def get_conversations(location_id: str, offset: int = 0, limit: int = 20,
+                            channel: Optional[str] = None):
     """Retorna lista de conversas agrupadas por contato, paginadas."""
     from sqlalchemy import func, desc
     db = SessionLocal()
@@ -505,8 +524,8 @@ async def get_conversations(location_id: str, offset: int = 0, limit: int = 20):
                 "qualified": qualified_map.get(phone),
             })
 
-        # Buscar campos de qualificação do agente
-        agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
+        # Campos de qualificação do agente (ver `_agente_da_tela` sobre a escolha).
+        agent = _agente_da_tela(db, location_id, channel)
         qual_fields = agent.qualification_fields if agent and agent.qualification_fields else []
 
         return {
@@ -558,7 +577,8 @@ async def get_conversation_messages(location_id: str, phone: str, offset: int = 
 
 
 @router.get("/{location_id}/conversations/{phone}/progress")
-async def get_qualification_progress(location_id: str, phone: str):
+async def get_qualification_progress(location_id: str, phone: str,
+                                     channel: Optional[str] = None):
     """
     Retorna o progresso de qualificação de um lead.
     - Se qualificado: retorna os dados confirmados do QualifiedLead
@@ -567,7 +587,7 @@ async def get_qualification_progress(location_id: str, phone: str):
     from services.qualification_engine import qual_progress_cache as _qual_progress_cache
     db = SessionLocal()
     try:
-        agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
+        agent = _agente_da_tela(db, location_id, channel)
         qual_fields = agent.qualification_fields if agent and agent.qualification_fields else []
         if not qual_fields:
             return {"success": True, "progress": {}, "qualified": False}
@@ -1131,7 +1151,7 @@ async def test_ai_agent(location_id: str, request: Request):
             agent_mode = "inbound"
             try:
                 db = SessionLocal()
-                agent_db = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
+                agent_db = _agente_da_tela(db, location_id, agent_data.get("channel"))
                 if agent_db and agent_db.form_data:
                     agent_mode = agent_db.form_data.get("agent_type", "inbound")
                 db.close()

@@ -92,13 +92,21 @@ def split_chunks(text: str) -> list:
     return chunks or ([text.strip()] if text and text.strip() else [])
 
 
-def _debounce_seconds(location_id: str) -> float:
+def _debounce_seconds(location_id: str, channel: str) -> float:
     from data.database import SessionLocal
     from data.models import AIAgent
 
     db = SessionLocal()
     try:
-        agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
+        # FILTRA O CANAL. Sem isto, o debounce de um agente qualquer da instância
+        # valia para todos — bastava existir um agente de Telegram para o WhatsApp
+        # passar a usar o tempo dele. Latente enquanto há um agente só; ativa no
+        # minuto em que o segundo é criado.
+        agent = (
+            db.query(AIAgent)
+            .filter(AIAgent.location_id == location_id, AIAgent.channel == channel)
+            .first()
+        )
         if agent and agent.debounce_seconds is not None:
             return float(agent.debounce_seconds)
     except Exception:
@@ -377,7 +385,8 @@ async def _log_outbound_ia(adapter, pm: ParsedMessage, contact_id: Optional[str]
 
 # ── Gate da IA ──
 
-async def ai_is_enabled(tenant, location_id: str, sender_id: str, contact_id: Optional[str]) -> bool:
+async def ai_is_enabled(tenant, location_id: str, sender_id: str, contact_id: Optional[str],
+                        channel: str = "whatsapp") -> bool:
     """whatsapp_only decide pelo agente + lead já qualificado; modo CRM decide pelo campo do contato."""
     if getattr(tenant, "mode", "ghl") == "whatsapp_only":
         from data.database import SessionLocal
@@ -385,7 +394,14 @@ async def ai_is_enabled(tenant, location_id: str, sender_id: str, contact_id: Op
 
         db = SessionLocal()
         try:
-            agent = db.query(AIAgent).filter(AIAgent.location_id == location_id).first()
+            # FILTRA O CANAL. Este era o pior dos dois: sem canal, `is_active` vinha
+            # de um agente arbitrário da instância — pausar o agente do Telegram
+            # podia DESLIGAR A IA DO WHATSAPP, sem erro nenhum no log.
+            agent = (
+                db.query(AIAgent)
+                .filter(AIAgent.location_id == location_id, AIAgent.channel == channel)
+                .first()
+            )
             if not (agent and agent.is_active):
                 return False
             ja_qualificado = db.query(QualifiedLead).filter(
@@ -534,7 +550,7 @@ def _agendar_ia(adapter, tenant, pm: ParsedMessage, contact_id: Optional[str]) -
             return
 
     _message_buffers.setdefault(contact_key, []).append((pm.text, pm.is_audio, pm.audio_url))
-    _debounce_config[contact_key] = _debounce_seconds(pm.location_id)
+    _debounce_config[contact_key] = _debounce_seconds(pm.location_id, pm.channel)
 
     anterior = _pending_tasks.get(contact_key)
     if anterior and not anterior.done():
@@ -597,7 +613,7 @@ async def handle_inbound(adapter, tenant, pm: ParsedMessage) -> None:
     await _log_inbound(adapter, tenant, pm, contact_id)
 
     try:
-        if await ai_is_enabled(tenant, pm.location_id, pm.sender_id, contact_id):
+        if await ai_is_enabled(tenant, pm.location_id, pm.sender_id, contact_id, pm.channel):
             _agendar_ia(adapter, tenant, pm, contact_id)
     except Exception as e:
         logger.error(f"Erro ao agendar o motor de IA: {e}")
