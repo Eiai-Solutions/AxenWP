@@ -23,6 +23,8 @@ Cérebro externo do projeto. O código é a fonte da verdade; aqui mora o **porq
 - [[decisoes/log-de-mensagens]] — log próprio de mensagens como base do painel de chat · status:solid
 - [[decisoes/isolamento-operador-cliente]] — Organization + papel + barreira no router; a ordem que evita o vazamento · status:solid
 - [[decisoes/entrevista-da-mestre]] — entrevista e formulário convergem num gerador só; a entrevista vira submission; a Mestre pesquisa CNPJ/site com blindagem de SSRF · status:solid
+- [[decisoes/multiplos-agentes-por-instancia]] — listar agentes por nome (no ar); duas contas no mesmo canal exige o conceito de CONTA, que nao existe · status:parcial
+- [[decisoes/multi-agente-plano-completo]] — o plano faseado de 92 pontos, com as 7 decisoes do dono · status:proposta
 - [[decisoes/wizard-de-criacao-de-agente]] — as etapas são função pura do tenant; sem CRM a qualificação muda de variante, não some; derivar nunca copiar · status:solid
 
 ## Fluxos
