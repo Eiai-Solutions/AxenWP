@@ -424,7 +424,19 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
             from data.models import AIAgent as _AIAgent2, QualifiedLead as _QL2
             _db2 = _SL2()
             try:
-                _agent2 = _db2.query(_AIAgent2).filter(_AIAgent2.location_id == location_id).first()
+                # FILTRA O CANAL. Este receiver é a cópia Z-API do caminho de
+                # entrada, e atende SÓ WhatsApp. Sem o filtro, `.first()` podia
+                # devolver o agente de Telegram: pausar o Telegram DESLIGAVA A IA
+                # DO WHATSAPP, sem um erro no log. O gêmeo deste bug foi corrigido
+                # em `inbound_pipeline.ai_is_enabled`; esta cópia ficou para trás.
+                _agent2 = (
+                    _db2.query(_AIAgent2)
+                    .filter(
+                        _AIAgent2.location_id == location_id,
+                        _AIAgent2.channel == "whatsapp",
+                    )
+                    .first()
+                )
                 is_ai_active = bool(_agent2 and _agent2.is_active)
                 # Se ativo, verificar se o lead já foi qualificado (desativa IA para este contato)
                 if is_ai_active:
@@ -447,7 +459,17 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
             from data.models import AIAgent as _AIAgent
             _db = _SL()
             try:
-                _agent = _db.query(_AIAgent).filter(_AIAgent.location_id == location_id).first()
+                # Mesmo motivo do bloco acima: a janela de debounce é POR AGENTE, e
+                # este caminho é só WhatsApp. Sem o filtro, bastava existir um
+                # agente de Telegram para o WhatsApp passar a usar o tempo dele.
+                _agent = (
+                    _db.query(_AIAgent)
+                    .filter(
+                        _AIAgent.location_id == location_id,
+                        _AIAgent.channel == "whatsapp",
+                    )
+                    .first()
+                )
                 debounce = float(_agent.debounce_seconds) if _agent and _agent.debounce_seconds is not None else DEFAULT_DEBOUNCE_SECONDS
             except Exception:
                 debounce = DEFAULT_DEBOUNCE_SECONDS

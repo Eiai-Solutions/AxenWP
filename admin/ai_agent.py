@@ -300,19 +300,35 @@ async def get_agent_by_channel(location_id: str, channel: str = "whatsapp"):
 
 
 @router.delete("/{location_id}/agent")
-async def delete_agent_by_channel(location_id: str, channel: str):
-    """Remove um agente especifico por canal."""
-    if channel == "whatsapp":
+async def delete_agent_by_channel(location_id: str, channel: str, agent_id: Optional[int] = None):
+    """
+    Remove UM agente. `agent_id` endereça direto; `channel` continua aceito.
+
+    Antes isto era `.filter(...).delete()` — delete de CONJUNTO, não de registro.
+    Hoje a trava `UNIQUE(location_id, channel)` garante que o conjunto tem no
+    máximo um elemento, então o estrago é invisível; no dia em que houver dois
+    agentes no mesmo canal, um clique em "remover" apaga os dois. Deletar é
+    irreversível e não avisa — é o pior lugar para deixar essa forma de query.
+    """
+    if channel == "whatsapp" and agent_id is None:
         return {"success": False, "error": "Nao e permitido deletar o agente do canal principal (whatsapp)."}
     db = SessionLocal()
     try:
-        deleted = db.query(AIAgent).filter(
-            AIAgent.location_id == location_id,
-            AIAgent.channel == channel,
-        ).delete()
+        q = db.query(AIAgent).filter(AIAgent.location_id == location_id)
+        q = q.filter(AIAgent.id == agent_id) if agent_id is not None else q.filter(AIAgent.channel == channel)
+        agente = q.first()
+        if agente is None:
+            return {"success": False, "error": "Agente nao encontrado."}
+        if agente.channel == "whatsapp":
+            # O guard vale pelo canal do agente ENCONTRADO, não pelo que o
+            # chamador disse — senão passar `agent_id` contornaria a regra.
+            return {"success": False, "error": "Nao e permitido deletar o agente do canal principal (whatsapp)."}
+
+        rotulo = f"{agente.name} ({agente.channel}, id={agente.id})"
+        db.delete(agente)
         db.commit()
-        logger.info(f"Agente {channel} removido para tenant {location_id}. Registros: {deleted}")
-        return {"success": True, "deleted": deleted}
+        logger.info(f"Agente {rotulo} removido para tenant {location_id}.")
+        return {"success": True, "deleted": 1}
     except Exception as e:
         db.rollback()
         logger.error(f"Erro ao remover agente: {e}")

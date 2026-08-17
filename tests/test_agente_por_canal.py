@@ -110,3 +110,134 @@ def test_a_tela_escolhe_agente_de_forma_deterministica(dois_agentes):
         assert _agente_da_tela(db, LOC, "instagram") is None
     finally:
         db.close()
+
+
+# ── A cópia Z-API do caminho de entrada ──
+# `zapi_receiver` é um segundo caminho de WhatsApp, fora do pipeline compartilhado.
+# Os dois bugs acima foram corrigidos lá e ficaram de pé AQUI.
+
+def test_zapi_le_o_agente_do_whatsapp_e_nao_o_primeiro_que_aparecer(dois_agentes, monkeypatch):
+    """
+    REGRESSÃO — o mesmo kill-switch, na cópia que ficou para trás.
+
+    Com o Telegram PAUSADO e o WhatsApp ATIVO, `.first()` sem filtro devolvia o
+    Telegram e a IA do WhatsApp nascia desligada. Nenhum erro no log: o lead
+    simplesmente deixa de ser atendido.
+    """
+    import data.database as dbmod
+    from data.models import AIAgent as A
+
+    db = dbmod.SessionLocal()
+    try:
+        pausado = (
+            db.query(A)
+            .filter(A.location_id == LOC, A.channel == "whatsapp")
+            .first()
+        )
+        assert pausado is not None and pausado.is_active is True
+        # O de Telegram existe, está pausado, e foi inserido primeiro.
+        tg = db.query(A).filter(A.location_id == LOC, A.channel == "telegram").first()
+        assert tg.is_active is False
+    finally:
+        db.close()
+
+    import webhooks.zapi_receiver as zr
+    import inspect
+
+    fonte = inspect.getsource(zr.process_inbound_message)
+    # As duas queries de AIAgent deste caminho precisam declarar o canal.
+    consultas = fonte.count("_AIAgent2.location_id == location_id") + \
+        fonte.count("_AIAgent.location_id == location_id")
+    canais = fonte.count('_AIAgent2.channel == "whatsapp"') + \
+        fonte.count('_AIAgent.channel == "whatsapp"')
+    assert consultas == canais == 2, (
+        f"{consultas} consultas de agente, {canais} com filtro de canal — "
+        "toda consulta neste caminho tem que declarar o canal"
+    )
+
+
+# ── Deletar é irreversível: tem que ser de UM registro ──
+
+def test_deletar_agente_nao_apaga_o_conjunto(dois_agentes, monkeypatch):
+    """
+    REGRESSÃO — era `.filter(...).delete()`, delete de CONJUNTO. Hoje a trava
+    UNIQUE esconde o estrago; com dois agentes no mesmo canal, um clique em
+    "remover" apagaria os dois. Sem volta e sem aviso.
+    """
+    import inspect
+    import admin.ai_agent as aa
+
+    # Só o CÓDIGO: o docstring da função cita `.delete()` justamente para explicar
+    # o bug, e olhar a fonte crua faria o teste acusar a própria documentação.
+    fonte = inspect.getsource(aa.delete_agent_by_channel)
+    corpo = "\n".join(
+        l for l in fonte.splitlines()
+        if not l.lstrip().startswith(("#", '"""', "Antes isto")) 
+    ).split('"""')[-1]
+
+    assert ").delete()" not in corpo, "voltou a deletar por filtro, não por registro"
+    assert "db.delete(agente)" in fonte, "precisa deletar o registro encontrado"
+    assert "agente.channel ==" in fonte, \
+        "o guard do canal principal precisa valer pelo agente ENCONTRADO, senão agent_id o contorna"
+
+
+# ── Restaurar prompt no agente certo ──
+
+def test_restaurar_versao_obedece_ao_agent_id_e_nao_ao_canal(dois_agentes, monkeypatch):
+    """
+    REGRESSÃO — `restore_version` achava o agente por (location_id, channel) e
+    pegava o `.first()`. O prompt É o agente: restaurar no errado troca a persona
+    de quem está atendendo, por cima de produção e em silêncio.
+
+    A versão gravada aqui aponta para o agente de TELEGRAM (`agent_id`) mas carrega
+    `channel="whatsapp"`. É construído assim de propósito: enquanto a trava
+    `UNIQUE(location_id, channel)` existir não dá para ter dois agentes no mesmo
+    canal, e sem divergir os dois campos o fallback por canal acertaria por sorte —
+    o teste passaria sem a correção, que foi o que aconteceu na primeira versão
+    deste arquivo. Divergindo, ele mede a única coisa que interessa: quem manda é
+    o `agent_id`.
+    """
+    import data.database as dbmod
+    import services.prompt_history as ph
+    from data.models import AIAgent as A
+
+    monkeypatch.setattr(ph, "SessionLocal", dbmod.SessionLocal, raising=True)
+
+    db = dbmod.SessionLocal()
+    wa = db.query(A).filter(A.location_id == LOC, A.channel == "whatsapp").first()
+    tg = db.query(A).filter(A.location_id == LOC, A.channel == "telegram").first()
+    wa_id, tg_id = wa.id, tg.id
+    db.close()
+
+    vid = ph.snapshot_prompt(location_id=LOC, channel="whatsapp",
+                             prompt="PROMPT QUE PERTENCE AO BOT DE TELEGRAM",
+                             source="manual_save", agent_id=tg_id)
+    assert vid, "nao gravou a snapshot"
+
+    assert ph.restore_version(vid) is not None
+
+    db = dbmod.SessionLocal()
+    depois_wa = db.query(A).filter(A.id == wa_id).first().prompt
+    depois_tg = db.query(A).filter(A.id == tg_id).first().prompt
+    db.close()
+
+    assert depois_tg == "PROMPT QUE PERTENCE AO BOT DE TELEGRAM", "nao restaurou no dono da versao"
+    assert depois_wa == "p", "restaurou no agente errado — trocou a persona de quem atende"
+
+
+def test_versao_legada_sem_agent_id_ainda_restaura(dois_agentes, monkeypatch):
+    """O fallback por canal precisa sobreviver: histórico gravado antes da coluna."""
+    import data.database as dbmod
+    import services.prompt_history as ph
+    from data.models import AIAgent as A
+
+    monkeypatch.setattr(ph, "SessionLocal", dbmod.SessionLocal, raising=True)
+
+    vid = ph.snapshot_prompt(location_id=LOC, channel="telegram",
+                             prompt="VERSAO ANTIGA", source="manual_save")
+    assert ph.restore_version(vid) is not None
+
+    db = dbmod.SessionLocal()
+    tg = db.query(A).filter(A.location_id == LOC, A.channel == "telegram").first().prompt
+    db.close()
+    assert tg == "VERSAO ANTIGA", "historico legado ficou impossivel de restaurar"

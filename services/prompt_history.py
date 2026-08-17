@@ -152,14 +152,21 @@ def restore_version(history_id: int) -> Optional[dict]:
 
     db = SessionLocal()
     try:
-        agent = (
-            db.query(AIAgent)
-            .filter(
-                AIAgent.location_id == version["location_id"],
-                AIAgent.channel == version["channel"],
-            )
-            .first()
-        )
+        # Restaura no agente que ORIGINOU a versão, quando sabemos qual é.
+        # `agent_id` já era gravado em toda snapshot e nunca era lido de volta:
+        # a busca por (location_id, channel) devolvia o `.first()`, e restaurar
+        # uma versão escrevia o prompt em QUALQUER agente daquele canal. Como o
+        # prompt é o que o agente é, restaurar no errado troca a persona de quem
+        # está atendendo — em silêncio, e por cima de produção.
+        #
+        # Fallback por (location_id, channel) para as versões antigas, gravadas
+        # antes de a coluna existir: sem ele, o histórico legado ficaria
+        # impossível de restaurar.
+        q = db.query(AIAgent).filter(AIAgent.location_id == version["location_id"])
+        if version.get("agent_id"):
+            agent = q.filter(AIAgent.id == version["agent_id"]).first()
+        else:
+            agent = q.filter(AIAgent.channel == version["channel"]).first()
         if not agent:
             return None
 
