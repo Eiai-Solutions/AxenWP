@@ -65,9 +65,25 @@ Prefixo (system + tools) estável e marcado com `cache_control`. Há teste que *
 o prefixo variar entre turnos** — variação invalida o cache em silêncio e o custo
 triplica.
 
-Tetos: 40 turnos e 60k tokens de saída por entrevista, mais rate limit de 20/min por IP
-na rota. Não é paranoia: a decisão de produto foi expor a entrevista no **link público
-anônimo**, gastando a nossa chave Anthropic.
+**Os tetos por entrevista existem, mas hoje estão DESLIGADOS** (decisão do Luiz,
+2026-08-17: *"a entrevista não precisa ter limite por enquanto, depois eu defino o
+limite no painel admin"*). Em vez de sumirem do código, viraram configuração com
+default `0` = sem limite (`ENTREVISTA_MAX_TURNOS`, `_MAX_TOKENS_SAIDA`,
+`_MAX_PESQUISAS`, `_MAX_BUSCAS_WEB`) — quando o painel existir, ele só escreve o
+número, sem reescrever a lógica.
+
+O que a decisão implica, registrado porque não é óbvio: a rota é **pública e
+anônima** e gasta a nossa chave Anthropic. Com tudo em `0`, o único freio que
+continua de pé é o **rate limit de 20/min por IP** — ele segura abuso automatizado,
+não uso lento e contínuo.
+
+**A pegadinha que veio junto:** `MAX_TURNOS` também segurava, de carona, o LAÇO
+INTERNO de `avancar`. `pause_turn` e tool_use podem em tese se repetir
+indefinidamente dentro de um único turno, e com os tetos em `0` não sobraria nada
+barrando isso — o request nunca responderia e a tela ficaria em "digitando…" para
+sempre. Daí `MAX_VOLTAS_NO_LOOP = 24`, **não configurável de propósito**: é limite
+de engenharia, não decisão de produto. A lição geral: **antes de desligar um limite,
+procure quem mais dependia dele sem dizer.**
 
 ## O escopo é o risco desta rota
 
