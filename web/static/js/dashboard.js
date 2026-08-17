@@ -282,6 +282,9 @@
             document.querySelectorAll('.instance-panel').forEach(p => p.classList.add('hidden'));
             const panel = document.getElementById('itab-' + tab);
             if (panel) panel.classList.remove('hidden');
+            // A lista é carregada ao ABRIR a aba, não ao abrir o modal: publicar um
+            // agente novo pelo wizard e voltar aqui precisa mostrar o agente novo.
+            if (tab === 'agente') _carregarListaDeAgentes();
 
             document.querySelectorAll('.instance-tab').forEach(b => {
                 const on = b.dataset.itab === tab;
@@ -297,6 +300,68 @@
             const ch = window._instanceChannels;
             if (!ch || ch.locationId !== locationId || !ch.providers) return {};
             return ch.providers[name] || {};
+        }
+
+        // Lista os agentes da instância PELO NOME. O endpoint `/list` já devolvia
+        // id, name, channel, is_active e model — o front é que jogava tudo fora e
+        // ficava só com `a.channel`.
+        async function _carregarListaDeAgentes() {
+            const alvo = document.getElementById('itab_agentes_lista');
+            const d = window._instanceSettingsData;
+            if (!alvo || !d) return;
+            alvo.innerHTML = '<p class="text-[10px] text-gray-600 font-mono">carregando...</p>';
+            try {
+                const r = await fetch(`/admin/agents/${encodeURIComponent(d.locationId)}/list`);
+                const data = await r.json();
+                if (!data.success) {
+                    alvo.innerHTML = '<p class="text-[11px] text-danger font-mono">nao consegui carregar os agentes</p>';
+                    return;
+                }
+                const agentes = data.agents || [];
+                if (!agentes.length) {
+                    alvo.innerHTML = `<p class="text-[11px] text-gray-500 leading-relaxed">
+                        Nenhum agente ainda. Use <strong class="text-white">Criar agente</strong> acima —
+                        a Mestre monta a partir do que voce contar sobre o negocio.</p>`;
+                    return;
+                }
+                alvo.innerHTML = agentes.map(a => {
+                    const meta = CHANNEL_LABELS[a.channel] || { label: a.channel, icon: '🔌' };
+                    // Ponto cheio = no ar; oco = pausado. Mesmo vocabulario da tela
+                    // de instancias, para o operador nao precisar reaprender.
+                    const ponto = a.is_active
+                        ? '<span class="w-2 h-2 rounded-full bg-brand-primary inline-block" title="No ar"></span>'
+                        : '<span class="w-2 h-2 rounded-full border border-gray-600 inline-block" title="Pausado"></span>';
+                    const alias = a.linked_to_channel
+                        ? `<span class="text-[9px] text-ocre font-mono uppercase ml-1" title="Usa a configuracao do canal ${a.linked_to_channel}">espelha ${a.linked_to_channel}</span>`
+                        : '';
+                    const nome = (a.name || 'Agente IA').replace(/</g, '&lt;');
+                    return `<button type="button" onclick="abrirAgente('${a.channel}')"
+                        title="Abrir prompt, modelo, voz e qualificacao de ${nome}"
+                        class="corrente w-full flex items-center gap-3 p-3 bg-[#211C17] border border-gray-800 hover:border-brand-primary/40 rounded-xl transition-all group text-left">
+                        <span class="w-8 h-8 rounded-lg bg-gray-850 border border-gray-800 flex items-center justify-center flex-shrink-0">${meta.icon}</span>
+                        <span class="flex-1 min-w-0">
+                            <span class="text-sm font-bold text-white group-hover:text-brand-primary transition-colors block truncate">${nome}${alias}</span>
+                            <span class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">${meta.label}</span>
+                        </span>
+                        ${ponto}
+                    </button>`;
+                }).join('');
+            } catch (e) {
+                alvo.innerHTML = '<p class="text-[11px] text-danger font-mono">erro de rede</p>';
+            }
+        }
+
+        // Abre a configuração avançada JÁ NO agente escolhido. O modal sempre soube
+        // trocar de canal (`switchChannel`); o que faltava era alguém dizer qual.
+        async function abrirAgente(channel) {
+            const d = window._instanceSettingsData;
+            if (!d) return;
+            closeInstanceSettings();
+            const row = document.querySelector(`[data-location="${d.locationId}"]`);
+            if (!row) { alert('Nao encontrei a instancia na tela. Recarregue a pagina.'); return; }
+            openAIAgentModal(row);
+            try { await window._canaisCarregando; } catch (e) { /* a aba certa e best-effort */ }
+            if (channel && channel !== 'whatsapp') await switchChannel(channel);
         }
 
         function instanceAction(action) {
@@ -317,9 +382,10 @@
             }
             closeInstanceSettings();
             if (action === 'agent') {
-                // Find the row that has the data attributes and open AI modal
-                const row = document.querySelector(`[data-location="${d.locationId}"]`);
-                if (row) openAIAgentModal(row);
+                // Atalho legado: abre o agente do WhatsApp. A aba "Agente IA" hoje
+                // lista os agentes por nome (`abrirAgente`), entao este ramo nao tem
+                // mais botao — fica como entrada programatica.
+                abrirAgente('whatsapp');
             } else if (action === 'zapi') {
                 openZAPIModal(d.locationId, d.companyName, d.zapiInstanceId, d.zapiToken, d.zapiClientToken);
             } else if (action === 'reconnect') {
@@ -1191,8 +1257,12 @@
             // Default to Settings Tab
             switchAITab('settings');
 
-            // Carregar canais disponiveis para esse tenant
-            loadChannelsForTenant(locationId);
+            // Carregar canais disponiveis para esse tenant. A promise fica guardada
+            // porque quem abre o modal JA NUM canal especifico (`abrirAgente`) precisa
+            // esperar as abas existirem: `switchChannel` re-renderiza a partir do que
+            // esta no DOM, e se a carga terminar depois dele a aba destacada volta
+            // para WhatsApp enquanto o formulario mostra outro agente.
+            window._canaisCarregando = loadChannelsForTenant(locationId);
         }
 
         // ── Multi-canal: gerenciamento de agentes por canal ──

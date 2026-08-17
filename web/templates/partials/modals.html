@@ -943,18 +943,16 @@
                         </div>
                     </button>
 
-                    <button onclick="instanceAction('agent')" title="Editar prompt, modelo, voz e regras de um agente que ja existe"
-                        class="corrente w-full flex items-center gap-4 p-4 bg-brand-primary/[0.06] border border-brand-primary/25 hover:border-brand-primary/50 rounded-xl transition-all group text-left">
-                        <div class="w-10 h-10 rounded-lg bg-brand-primary/10 border border-brand-primary/25 flex items-center justify-center flex-shrink-0">
-                            <svg class="w-5 h-5 text-brand-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
-                            </svg>
+                    <!-- Os agentes que JA existem, por nome. Antes havia um botao unico
+                         de "Configuracao avancada", que abria sempre o agente do
+                         WhatsApp — com dois agentes na instancia, o operador nao tinha
+                         como chegar no segundo. -->
+                    <div class="pt-1">
+                        <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest mb-2">Agentes desta instancia</p>
+                        <div id="itab_agentes_lista" class="space-y-2">
+                            <p class="text-[10px] text-gray-600 font-mono">carregando...</p>
                         </div>
-                        <div class="flex-1">
-                            <p class="text-sm font-bold text-white group-hover:text-brand-primary transition-colors">Configuracao avancada</p>
-                            <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Prompt, modelo, voz, qualificacao</p>
-                        </div>
-                    </button>
+                    </div>
                 </div>
 
                 <!-- ── Onboarding ── -->
