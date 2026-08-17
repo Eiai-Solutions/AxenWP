@@ -262,6 +262,10 @@ def test_pagina_da_entrevista_abre(ambiente):
     assert r.status_code == 200
     assert "Cliente A" in r.text
     assert "Usar formulário" in r.text, "sem a saida para o formulario, quem odeia chat trava"
+    # Sem recomeçar, o token preso no localStorage faz o link devolver a conversa
+    # antiga PARA SEMPRE — foi o que o Luiz encontrou usando.
+    assert "function recomecar()" in r.text
+    assert "localStorage.removeItem(CHAVE)" in r.text, "recomeçar sem limpar o token nao recomeca nada"
 
 
 def test_pagina_com_link_invalido_nao_abre(ambiente):

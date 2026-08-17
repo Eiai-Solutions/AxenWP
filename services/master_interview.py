@@ -629,11 +629,14 @@ def ultima_fala(estado: EstadoEntrevista) -> str:
         conteudo = msg.get("content")
         if isinstance(conteudo, str):
             return conteudo
-        partes = [
+        # Junta SEM separador: com citações (o que a busca na web produz) a
+        # resposta vem partida em vários blocos de texto CONTÍGUOS, um por trecho
+        # citado. Colar com "\n" cortava a frase no meio — "…nas Américas / , com /
+        # fabricação de talheres" — e a Mestre parecia quebrada na tela.
+        texto = "".join(
             b.get("text", "") for b in (conteudo or [])
             if isinstance(b, dict) and b.get("type") == "text"
-        ]
-        texto = "\n".join(p for p in partes if p).strip()
+        ).strip()
         if texto:
             return texto
     return ""
@@ -661,7 +664,7 @@ def historico_visivel(estado: EstadoEntrevista) -> list[dict]:
         if isinstance(conteudo, str):
             texto = conteudo
         else:
-            texto = "\n".join(
+            texto = "".join(       # contíguo, não uma linha por bloco — ver `ultima_fala`
                 b.get("text", "") for b in (conteudo or [])
                 if isinstance(b, dict) and b.get("type") == "text"
             ).strip()

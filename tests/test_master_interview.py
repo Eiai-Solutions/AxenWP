@@ -862,3 +862,23 @@ async def test_historico_visivel_esconde_o_gatilho_e_o_protocolo(monkeypatch):
     assert [m["de"] for m in visivel] == ["mestre", "usuario", "mestre"]
     assert "Vamos começar." not in [m["texto"] for m in visivel], "gatilho vazou para a tela"
     assert all("tool_result" not in m["texto"] for m in visivel)
+
+
+def test_resposta_com_citacoes_nao_e_quebrada_no_meio_da_frase():
+    """
+    REGRESSÃO visível na tela — a busca na web devolve a resposta em vários blocos
+    de texto CONTÍGUOS, um por trecho citado. Juntar com "\\n" cortava a frase:
+    "…nas Américas / , com / fabricação de talheres". A Mestre parecia quebrada.
+    """
+    estado = EstadoEntrevista(mensagens=[
+        {"role": "user", "content": "Tramontina"},
+        {"role": "assistant", "content": [
+            {"type": "text", "text": "Tramontina e metalurgica, fundada em 1911"},
+            {"type": "text", "text": ", com"},
+            {"type": "text", "text": " fabricacao de talheres"},
+        ]},
+    ])
+
+    esperado = "Tramontina e metalurgica, fundada em 1911, com fabricacao de talheres"
+    assert ultima_fala(estado) == esperado
+    assert historico_visivel(estado)[-1]["texto"] == esperado

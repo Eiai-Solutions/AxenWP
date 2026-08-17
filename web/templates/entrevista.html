@@ -55,6 +55,13 @@
                 class="text-[10px] font-mono uppercase tracking-widest text-gray-400 hover:text-ink transition-colors border border-gray-700 rounded-lg px-3 py-1.5">
                 Usar formulário
             </a>
+            <!-- Sem isto o token fica preso no localStorage e o link nunca mais abre
+                 uma entrevista nova: a conversa antiga volta para sempre. -->
+            <button type="button" id="recomecar" onclick="recomecar()"
+                title="Apagar esta conversa e começar uma entrevista nova"
+                class="hidden text-[10px] font-mono uppercase tracking-widest text-gray-400 hover:text-ink transition-colors border border-gray-700 rounded-lg px-3 py-1.5">
+                Começar de novo
+            </button>
         </div>
     </header>
 
@@ -76,6 +83,11 @@
                 Suas respostas foram enviadas. O agente vai ser montado a partir delas e você
                 poderá revisar tudo antes de entrar no ar.
             </p>
+            <button type="button" onclick="recomecar()"
+                title="Fazer uma entrevista nova, do zero"
+                class="mt-4 text-[10px] font-mono uppercase tracking-widest text-gray-400 hover:text-ink transition-colors border border-gray-700 rounded-lg px-3 py-1.5">
+                Fazer outra entrevista
+            </button>
         </div>
     </main>
 
@@ -147,6 +159,27 @@
             $form.classList.add('hidden');
         }
 
+        // Só aparece quando há conversa para descartar — num começo em branco o
+        // botão seria ruído, e ainda daria a impressão de que algo ficou pendurado.
+        function mostrarRecomecar(temConversa) {
+            const $b = document.getElementById('recomecar');
+            if ($b) $b.classList.toggle('hidden', !temConversa);
+        }
+
+        function recomecar() {
+            // A confirmação não é cerimônia: a conversa pode ter 15 respostas que a
+            // pessoa levou minutos para dar, e o descarte é irreversível do lado dela.
+            if (!confirm('Isto apaga esta conversa e começa uma entrevista nova. Continuar?')) return;
+            localStorage.removeItem(CHAVE);
+            token = '';                        // token vazio = o servidor abre uma nova
+            $conversa.innerHTML = '';
+            $erro.classList.add('hidden');
+            $concluido.classList.add('hidden');
+            $form.classList.remove('hidden');
+            mostrarRecomecar(false);
+            turno(null);
+        }
+
         async function turno(mensagem) {
             ocupado(true);
             $erro.classList.add('hidden');
@@ -160,6 +193,10 @@
                 if (!d.success) {
                     // 429 = teto de gasto/turnos. Mensagem do servidor é a útil aqui.
                     falhou(d.error || 'Não consegui continuar agora.');
+                    // Justamente quando falha é que a saída precisa estar à mão: com
+                    // teto estourado ou entrevista sumida do servidor, insistir no
+                    // mesmo token só repete o erro. Recomeçar é a única saída.
+                    mostrarRecomecar(!!token);
                     return;
                 }
                 if (d.token && d.token !== token) {
@@ -167,6 +204,7 @@
                     localStorage.setItem(CHAVE, token);
                 }
                 render(d.historico);
+                mostrarRecomecar((d.historico || []).length > 0);
                 if (d.concluida) encerrar();
             } catch (e) {
                 falhou('Falha de conexão. Verifique a internet e tente de novo.');
