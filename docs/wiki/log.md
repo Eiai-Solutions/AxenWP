@@ -200,3 +200,16 @@ Depois do bug de reabrir (classe "caminho sem teste"), rodei uma varredura adver
 - `sincronizar()` entra nos quatro pontos que gravam credencial de canal (WAHA connect, WAHA disconnect, Telegram, Z-API), com a **mesma derivação do backfill** — enquanto houver dual-write, as duas fontes têm que contar a mesma história. Trocar de provedor **reescreve a mesma linha** e limpa a credencial que deixou de valer, senão o `external_ref` apodrece.
 - Falha ao sincronizar **não derruba a conexão do canal**: o operador acabou de configurar o WhatsApp e não pode ver erro porque uma tabela que ainda ninguém lê para valer falhou.
 - O aviso passou a sair só na divergência **real** (existem contas e nenhuma bate). "Nenhuma conta ainda" é estado normal.
+
+## [2026-08-18] feat | Z-API roteia por conta (3b) — e o bug que a versão do Python escondeu
+- O `zapi_receiver` é um **caminho de entrada paralelo**: usa o adapter para parsear (`:283`) mas **não passa por `inbound_pipeline`** — chama `process_incoming_message` direto. A ligação da fase 3a não o alcançava. Isso confirma a dívida que o mapa já apontava: correção feita só na camada de adapter passa ao lado deste arquivo.
+- A conta viaja num dicionário lateral por `contact_key` (mesmo molde do `_ai_debounce_config`), porque o parse e a chamada da IA vivem em funções diferentes separadas pelo debounce. Limpo no mesmo cleanup, senão vaza.
+- **Não verificado** se a Z-API manda `instanceId` em todo tipo de evento — produção não tem tenant Z-API. Seguro por construção: ausente → None → fallback por canal, com teste fixando.
+- Ressalva no código: `contact_key` é `location:phone` e **não inclui a conta**; o mesmo lead escrevendo para dois números cairia no mesmo buffer. É a fase 4.
+
+### O bug que teria derrubado o boot, e por que os testes não o pegariam
+`Dict[str, Optional[int]]` sem importar `Optional`. **Dev roda Python 3.14**, onde anotação é preguiçosa (PEP 649) — passou limpo, testes verdes, import ok. **Produção roda 3.11**, onde anotação de módulo é avaliada na hora: `NameError` no import e o app não sobe.
+
+Verificado importando o módulo dentro do container de produção, no 3.11 real. Ficou o teste que força a avaliação com `typing.get_type_hints` — sem ele, a diferença de versão esconde a classe inteira desse erro.
+
+**A lição operacional: a suíte roda num Python diferente do de produção, e isso é um ponto cego permanente, não um acidente.** Vale considerar rodar os testes em 3.11 no CI, ou pelo menos fixar as anotações com `from __future__ import annotations` nos módulos novos.
