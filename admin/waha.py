@@ -170,6 +170,7 @@ async def waha_connect(location_id: str, force: bool = False, authenticated: boo
     # A URL/API key do servidor WAHA sao config GLOBAL do admin (uma vez, para todos)
     # e sao resolvidas no uso — assim trocar o servidor global vale para todo mundo,
     # sem copias velhas espalhadas por tenant.
+    sincronizou = False
     db = SessionLocal()
     try:
         t = db.query(Tenant).filter(Tenant.location_id == location_id).first()
@@ -179,10 +180,19 @@ async def waha_connect(location_id: str, force: bool = False, authenticated: boo
             t.whatsapp_provider = "waha"
             t.waha_session = session
             db.commit()
+            sincronizou = True
         else:
             logger.error(f"[CHANNEL] connect: tenant {location_id} sumiu antes de gravar o provedor")
     finally:
         db.close()
+
+    if sincronizou:
+        # Sem isto a linha em `channel_accounts` só existiria para quem já estava
+        # configurado quando a migration 034 rodou: instância nova ficaria sem conta,
+        # e o roteamento por conta cairia no fallback para sempre.
+        from services.channel_accounts import sincronizar as _sincronizar_conta
+        await _sincronizar_conta(location_id, "whatsapp")
+
 
     info = await waha_service.get_session(base, key, session)
     return {"success": True, "session": session, "status": (info or {}).get("status", "STARTING")}
@@ -252,8 +262,26 @@ def _release_whatsapp_provider(location_id: str) -> None:
             t.waha_session = None
             db.commit()
             logger.info(f"[CHANNEL] Provedor WhatsApp liberado em {location_id} (WAHA desconectado)")
+            # A conta precisa refletir a troca: sem isto ela guarda a sessão WAHA
+            # que não existe mais, e a referência apodrece.
+            _agendar_sync(location_id, "whatsapp")
     except Exception as e:
         db.rollback()
         logger.error(f"[CHANNEL] Falha ao liberar provedor de {location_id}: {e}")
     finally:
         db.close()
+
+
+def _agendar_sync(location_id: str, canal: str) -> None:
+    """
+    Sincroniza a conta de dentro de código SÍNCRONO.
+
+    `_release_whatsapp_provider` é sync e roda dentro de um `finally`; não dá para
+    await aqui. Chamar a versão síncrona direto é o caminho honesto — o custo é uma
+    conexão, e este caminho é raro (troca de provedor), não quente.
+    """
+    from services.channel_accounts import _sincronizar_sync
+    try:
+        _sincronizar_sync(location_id, canal)
+    except Exception as e:
+        logger.error(f"[CONTA] sync pós-disconnect falhou em {location_id}: {type(e).__name__}")

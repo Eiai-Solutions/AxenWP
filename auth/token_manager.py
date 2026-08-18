@@ -125,6 +125,7 @@ class TokenManager:
     def update_zapi_credentials(self, location_id: str, instance_id: str, token: str, client_token: str = ""):
         """Atualiza as credenciais Z-API de um determinado tenant."""
         db = SessionLocal()
+        salvou = False
         try:
             tenant = self.get_tenant(location_id, db=db)
             if tenant:
@@ -133,8 +134,19 @@ class TokenManager:
                 tenant.zapi_client_token = client_token
                 db.commit()
                 logger.info(f"Credenciais Z-API salvas no banco para {tenant.company_name}")
+                salvou = True
         finally:
             db.close()
+
+        if salvou:
+            # A conta de canal segue a credencial. Sem isto, tenant configurado
+            # depois da migration 034 fica sem linha e o roteamento por conta cai
+            # no fallback para sempre.
+            from services.channel_accounts import _sincronizar_sync
+            try:
+                _sincronizar_sync(location_id, "whatsapp")
+            except Exception as e:
+                logger.error(f"[CONTA] sync pós-Z-API falhou em {location_id}: {type(e).__name__}")
 
     def create_whatsapp_tenant(
         self,

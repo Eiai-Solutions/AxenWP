@@ -195,3 +195,117 @@ def test_o_fallback_por_canal_continua_de_pe(duas_contas):
     # Nao ha chave de modelo no fixture, entao o engine e None — o que importa e
     # que a busca por canal ACHOU o agente e nao explodiu no caminho.
     assert engine is None or engine is not None
+
+
+# ── O produtor que faltava ──
+#
+# A primeira versão da fase 3a só LIA `channel_accounts`. O único escritor era o
+# backfill da migration, que roda uma vez — então toda instância conectada depois
+# do deploy ficava sem conta, e o aviso de "config divergente" disparava no estado
+# NORMAL, uma vez por turno, para sempre. Consumidor sem produtor, o mesmo cheiro
+# das portas do wizard.
+
+@pytest.fixture
+def instancia_nova(tmp_path, monkeypatch):
+    """Exatamente o que o painel deixa ao conectar o WAHA: tenant configurado, zero contas."""
+    import data.database as dbmod
+    import services.channel_accounts as ca
+
+    engine = create_engine(f"sqlite:///{tmp_path}/nova.db", connect_args={"check_same_thread": False})
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    monkeypatch.setattr(dbmod, "SessionLocal", Session, raising=True)
+    monkeypatch.setattr(ca, "SessionLocal", Session, raising=True)
+
+    db = Session()
+    db.add(Tenant(location_id="loc_novo", company_name="Instancia Nova", mode="whatsapp_only",
+                  whatsapp_provider="waha", waha_base_url="https://w", waha_session="loc_novo",
+                  waha_api_key="k"))
+    db.commit()
+    db.close()
+    return Session
+
+
+@pytest.mark.asyncio
+async def test_sincronizar_cria_a_conta_que_o_backfill_nunca_veria(instancia_nova):
+    from data.models import ChannelAccount as CA
+    from services.channel_accounts import resolver, sincronizar
+
+    db = instancia_nova()
+    assert db.query(CA).count() == 0, "o fixture deveria comecar sem conta"
+    db.close()
+
+    conta_id = await sincronizar("loc_novo", "whatsapp")
+    assert conta_id is not None
+
+    db = instancia_nova()
+    conta = db.query(CA).one()
+    dados = (conta.external_ref, conta.waha_session, conta.created_at is not None)
+    db.close()
+    assert dados == ("loc_novo", "loc_novo", True)
+
+    # E agora a mensagem resolve pela conta, sem fallback.
+    assert await resolver("loc_novo", "whatsapp", "loc_novo") == conta_id
+
+
+@pytest.mark.asyncio
+async def test_instancia_sem_conta_NAO_vira_ruido_no_log(instancia_nova, caplog):
+    """
+    O aviso existe para denunciar persona errada. Se ele disparar no estado normal
+    de toda instância nova, uma vez por turno, enterra o próprio sinal.
+    """
+    import logging
+    from services.channel_accounts import resolver
+
+    with caplog.at_level(logging.WARNING):
+        for _ in range(3):
+            assert await resolver("loc_novo", "whatsapp", "loc_novo") is None
+
+    avisos = [r for r in caplog.records if "[CONTA]" in r.message]
+    assert avisos == [], f"{len(avisos)} avisos no estado normal — o alarme virou ruido"
+
+
+@pytest.mark.asyncio
+async def test_o_aviso_dispara_quando_a_divergencia_e_REAL(instancia_nova, caplog):
+    """Conta existe e a referência não bate: aí sim é config divergente."""
+    import logging
+    from services.channel_accounts import resolver, sincronizar
+
+    await sincronizar("loc_novo", "whatsapp")
+
+    with caplog.at_level(logging.WARNING):
+        assert await resolver("loc_novo", "whatsapp", "sessao-renomeada") is not None
+
+    assert any("sessao-renomeada" in r.message for r in caplog.records), \
+        "divergencia real passou em silencio"
+
+
+@pytest.mark.asyncio
+async def test_trocar_de_provedor_reescreve_a_MESMA_conta(instancia_nova):
+    """
+    Sem isto o `external_ref` apodrece: a conta guarda a sessão WAHA de um tenant
+    que voltou para Z-API, e a referência nunca mais bate.
+    """
+    from data.models import ChannelAccount as CA
+    from services.channel_accounts import sincronizar
+
+    await sincronizar("loc_novo", "whatsapp")
+
+    db = instancia_nova()
+    t = db.query(Tenant).filter_by(location_id="loc_novo").one()
+    t.whatsapp_provider = "zapi"
+    t.zapi_instance_id = "INST-NOVA"
+    t.waha_session = None
+    db.commit()
+    db.close()
+
+    await sincronizar("loc_novo", "whatsapp")
+
+    db = instancia_nova()
+    contas = db.query(CA).all()
+    dados = [(c.external_ref, c.zapi_instance_id, c.waha_session) for c in contas]
+    db.close()
+
+    assert len(contas) == 1, "criou conta nova em vez de reescrever a existente"
+    assert dados[0] == ("INST-NOVA", "INST-NOVA", None), \
+        "a credencial do provedor antigo ficou pendurada na linha"

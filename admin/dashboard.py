@@ -867,6 +867,10 @@ async def save_telegram_config(
     finally:
         db.close()
 
+    # A conta de canal do Telegram — sem ela, o bot novo nunca teria linha própria.
+    from services.channel_accounts import sincronizar as _sincronizar_conta
+    await _sincronizar_conta(location_id, "telegram")
+
     # Resolve a URL pública. Prioridade:
     # 1. PUBLIC_BASE_URL (configurado no .env)
     # 2. X-Forwarded-Host / X-Forwarded-Proto (proxy reverso)
