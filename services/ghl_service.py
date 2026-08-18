@@ -595,28 +595,54 @@ class GHLService:
 
     async def is_ai_active_for_contact(self, location_id: str, contact_id: str) -> bool:
         """
-        Verifica se o contato tem o Custom Field 'Status IA' com o valor 'Ativada'.
+        'Status IA' é KILL-SWITCH, não opt-in: a IA atende SALVO se disser "Desativada".
+
+        Era o contrário — só atendia quem tivesse "Ativada" — e **nada no código
+        escreve esse valor**. Os dois únicos lugares que tocam o campo
+        (`qualification_handler`, `escalation_handler`) gravam "Desativada"; o
+        próprio comentário de lá chama isso de kill-switch. O resultado é que todo
+        contato do CRM nascia com a IA muda e ninguém era atendido — sem um erro
+        sequer, porque a única pista era um `logger.debug`.
+
+        Também alinha os dois modos, que estavam com o padrão INVERTIDO um do outro:
+        em `whatsapp_only` (`inbound_pipeline.ai_is_enabled`) a IA atende até o lead
+        ser qualificado. Mesmo produto, mesma intenção, defaults opostos.
         """
         field_id = await self._get_custom_field_id_by_name(location_id, "Status IA")
         if not field_id:
-            logger.debug(f"Custom Field 'Status IA' não encontrado na location {location_id}.")
-            return False
-            
+            # Sem o campo não existe interruptor — e não ter interruptor não pode
+            # significar produto mudo.
+            logger.info(
+                f"[GATE-IA] '{location_id}': sem o campo 'Status IA'; IA ativa (nada a pausar)."
+            )
+            return True
+
         contact = await self.get_contact(location_id, contact_id)
         if not contact:
+            # Não conseguimos LER o contato. Aqui calamos de propósito: a pausa
+            # existe para proteger um handoff em curso, e falar por cima de um
+            # humano é pior que o silêncio. `get_contact` devolve None tanto para
+            # erro quanto para inexistente, então não dá para distinguir.
+            logger.warning(
+                f"[GATE-IA] '{location_id}': não consegui ler o contato {contact_id}; "
+                f"IA silenciada neste turno por precaução."
+            )
             return False
-            
-        custom_fields = contact.get("customFields", [])
-        for cf in custom_fields:
-            if cf.get("id") == field_id:
-                # O valor pode ser uma lista dependendo do tipo do campo, ou uma string.
-                val = cf.get("value")
-                if isinstance(val, list):
-                    return "Ativada" in val
-                elif isinstance(val, str):
-                    return val.strip().lower() == "ativada"
-                    
-        return False
+
+        for cf in contact.get("customFields", []):
+            if cf.get("id") != field_id:
+                continue
+            val = cf.get("value")
+            valores = val if isinstance(val, list) else [val]
+            pausado = any(
+                str(v).strip().lower() == "desativada" for v in valores if v is not None
+            )
+            if pausado:
+                logger.info(f"[GATE-IA] Contato {contact_id} com IA PAUSADA ('Desativada').")
+            return not pausado
+
+        # Campo existe, contato nunca foi pausado. É o caso de todo lead novo.
+        return True
 
 
 
