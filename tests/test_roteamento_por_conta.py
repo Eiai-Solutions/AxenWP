@@ -309,3 +309,70 @@ async def test_trocar_de_provedor_reescreve_a_MESMA_conta(instancia_nova):
     assert len(contas) == 1, "criou conta nova em vez de reescrever a existente"
     assert dados[0] == ("INST-NOVA", "INST-NOVA", None), \
         "a credencial do provedor antigo ficou pendurada na linha"
+
+
+# ── Fase 3b: Z-API ──
+#
+# O `zapi_receiver` é um caminho de entrada PARALELO: usa o adapter para parsear,
+# mas não passa por `inbound_pipeline`. A ligação da fase 3a não o alcançava, então
+# a conta precisou ser ligada aqui também — com o mesmo molde de dicionário lateral
+# por `contact_key` que o debounce já usa.
+
+def test_o_adapter_zapi_le_o_instanceId_do_payload():
+    from channels.whatsapp.zapi import ZAPIChannel
+
+    pm = ZAPIChannel().parse_inbound(LOC, {
+        "phone": "5547999", "instanceId": "INST-COMERCIAL",
+        "text": {"message": "oi"},
+    })
+    assert pm.account_ref == "INST-COMERCIAL"
+
+
+def test_payload_zapi_sem_instanceId_cai_no_fallback():
+    """
+    NÃO foi verificado contra tráfego real se a Z-API manda `instanceId` em todo
+    tipo de evento — produção não tem nenhum tenant Z-API hoje. O desenho é seguro
+    por construção, e é isto que este teste fixa: ausente vira None, e o roteamento
+    usa o caminho por canal, que é o de sempre.
+    """
+    from channels.whatsapp.zapi import ZAPIChannel
+
+    pm = ZAPIChannel().parse_inbound(LOC, {"phone": "5547999", "text": {"message": "oi"}})
+    assert pm.account_ref is None
+
+
+def test_o_receiver_zapi_carrega_a_conta_ate_o_flush():
+    """
+    O parse e a chamada da IA vivem em FUNÇÕES diferentes, separadas pelo debounce.
+    Sem o dicionário lateral, a conta descoberta na porta se perderia no caminho.
+    """
+    import inspect
+    import webhooks.zapi_receiver as zr
+
+    assert "_ai_conta_por_contato" in inspect.getsource(zr.process_inbound_message), \
+        "a porta nao guarda a conta"
+    flush = inspect.getsource(zr._run_ai_response)
+    assert "_ai_conta_por_contato.pop" in flush, "o flush nao recupera a conta"
+    assert "channel_account_id=conta_id" in flush, "a conta nao chega no ai_service"
+
+    # E o cleanup periodico tem que limpar o dicionario novo tambem, senao vaza.
+    assert "_ai_conta_por_contato.pop" in inspect.getsource(zr.cleanup_stale_debounce_entries), \
+        "o dicionario novo vaza no cleanup"
+
+
+def test_a_anotacao_do_dicionario_novo_nao_quebra_no_python_de_producao():
+    """
+    REGRESSÃO — teria derrubado o boot.
+
+    Dev roda Python 3.14, onde anotação é preguiçosa (PEP 649); produção roda 3.11,
+    onde anotação de módulo é avaliada NA HORA. `Dict[str, Optional[int]]` sem
+    importar `Optional` passa aqui e dá `NameError` no import lá — o app não sobe.
+    """
+    import typing
+
+    import webhooks.zapi_receiver as zr
+
+    # `get_type_hints` força a avaliação que o 3.11 faz sozinho no import.
+    hints = typing.get_type_hints(zr) if hasattr(zr, "__annotations__") else {}
+    assert "_ai_conta_por_contato" in zr.__annotations__
+    assert hints.get("_ai_conta_por_contato") is not None

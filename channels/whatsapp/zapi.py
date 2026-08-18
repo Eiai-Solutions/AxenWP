@@ -96,6 +96,13 @@ class ZAPIChannel:
             provider=self.provider,
             location_id=location_id,
             sender_id=phone,
+            # QUAL instância nossa recebeu. A Z-API manda `instanceId` no corpo.
+            # NÃO VERIFICADO contra tráfego real se ele vem em TODO tipo de evento —
+            # produção hoje não tem nenhum tenant Z-API. O desenho é seguro por
+            # construção: ausente vira None e o roteamento cai no fallback por canal,
+            # que é o comportamento de sempre. Se faltar em algum tipo, o caminho
+            # robusto é URL discriminada, como o Telegram vai precisar.
+            account_ref=payload.get("instanceId") or None,
             provider_message_id=msg_id,
             text=content_message,
             is_audio=is_audio,

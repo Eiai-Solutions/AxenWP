@@ -7,7 +7,7 @@ que formata e insere no GHL via /conversations/messages/inbound
 import asyncio
 from collections import deque, OrderedDict
 from fastapi import APIRouter, Request, BackgroundTasks, Path
-from typing import Dict, Any
+from typing import Any, Dict, Optional
 
 from utils.logger import logger
 from utils.config import settings
@@ -16,6 +16,7 @@ from utils.limiter import limiter
 from utils import metrics
 from auth.token_manager import token_manager
 from channels.whatsapp.zapi import ZAPIChannel
+from services.channel_accounts import resolver as _resolver_conta
 from services.channel_policy import WAHA, active_whatsapp_provider
 from services.ghl_service import ghl_service
 from services.message_log import message_type_from_url as msglog_type_from_url
@@ -35,6 +36,12 @@ DEFAULT_DEBOUNCE_SECONDS = 1.5
 _ai_pending_tasks: Dict[str, asyncio.Task] = {}   # contact_key -> Task
 _ai_message_buffers: Dict[str, list] = {}          # contact_key -> [(text, is_audio, audio_url), ...]
 _ai_debounce_config: Dict[str, float] = {}         # contact_key -> debounce_seconds
+# contact_key -> channel_account_id. Mesmo molde do debounce: a conta é descoberta
+# na porta (`instanceId` do payload) e precisa sobreviver até o flush, que roda noutra
+# função. RESSALVA: `contact_key` é `location:phone` e NÃO inclui a conta — o mesmo
+# lead escrevendo para dois números cairia no mesmo buffer. Isso é a fase 4
+# (`chaves de conversa`); aqui só não se pode piorar.
+_ai_conta_por_contato: Dict[str, Optional[int]] = {}
 
 # Buffer dos últimos N payloads recebidos (debug). deque com maxlen evita
 # crescimento indefinido — entradas mais antigas são descartadas automaticamente.
@@ -97,6 +104,7 @@ def cleanup_stale_debounce_entries():
         _ai_pending_tasks.pop(key, None)
         _ai_message_buffers.pop(key, None)
         _ai_debounce_config.pop(key, None)
+        _ai_conta_por_contato.pop(key, None)
     # Limpa messageIds antigos (>5min)
     now = time.time()
     stale_ids = [mid for mid, ts in _sent_message_ids.items() if now - ts > _SENT_IDS_MAX_AGE]
@@ -125,6 +133,7 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
     """Aguarda o debounce e depois processa a IA com todas as mensagens acumuladas."""
     try:
         delay = _ai_debounce_config.pop(contact_key, DEFAULT_DEBOUNCE_SECONDS)
+        conta_id = _ai_conta_por_contato.pop(contact_key, None)
         await asyncio.sleep(delay)
 
         messages = _ai_message_buffers.pop(contact_key, [])
@@ -154,7 +163,8 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
         from services.ai_service import ai_service
 
         ai_response = await ai_service.process_incoming_message(
-            location_id, phone, combined_text, is_audio=is_audio, audio_url=audio_url, channel="whatsapp"
+            location_id, phone, combined_text, is_audio=is_audio, audio_url=audio_url,
+            channel="whatsapp", channel_account_id=conta_id,
         )
         if not ai_response:
             return
@@ -485,6 +495,7 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
                     _ai_pending_tasks.pop(k, None)
                     _ai_message_buffers.pop(k, None)
                     _ai_debounce_config.pop(k, None)
+                    _ai_conta_por_contato.pop(k, None)
                 if len(_ai_message_buffers) >= _DEBOUNCE_HARD_CAP:
                     logger.warning(
                         f"Debounce buffer cheio ({_DEBOUNCE_HARD_CAP}), descartando msg de {contact_key}"
@@ -496,6 +507,9 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
             _ai_message_buffers[contact_key].append((content_message, is_audio, audio_url))
 
             _ai_debounce_config[contact_key] = debounce
+            _ai_conta_por_contato[contact_key] = await _resolver_conta(
+                location_id, "whatsapp", pm.account_ref
+            )
 
             existing = _ai_pending_tasks.get(contact_key)
             if existing and not existing.done():
