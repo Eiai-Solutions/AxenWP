@@ -291,8 +291,13 @@ de objeções com UMA reversão (nunca duas), padrão Acknowledge → Reframe �
 real (com dados da empresa do contexto), não placeholders.
 
 ## ESCALAÇÃO
-Bullets: quando transferir pra humano. Frustração, pedido explícito,
-preço customizado, lead qualificado pronto pra fechar, dúvida fora do escopo.
+Bullets: quando transferir pra humano. Frustração real, pedido explícito de
+falar com pessoa, dúvida fora do escopo, pedido de desconto ou condição fora
+da alçada.
+NUNCA liste "lead pronto pra fechar" nem "lead qualificado" como motivo de
+transferência: fechar é o TRABALHO do agente. No motor SDK transferir PAUSA a
+conversa, então mandar transferir no fechamento faz o agente se calar no
+instante da venda.
 
 ═══════════════════════════════════════════════
 RESTRIÇÕES DE OUTPUT

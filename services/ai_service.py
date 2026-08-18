@@ -490,6 +490,31 @@ class AIEngine:
         """
         from services.agent_engine.tools import ESCALATE, QUALIFY
         if name == QUALIFY:
+            # A VERDADE, no momento da chamada. Antes isto devolvia "ok" sempre, e o
+            # guard de completude rodava DEPOIS do turno (`:406`), descartando em
+            # silêncio. O efeito para o lead: o agente ouvia "registrado", se despedia
+            # dizendo que um especialista entraria em contato — e o CRM ficava vazio.
+            # Ninguém era avisado, e a conversa salva parecia um fechamento perfeito.
+            #
+            # Devolvendo `incompleto`, o loop de tool-use continua NO MESMO TURNO
+            # (`claude_engine`), e o modelo pergunta o que falta em vez de se despedir.
+            if not self._qualification_complete(args or {}):
+                faltam = [
+                    (f.get("label") or f.get("key"))
+                    for f in (self.qualification_fields or [])
+                    if f.get("key") and not f.get("auto")
+                    and not str((args or {}).get(f["key"], "") or "").strip()
+                ]
+                logger.info(f"[CLAUDE] qualificar recusado: faltam {faltam}")
+                return {
+                    "status": "incompleto",
+                    "faltam": faltam,
+                    "instrucao": (
+                        "NÃO registrei o lead: os campos acima não foram coletados. "
+                        "Pergunte por eles na conversa e NÃO se despeça nem diga que "
+                        "alguém vai entrar em contato."
+                    ),
+                }
             return {"status": "ok", "message": "Lead registrado como qualificado."}
         if name == ESCALATE:
             return {"status": "ok", "message": "Conversa transferida para um atendente humano."}

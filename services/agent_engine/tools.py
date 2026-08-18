@@ -39,7 +39,11 @@ def _qualify_spec(fields: list) -> ToolSpec:
             continue
         props[key] = {
             "type": "string",
-            "description": f.get("label") or key,
+            # A `description` é o que a Mestre escreveu sobre o campo
+            # (`agent_spec.QualFieldSpec.description`) e o que diz ao modelo COMO
+            # reconhecer o dado. Usar só o `label` jogava fora trabalho já pago e
+            # deixava o schema mais pobre do que o cadastro.
+            "description": f.get("description") or f.get("label") or key,
         }
         obrig.append(key)
     return ToolSpec(
