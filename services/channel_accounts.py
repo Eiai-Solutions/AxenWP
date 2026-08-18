@@ -30,7 +30,7 @@ from typing import Optional
 from datetime import datetime, timezone
 
 from data.database import SessionLocal
-from data.models import ChannelAccount, Tenant
+from data.models import AIAgent, ChannelAccount, Tenant
 from utils.logger import logger
 
 
@@ -45,8 +45,9 @@ def _sincronizar_sync(location_id: str, channel: str) -> Optional[int]:
     Sem isso, o `external_ref` apodrece e a conta antiga responde por uma sessão que
     não existe mais.
     """
-    db = SessionLocal()
+    db = None
     try:
+        db = SessionLocal()
         t = db.query(Tenant).filter(Tenant.location_id == location_id).first()
         if t is None:
             return None
@@ -100,19 +101,40 @@ def _sincronizar_sync(location_id: str, channel: str) -> Optional[int]:
         conta.updated_at = datetime.now(timezone.utc)
         if conta.created_at is None:
             conta.created_at = conta.updated_at
+        db.flush()
+
+        # LIGA O AGENTE. O backfill da migration fazia isto; o produtor de runtime
+        # não fazia, então instância nova ganhava conta e o roteamento por conta
+        # continuava inerte — sempre caindo no fallback. Só preenche o que está
+        # NULO: reapontar um agente que alguém ligou à mão seria decidir pelo
+        # operador.
+        ligados = (
+            db.query(AIAgent)
+            .filter(
+                AIAgent.location_id == location_id,
+                AIAgent.channel == channel,
+                AIAgent.channel_account_id.is_(None),
+            )
+            .update({"channel_account_id": conta.id}, synchronize_session=False)
+        )
         db.commit()
         db.refresh(conta)
-        logger.info(f"[CONTA] {location_id}/{channel} sincronizada (ref={conta.external_ref!r}).")
+        logger.info(
+            f"[CONTA] {location_id}/{channel} sincronizada (ref={conta.external_ref!r})"
+            + (f"; {ligados} agente(s) ligado(s)." if ligados else ".")
+        )
         return conta.id
     except Exception as e:
-        db.rollback()
+        if db is not None:
+            db.rollback()
         # Sincronizar conta NÃO pode derrubar a conexão do canal: o operador
         # acabou de configurar o WhatsApp e não pode ver erro porque uma tabela
         # que ainda ninguém lê para valer falhou.
         logger.error(f"[CONTA] Falha ao sincronizar {location_id}/{channel}: {type(e).__name__}: {e}")
         return None
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 async def sincronizar(location_id: str, channel: str) -> Optional[int]:
@@ -121,8 +143,9 @@ async def sincronizar(location_id: str, channel: str) -> Optional[int]:
 
 
 def _resolver_sync(location_id: str, channel: str, account_ref: Optional[str]) -> Optional[int]:
-    db = SessionLocal()
+    db = None
     try:
+        db = SessionLocal()
         q = db.query(ChannelAccount).filter(
             ChannelAccount.location_id == location_id,
             ChannelAccount.channel == channel,
@@ -149,8 +172,27 @@ def _resolver_sync(location_id: str, channel: str, account_ref: Optional[str]) -
             )
 
         return contas[0].id if len(contas) == 1 else None
+    except Exception as e:
+        # NUNCA propaga. O gêmeo `_sincronizar_sync` já engolia; este não, e a
+        # assimetria custou caro: no `zapi_receiver` o `await` que chama isto foi
+        # posto ENTRE o append no buffer de debounce e o `create_task`. Antes essa
+        # sequência era síncrona, portanto atômica — todo item no buffer ganhava uma
+        # task. Com a exceção subindo, o `create_task` não roda e a mensagem fica
+        # ÓRFÃ no buffer: invisível aos dois limpadores (que derivam as chaves de
+        # `_ai_pending_tasks`), colada no próximo turno daquele contato, e acumulando
+        # até o hard cap de 2000 — quando passa a barrar o agendamento da IA de TODOS
+        # os contatos de TODOS os tenants, até reiniciar o processo.
+        #
+        # O contrato deste módulo sempre foi "não sei dizer → None → fallback por
+        # canal". Falha de banco é exatamente "não sei dizer".
+        logger.error(
+            f"[CONTA] Falha ao resolver {location_id}/{channel}: {type(e).__name__}: {e}. "
+            f"Caindo no fallback por canal."
+        )
+        return None
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 async def resolver(location_id: str, channel: str, account_ref: Optional[str] = None) -> Optional[int]:

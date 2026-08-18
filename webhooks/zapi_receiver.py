@@ -36,7 +36,7 @@ DEFAULT_DEBOUNCE_SECONDS = 1.5
 _ai_pending_tasks: Dict[str, asyncio.Task] = {}   # contact_key -> Task
 _ai_message_buffers: Dict[str, list] = {}          # contact_key -> [(text, is_audio, audio_url), ...]
 _ai_debounce_config: Dict[str, float] = {}         # contact_key -> debounce_seconds
-# contact_key -> channel_account_id. Mesmo molde do debounce: a conta é descoberta
+# contact_key -> account_ref do provedor (`instanceId`). Mesmo molde do debounce: a conta é descoberta
 # na porta (`instanceId` do payload) e precisa sobreviver até o flush, que roda noutra
 # função. RESSALVA: `contact_key` é `location:phone` e NÃO inclui a conta — o mesmo
 # lead escrevendo para dois números cairia no mesmo buffer. Isso é a fase 4
@@ -133,7 +133,7 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
     """Aguarda o debounce e depois processa a IA com todas as mensagens acumuladas."""
     try:
         delay = _ai_debounce_config.pop(contact_key, DEFAULT_DEBOUNCE_SECONDS)
-        conta_id = _ai_conta_por_contato.pop(contact_key, None)
+        account_ref = _ai_conta_por_contato.pop(contact_key, None)
         await asyncio.sleep(delay)
 
         messages = _ai_message_buffers.pop(contact_key, [])
@@ -161,6 +161,10 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
             logger.info(f"🧠 Agente IA ativado para contato {contact_id or phone}. Gerando resposta...")
 
         from services.ai_service import ai_service
+
+        # Uma resolução por TURNO (o pipeline compartilhado faz igual), não por
+        # mensagem: o debounce junta várias e todas vieram da mesma conta.
+        conta_id = await _resolver_conta(location_id, "whatsapp", account_ref)
 
         ai_response = await ai_service.process_incoming_message(
             location_id, phone, combined_text, is_audio=is_audio, audio_url=audio_url,
@@ -507,9 +511,13 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
             _ai_message_buffers[contact_key].append((content_message, is_audio, audio_url))
 
             _ai_debounce_config[contact_key] = debounce
-            _ai_conta_por_contato[contact_key] = await _resolver_conta(
-                location_id, "whatsapp", pm.account_ref
-            )
+            # Guarda só a REFERÊNCIA do provedor — dado que já veio no payload, custo
+            # zero. Resolver aqui exigia um `await` NO MEIO da sequência
+            # append → config → create_task, que antes era síncrona e portanto
+            # atômica: qualquer falha nesse await deixava a mensagem órfã no buffer,
+            # sem task, invisível aos limpadores. A resolução acontece no flush, uma
+            # vez por turno em vez de uma por mensagem.
+            _ai_conta_por_contato[contact_key] = pm.account_ref
 
             existing = _ai_pending_tasks.get(contact_key)
             if existing and not existing.done():

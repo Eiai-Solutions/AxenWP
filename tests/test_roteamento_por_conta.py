@@ -360,19 +360,141 @@ def test_o_receiver_zapi_carrega_a_conta_ate_o_flush():
         "o dicionario novo vaza no cleanup"
 
 
-def test_a_anotacao_do_dicionario_novo_nao_quebra_no_python_de_producao():
+def test_nenhuma_anotacao_do_projeto_quebra_no_python_de_producao():
     """
-    REGRESSÃO — teria derrubado o boot.
+    REGRESSÃO — teria derrubado o boot, e a versão do Python esconde a classe toda.
 
-    Dev roda Python 3.14, onde anotação é preguiçosa (PEP 649); produção roda 3.11,
-    onde anotação de módulo é avaliada NA HORA. `Dict[str, Optional[int]]` sem
-    importar `Optional` passa aqui e dá `NameError` no import lá — o app não sobe.
+    Dev roda 3.14, onde anotação é preguiçosa (PEP 649); produção roda **3.11**, onde
+    anotação de módulo e de classe é avaliada NO IMPORT. `Dict[str, Optional[int]]`
+    sem importar `Optional` passa aqui e dá `NameError` lá — o app não sobe.
+
+    A primeira versão deste teste fixava UM símbolo num módulo, o que não fecha a
+    classe de erro: o próximo `Optional` esquecido em outro arquivo passaria igual.
+    Aqui a varredura é sobre TODO módulo do projeto já carregado — o mesmo conjunto
+    que o boot importa.
     """
+    import sys
     import typing
 
+    import main  # noqa: F401  — arrasta a árvore de imports do boot
+
+    nossos = [
+        m for nome, m in list(sys.modules.items())
+        if m is not None
+        and nome.split(".")[0] in {"services", "channels", "webhooks", "data",
+                                   "admin", "auth", "utils", "public"}
+        and getattr(m, "__annotations__", None)
+    ]
+    assert nossos, "nenhum modulo do projeto carregado — a varredura nao mediu nada"
+
+    quebrados = []
+    for m in nossos:
+        try:
+            typing.get_type_hints(m)
+        except NameError as e:
+            quebrados.append(f"{m.__name__}: {e}")
+        except Exception:
+            # Anotação que `get_type_hints` não resolve por outro motivo não é o que
+            # se procura: só NameError derruba o import no 3.11.
+            pass
+
+    assert not quebrados, (
+        "anotacao com nome nao importado — NameError no import em Python 3.11:\n  "
+        + "\n  ".join(quebrados)
+    )
+
+
+# ── O que a revisão adversarial da 3b pegou ──
+
+@pytest.mark.asyncio
+async def test_falha_de_banco_no_resolver_NAO_propaga(duas_contas, monkeypatch):
+    """
+    REGRESSÃO — o `await` que resolve a conta ficava entre o append no buffer de
+    debounce e o `create_task`. Essa sequência era síncrona, portanto atômica: todo
+    item no buffer ganhava uma task. Com a exceção subindo, o `create_task` não
+    rodava e a mensagem ficava ÓRFÃ — invisível aos dois limpadores (que derivam as
+    chaves de `_ai_pending_tasks`), colada no próximo turno, e acumulando até o hard
+    cap de 2000, quando o agendamento da IA morre para TODOS os tenants.
+
+    O gêmeo `_sincronizar_sync` já engolia exceção de propósito; este não. O
+    contrato do módulo sempre foi "não sei dizer → None → fallback por canal", e
+    falha de banco é exatamente "não sei dizer".
+    """
+    import services.channel_accounts as ca
+    from sqlalchemy.exc import OperationalError
+
+    def _banco_fora():
+        raise OperationalError("select 1", {}, Exception("server closed the connection"))
+
+    monkeypatch.setattr(ca, "SessionLocal", _banco_fora, raising=True)
+
+    assert await ca.resolver(LOC, "whatsapp", "sessao-comercial") is None
+
+
+@pytest.mark.asyncio
+async def test_sincronizar_LIGA_o_agente_a_conta(instancia_nova):
+    """
+    O backfill da migration ligava o agente à conta; o produtor de runtime não.
+    Instância nova ganhava conta e o roteamento por conta ficava INERTE — sempre
+    caindo no fallback, para sempre.
+    """
+    from data.models import AIAgent as A
+    from services.channel_accounts import sincronizar
+
+    db = instancia_nova()
+    db.add(A(location_id="loc_novo", channel="whatsapp", name="Sofia", prompt="p", model="m"))
+    db.commit()
+    db.close()
+
+    conta_id = await sincronizar("loc_novo", "whatsapp")
+
+    db = instancia_nova()
+    agente = db.query(A).filter_by(location_id="loc_novo", channel="whatsapp").one()
+    ligado = agente.channel_account_id
+    db.close()
+    assert ligado == conta_id, "a conta foi criada e o agente ficou solto"
+
+
+@pytest.mark.asyncio
+async def test_sincronizar_NAO_reaponta_agente_ligado_a_mao(instancia_nova):
+    """Reapontar quem o operador já ligou seria decidir por ele."""
+    from data.models import AIAgent as A, ChannelAccount as CA
+    from services.channel_accounts import sincronizar
+
+    db = instancia_nova()
+    outra = CA(location_id="loc_novo", channel="whatsapp", external_ref="escolhida-a-mao")
+    db.add(outra)
+    db.commit()
+    db.add(A(location_id="loc_novo", channel="whatsapp", name="Sofia", prompt="p",
+             model="m", channel_account_id=outra.id))
+    db.commit()
+    escolhida = outra.id
+    db.close()
+
+    await sincronizar("loc_novo", "whatsapp")
+
+    db = instancia_nova()
+    ligado = db.query(A).filter_by(location_id="loc_novo").one().channel_account_id
+    db.close()
+    assert ligado == escolhida
+
+
+def test_a_sequencia_de_agendamento_do_zapi_voltou_a_ser_atomica():
+    """
+    Nenhum `await` entre o append no buffer e o `create_task`: é isso que garante
+    que todo item no buffer ganha uma task. A resolução da conta foi para o flush.
+    """
+    import inspect
     import webhooks.zapi_receiver as zr
 
-    # `get_type_hints` força a avaliação que o 3.11 faz sozinho no import.
-    hints = typing.get_type_hints(zr) if hasattr(zr, "__annotations__") else {}
-    assert "_ai_conta_por_contato" in zr.__annotations__
-    assert hints.get("_ai_conta_por_contato") is not None
+    fonte = inspect.getsource(zr.process_inbound_message)
+    bruto = fonte[fonte.index("_ai_message_buffers[contact_key].append"):
+                  fonte.index("asyncio.create_task")]
+    # Só CÓDIGO: os comentários deste trecho citam "await" justamente para explicar
+    # por que ele não pode estar aqui — olhar a fonte crua acusaria a documentação.
+    trecho = "\n".join(l for l in bruto.splitlines() if not l.lstrip().startswith("#"))
+    assert "await" not in trecho, (
+        "voltou a haver await entre o buffer e o create_task — mensagem pode ficar orfa"
+    )
+    # E a resolucao mudou de lugar, nao sumiu.
+    assert "_resolver_conta" in inspect.getsource(zr._run_ai_response)
