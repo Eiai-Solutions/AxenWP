@@ -77,6 +77,135 @@ def test_o_fechamento_esta_coberto():
     assert "nao_escala_no_fechamento" in ids
 
 
+# ── O critério que faltava: o agente RESPONDEU o lead? ──
+#
+# Em 2026-08-19 o roteiro media só qual ferramenta o agente chamou. A Mestre
+# atendeu um pedido de abertura apagando a regra que mandava responder, o agente
+# passou a devolver "em que posso te ajudar?" para quem já tinha perguntado, e
+# nada aqui reprovou. O ciclo de treino leu "nada quebrou" e mandou publicar.
+
+def test_o_roteiro_mede_se_o_agente_RESPONDE_e_nao_so_qual_tool_chama():
+    casos = carregar()
+    com_texto = [c for c in casos if c.get("espera_texto") or c.get("nao_espera_texto")]
+    assert len(com_texto) >= 3, (
+        "sem critério de TEXTO o roteiro não vê o primeiro turno do SDR, "
+        "que é justamente onde o texto é o produto"
+    )
+
+
+def test_devolver_a_pergunta_ao_lead_esta_coberto_NOS_DOIS_SENTIDOS():
+    """
+    Só o caso negativo premiaria um agente que nunca se apresenta; só o positivo
+    premiaria o que sempre recita a abertura e nunca responde. O valor está no par.
+    """
+    ids = [c["id"] for c in carregar()]
+    assert "responde_quem_ja_declarou_intencao" in ids, "falta o caso que pega a regressão"
+    assert "abertura_convida_o_lead_a_falar" in ids, "falta o contrapeso que protege o pedido do operador"
+
+
+def test_a_regressao_de_2026_08_19_seria_reprovada_pelo_roteiro_de_hoje():
+    """
+    Regressão com dado REAL: os dois textos abaixo foram capturados da API em
+    2026-08-19, para o MESMO lead ("queria entender o que vocês fazem"). O de cima
+    é o prompt de antes (respondeu); o de baixo é o que a Mestre aplicou (devolveu
+    a pergunta). Se o roteiro não separar os dois, ele não serve para nada.
+    """
+    from services.sonda import avaliar
+
+    caso = next(c for c in carregar() if c["id"] == "responde_quem_ja_declarou_intencao")
+
+    respondeu = (
+        "Oi! A Eiai trabalha com automação de operações B2B — desde análise do processo "
+        "até a implementação da solução.\n\nVocê já identificou algum gargalo na sua "
+        "operação, ou ainda está explorando possibilidades?"
+    )
+    devolveu = "Oi! Tudo bem? Sou a Ellen, da Eiai Solutions.\n\nEm que posso te ajudar?"
+
+    ok_bom, _, _ = avaliar(caso, [], respondeu)
+    ok_ruim, _, falhas = avaliar(caso, [], devolveu)
+
+    assert ok_bom, "reprovou a resposta que ATENDEU o lead"
+    assert not ok_ruim, "aprovou a resposta que devolveu a pergunta ao lead"
+    assert falhas, "reprovou sem dizer qual critério falhou"
+
+
+def test_no_oi_seco_convidar_o_lead_a_falar_continua_CERTO():
+    """O contrapeso: o mesmo texto que reprova acima tem que passar aqui."""
+    from services.sonda import avaliar
+
+    caso = next(c for c in carregar() if c["id"] == "abertura_convida_o_lead_a_falar")
+    ok, _, falhas = avaliar(caso, [], "Oi! Tudo bem? Sou a Ellen, da Eiai Solutions.\n\nEm que posso te ajudar?")
+    assert ok, f"reprovou a abertura que o operador pediu: {falhas}"
+
+
+def test_o_criterio_reprova_TERMINAR_devolvendo_a_pergunta_e_nao_a_frase_em_si():
+    """
+    A âncora `$` do regex é a peça que faz o critério ser útil em vez de burro.
+
+    Sem ela, "posso te ajudar" em QUALQUER posição reprova — e aí a resposta boa,
+    que explica o serviço e no meio se oferece para ajudar, seria marcada como
+    regressão. O critério tem que separar "ofereceu ajuda enquanto respondia" de
+    "não respondeu nada e devolveu a pergunta".
+    """
+    from services.sonda import avaliar
+
+    caso = next(c for c in carregar() if c["id"] == "responde_quem_ja_declarou_intencao")
+
+    # A frase proibida aparece NO MEIO, e depois o agente responde de verdade.
+    # Com a âncora: passa. Sem a âncora: reprova — e o critério vira ruído.
+    ofereceu_ajuda_MAS_respondeu = (
+        "Oi! Sou a Ellen. Já te conto em que posso te ajudar.\n\n"
+        "A gente trabalha com automação de operações B2B: análise do processo, "
+        "redesenho e implementação.\n\n"
+        "Você já tem algum gargalo específico em mente?"
+    )
+    ok, _, falhas = avaliar(caso, [], ofereceu_ajuda_MAS_respondeu)
+    assert ok, (
+        "reprovou uma resposta que RESPONDEU o lead só porque a frase 'posso te "
+        f"ajudar' aparece nela — o critério perdeu a âncora do fim. falhas={falhas}"
+    )
+
+    # E o contraexemplo: a mesma frase, mas como ÚLTIMA coisa dita.
+    ok, _, _ = avaliar(caso, [], "Oi! Sou a Ellen.\n\nEm que posso te ajudar?")
+    assert not ok
+
+
+# ── O motor de avaliação ──
+
+def test_TODOS_os_criterios_do_caso_valem_e_nao_so_o_primeiro():
+    """
+    Era `if/elif`: o caso afirmava só o primeiro critério e os demais eram lidos do
+    JSON e ignorados em silêncio. Um caso que pedia tool E texto media só a tool.
+    """
+    from services.sonda import avaliar
+
+    caso = {"id": "x", "nao_espera_tool": ESCALATE, "nao_espera_texto": r"proibido"}
+
+    ok, _, falhas = avaliar(caso, [], "resposta limpa")
+    assert ok
+
+    # Tool certa, texto errado: com if/elif isto passaria.
+    ok, _, falhas = avaliar(caso, [], "isto é proibido")
+    assert not ok, "ignorou o segundo critério do caso"
+    assert falhas == ["texto NÃO casa /proibido/"]
+
+    # Texto certo, tool errada.
+    ok, _, falhas = avaliar(caso, [ESCALATE], "resposta limpa")
+    assert not ok
+    assert falhas == [f"NÃO pode chamar {ESCALATE}"]
+
+    # Os dois errados: reporta os dois, não só o primeiro.
+    ok, _, falhas = avaliar(caso, [ESCALATE], "isto é proibido")
+    assert not ok and len(falhas) == 2
+
+
+def test_caso_sem_criterio_nao_reprova_ninguem():
+    from services.sonda import avaliar
+
+    ok, criterio, falhas = avaliar({"id": "x"}, [], "qualquer coisa")
+    assert ok and falhas == [] and "sem critério" in criterio
+
+
 # ── O contrato que chega ao modelo ──
 
 def test_a_tool_de_qualificar_so_aparece_com_campo_de_COLETA():

@@ -295,10 +295,16 @@ async def verificar(agente, prompt_novo: str, casos_novos: list[dict],
             "origem": caso.get("origem", "regressao"),
             "porque": caso.get("porque", ""),
             "criterio": d.get("criterio") or a.get("criterio", ""),
+            # QUAL critério reprovou. Com vários por caso, "FALHA" sozinho manda o
+            # operador abrir o prompt para adivinhar o que deu errado.
+            "falhou_em": d.get("falhou_em") or [],
             "antes_ok": ok_a,
             "depois_ok": ok_d,
             "veredito": veredito,
-            "resposta_depois": d.get("texto", ""),
+            # Texto INTEIRO, não os 90 chars da linha de CLI: foi lendo a resposta
+            # completa que se descobriu o agente devolvendo a pergunta ao lead.
+            # Truncado em 600 só para não estourar o payload da tela.
+            "resposta_depois": (d.get("texto_completo") or d.get("texto", ""))[:600],
         })
 
     novos = [l for l in linhas if l["origem"] == "pedido_do_operador"]

@@ -1,11 +1,22 @@
 {
   "_leia_me": [
     "Roteiros de comportamento do agente SDK. Cada caso é uma fala de lead e a",
-    "expectativa sobre QUAL AÇÃO o agente deve tomar — não sobre o texto que ele",
-    "escreve. Texto é estilo; ação é o produto.",
+    "expectativa sobre o que o agente deve fazer — qual AÇÃO ele toma e, quando o",
+    "texto É o produto, o que ele não pode dizer.",
     "",
-    "Servem a dois consumidores, de propósito:",
-    "  scripts/sonda_agente.py  → API real, mede COMPORTAMENTO (custa dinheiro)",
+    "Até 2026-08-19 este arquivo dizia 'não sobre o texto que ele escreve; texto é",
+    "estilo, ação é o produto'. Essa crença custou caro: a IA Mestre atendeu um",
+    "pedido de abertura apagando a regra que mandava responder o lead, o agente",
+    "passou a devolver 'em que posso te ajudar?' para quem já tinha perguntado, e",
+    "nenhum caso aqui media isso. O ciclo de treino leu 'nada quebrou' e recomendou",
+    "publicar a piora. No primeiro turno de um SDR, o texto é o produto.",
+    "",
+    "Um caso pode ter VÁRIOS critérios; todos precisam valer (services/sonda.py,",
+    "função `avaliar`). Antes era if/elif e só o primeiro contava.",
+    "",
+    "Servem a três consumidores, de propósito:",
+    "  scripts/sonda_agente.py    → API real, mede COMPORTAMENTO (custa dinheiro)",
+    "  services/mestre_ciclo.py   → o mesmo, dentro do ciclo de treino da Mestre",
     "  tests/test_agente_casos.py → cliente falso, mede ENCANAMENTO (custo zero)",
     "",
     "Os casos existem porque cada um caça um defeito que já aconteceu neste projeto.",
@@ -25,9 +36,18 @@
       "lead": "Perfeito, é exatamente isso que eu preciso. Pode marcar a reunião.",
       "nao_espera_tool": "escalate_to_human",
       "historico": [
-        {"role": "user", "content": "Voces fazem automacao de processo comercial?"},
-        {"role": "assistant", "content": "Fazemos sim. Me conta um pouco do seu processo hoje?"},
-        {"role": "user", "content": "Uso planilha e perco lead. Queria automatizar o follow-up."}
+        {
+          "role": "user",
+          "content": "Voces fazem automacao de processo comercial?"
+        },
+        {
+          "role": "assistant",
+          "content": "Fazemos sim. Me conta um pouco do seu processo hoje?"
+        },
+        {
+          "role": "user",
+          "content": "Uso planilha e perco lead. Queria automatizar o follow-up."
+        }
       ]
     },
     {
@@ -56,6 +76,30 @@
       "porque": "Frustração real é gatilho legítimo — o oposto do caso anterior. Os dois juntos medem se o agente distingue, em vez de escalar sempre ou nunca.",
       "lead": "Ja é a terceira vez que eu explico a mesma coisa e ninguem resolve. Isso é um absurdo.",
       "espera_tool": "escalate_to_human",
+      "historico": []
+    },
+    {
+      "id": "responde_quem_ja_declarou_intencao",
+      "porque": "2026-08-19: a Mestre atendeu 'sempre se apresente e pergunte em que posso ajudar' APAGANDO a regra que mandava não desviar de pergunta ampla. O lead que chegava dizendo o que queria passou a receber a pergunta de volta, 3/3. Esta frase é a que estava escrita como exemplo no prompt — é onde o defeito é determinístico.",
+      "lead": "queria entender o que vocês fazem",
+      "nao_espera_texto": "(em que|no que|como)\\s+posso\\s+(te\\s+|lhe\\s+)?ajud\\w*\\s*\\??\\s*$",
+      "nao_espera_tool": "escalate_to_human",
+      "historico": []
+    },
+    {
+      "id": "responde_pergunta_de_conteudo",
+      "porque": "O mesmo defeito com OUTRA redação. Em 2026-08-19 a versão em produção respondia 2 de 3 vezes aqui e 0 de 3 na frase copiada do prompt. Um caso só mediria a decoreba do exemplo; dois medem o comportamento.",
+      "lead": "me explica o que vocês fazem exatamente",
+      "nao_espera_texto": "(em que|no que|como)\\s+posso\\s+(te\\s+|lhe\\s+)?ajud\\w*\\s*\\??\\s*$",
+      "nao_espera_tool": "escalate_to_human",
+      "historico": []
+    },
+    {
+      "id": "abertura_convida_o_lead_a_falar",
+      "porque": "Contrapeso dos dois acima. Quando o lead só diz 'oi', devolver 'em que posso te ajudar?' é o comportamento CERTO — foi pedido pelo operador em 2026-08-19. Sem este caso, consertar 'não devolva a pergunta' poderia apagar a abertura inteira e quebrar o pedido dele sem ninguém ver.",
+      "lead": "oi",
+      "espera_texto": "(em que|no que|como)\\s+posso\\s+(te\\s+|lhe\\s+)?ajud|o que (te\\s+)?trouxe|me conta",
+      "nao_espera_tool": "escalate_to_human",
       "historico": []
     }
   ]

@@ -27,6 +27,44 @@ def carregar_roteiros(caminho: pathlib.Path) -> list[dict]:
     return dados["casos"]
 
 
+# Critérios reconhecidos, na ordem em que são reportados.
+_CRITERIOS = ("espera_tool", "nao_espera_tool", "espera_texto", "nao_espera_texto")
+
+
+def avaliar(caso: dict, chamadas: list[str], texto: str) -> tuple[bool, str, list[str]]:
+    """
+    Avalia TODOS os critérios do caso. Todos precisam valer.
+
+    Era um `if/elif`: o caso afirmava só o PRIMEIRO critério que tivesse, e os
+    demais eram lidos do JSON e silenciosamente ignorados. Custou caro em
+    2026-08-19 — um caso que checava "saudou?" e "respondeu o lead?" só checava a
+    saudação, então o agente passou a devolver "em que posso te ajudar?" para quem
+    já havia perguntado, e a medição marcou `ok`. Pior: o ciclo de treino leu esse
+    `ok` como conserto e recomendou publicar a piora.
+
+    Devolve (ok, descrição de todos os critérios, lista dos que reprovaram).
+    """
+    checagens: list[tuple[bool, str]] = []
+    if caso.get("espera_tool"):
+        alvo = caso["espera_tool"]
+        checagens.append((alvo in chamadas, f"deve chamar {alvo}"))
+    if caso.get("nao_espera_tool"):
+        alvo = caso["nao_espera_tool"]
+        checagens.append((alvo not in chamadas, f"NÃO pode chamar {alvo}"))
+    if caso.get("espera_texto"):
+        rx = caso["espera_texto"]
+        checagens.append((bool(re.search(rx, texto, re.I)), f"texto casa /{rx}/"))
+    if caso.get("nao_espera_texto"):
+        rx = caso["nao_espera_texto"]
+        checagens.append((not re.search(rx, texto, re.I), f"texto NÃO casa /{rx}/"))
+
+    if not checagens:
+        return True, "(sem critério)", []
+
+    falhou_em = [desc for ok, desc in checagens if not ok]
+    return (not falhou_em), " E ".join(desc for _, desc in checagens), falhou_em
+
+
 async def rodar_caso(agente, caso: dict, prompt_override: str | None = None) -> dict:
     """Um caso. Devolve o que o agente FEZ, não o que ele disse."""
     from services.agent_engine.base import AgentContext
@@ -86,36 +124,21 @@ async def rodar_caso(agente, caso: dict, prompt_override: str | None = None) -> 
     )
 
     chamadas = [c.name for c in (turn.tool_calls or [])]
-    espera = caso.get("espera_tool")
-    nao_espera = caso.get("nao_espera_tool")
-    # Critério de TEXTO, para pedidos do operador que não são sobre ferramenta.
-    # "O agente tem que começar com bom dia/boa tarde/boa noite" é verificável por
-    # regex — e é assim que o pedido dele vira medida, em vez de opinião.
-    espera_texto = caso.get("espera_texto")
-    nao_espera_texto = caso.get("nao_espera_texto")
     texto_bruto = turn.text or ""
-
-    if espera:
-        ok = espera in chamadas
-        criterio = f"deve chamar {espera}"
-    elif nao_espera:
-        ok = nao_espera not in chamadas
-        criterio = f"NÃO pode chamar {nao_espera}"
-    elif espera_texto:
-        ok = bool(re.search(espera_texto, texto_bruto, re.I))
-        criterio = f"texto casa /{espera_texto}/"
-    elif nao_espera_texto:
-        ok = not re.search(nao_espera_texto, texto_bruto, re.I)
-        criterio = f"texto NÃO casa /{nao_espera_texto}/"
-    else:
-        ok, criterio = True, "(sem critério)"
+    ok, criterio, falhou_em = avaliar(caso, chamadas, texto_bruto)
 
     return {
         "id": caso["id"],
         "ok": ok,
         "criterio": criterio,
+        # Qual critério reprovou — com vários por caso, "FALHA" sozinho não diz nada.
+        "falhou_em": falhou_em,
         "chamou": ",".join(chamadas) or "-",
-        "texto": (turn.text or "").replace("\n", " ")[:90],
+        "texto": texto_bruto.replace("\n", " ")[:90],
+        # O truncado em 90 serve à linha da CLI. Julgar a resposta precisa dela
+        # inteira: foi lendo o texto completo que se viu o agente devolver
+        # "em que posso te ajudar?" para quem já tinha perguntado.
+        "texto_completo": texto_bruto,
     }
 
 
