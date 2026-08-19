@@ -28,6 +28,7 @@ Cérebro externo do projeto. O código é a fonte da verdade; aqui mora o **porq
 - [[decisoes/multiplos-agentes-por-instancia]] — listar agentes por nome (no ar); duas contas no mesmo canal exige o conceito de CONTA, que nao existe · status:parcial
 - [[decisoes/multi-agente-plano-completo]] — o plano faseado de 92 pontos, com as 7 decisoes do dono · status:proposta
 - [[decisoes/wizard-de-criacao-de-agente]] — as etapas são função pura do tenant; sem CRM a qualificação muda de variante, não some; derivar nunca copiar · status:solid
+- [[decisoes/o-instrumento-precisa-medir-texto]] — os 3 ajustes da Mestre pegaram, e o 3º quebrou o que ninguém pediu; o roteiro só media ferramenta e o ciclo mandou publicar a piora · status:solid
 - [[decisoes/custo-por-origem]] — o painel mostrava $0,0000 porque ninguém calculava; NULL ≠ zero, cache tem preço próprio, e a Mestre ganha coluna própria · status:solid
 
 ## Fluxos
