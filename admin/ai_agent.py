@@ -1208,6 +1208,83 @@ async def test_ai_agent(location_id: str, request: Request):
         return {"success": False, "error": str(e)}
 
 
+@router.post("/{location_id}/treinar")
+async def treinar_agente(location_id: str, request: Request):
+    """
+    Ciclo fechado: pedido do operador → ajuste → TESTE → evidência.
+
+    Corpo: {"pedido": "...", "channel": "whatsapp", "publicar": false}
+
+    O que muda em relação a `improve-prompt`: aqui nada é publicado sem prova. A
+    Mestre devolve o prompt candidato E o caso que verifica o pedido; rodamos o
+    candidato e o ATUAL contra os mesmos casos (mais o roteiro de regressão) e
+    devolvemos o comparativo. Publicar é uma segunda chamada, com `publicar=true`
+    e o candidato em mãos.
+
+    A separação é o ponto: "aplicar melhoria" reescrevia 6,6 mil caracteres de
+    produção e o operador clicava e torcia. Agora ele decide com o número na frente.
+    """
+    from services.mestre_ciclo import CicloIndisponivel, propor_ajuste, verificar
+
+    if not is_valid_location_id(location_id):
+        return {"success": False, "error": "location_id inválido."}
+    try:
+        corpo = await request.json()
+    except Exception:
+        corpo = {}
+
+    pedido = (corpo.get("pedido") or "").strip()
+    canal = (corpo.get("channel") or "whatsapp").strip()
+    if len(pedido) < 10:
+        return {"success": False, "error": "Descreva o que o agente deve passar a fazer."}
+
+    db = SessionLocal()
+    try:
+        agente = (
+            db.query(AIAgent)
+            .filter(AIAgent.location_id == location_id, AIAgent.channel == canal)
+            .first()
+        )
+        if agente is None:
+            return {"success": False, "error": "Agente não encontrado neste canal."}
+        db.expunge(agente)   # usado fora da sessão pela sonda
+    finally:
+        db.close()
+
+    try:
+        proposta = await propor_ajuste(agente, pedido)
+    except CicloIndisponivel as e:
+        return {"success": False, "error": str(e)}
+    except Exception as e:
+        logger.error(f"[TREINAR] {location_id}: {type(e).__name__}: {e}")
+        return {"success": False, "error": "Não consegui montar o ajuste agora."}
+
+    if proposta["ja_atendido"] and proposta["prompt_novo"].strip() == (agente.prompt or "").strip():
+        # Resposta legítima: dizer "já faz isso" é melhor que inventar mudança.
+        return {"success": True, "ja_atendido": True, "resumo": proposta["resumo"],
+                "casos": proposta["casos"], "verificacao": None}
+
+    try:
+        verif = await verificar(agente, proposta["prompt_novo"], proposta["casos"])
+    except Exception as e:
+        logger.error(f"[TREINAR] verificação falhou em {location_id}: {type(e).__name__}: {e}")
+        return {"success": False, "error": "O ajuste saiu, mas não consegui testá-lo. Nada foi publicado."}
+
+    logger.info(
+        f"[TREINAR] {location_id}/{canal}: {verif['resumo']} · "
+        f"recomendação={verif['recomendacao']}"
+    )
+    return {
+        "success": True,
+        "ja_atendido": False,
+        "resumo": proposta["resumo"],
+        "prompt_novo": proposta["prompt_novo"],
+        "tamanho_antes": len(agente.prompt or ""),
+        "tamanho_depois": len(proposta["prompt_novo"]),
+        "verificacao": verif,
+    }
+
+
 @router.post("/{location_id}/improve-prompt")
 async def improve_prompt(location_id: str, request: Request):
     """

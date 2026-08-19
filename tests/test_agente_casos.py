@@ -45,7 +45,8 @@ def test_todo_caso_tem_criterio_e_motivo():
     for c in casos:
         assert c.get("id"), "caso sem id"
         assert c.get("lead"), f"{c['id']}: sem fala do lead"
-        assert c.get("espera_tool") or c.get("nao_espera_tool"), \
+        criterios = ("espera_tool", "nao_espera_tool", "espera_texto", "nao_espera_texto")
+        assert any(c.get(k) for k in criterios), \
             f"{c['id']}: sem critério — um caso que não afirma nada não mede nada"
         assert len(c.get("porque") or "") > 30, \
             f"{c['id']}: sem 'porque'. Cada caso existe para impedir um bug de voltar; " \

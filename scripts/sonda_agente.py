@@ -32,6 +32,7 @@ import asyncio
 import json
 import os
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
@@ -95,6 +96,12 @@ async def rodar_caso(agente, caso: dict, prompt_override: str | None = None) -> 
     chamadas = [c.name for c in (turn.tool_calls or [])]
     espera = caso.get("espera_tool")
     nao_espera = caso.get("nao_espera_tool")
+    # Critério de TEXTO, para pedidos do operador que não são sobre ferramenta.
+    # "O agente tem que começar com bom dia/boa tarde/boa noite" é verificável por
+    # regex — e é assim que o pedido dele vira medida, em vez de opinião.
+    espera_texto = caso.get("espera_texto")
+    nao_espera_texto = caso.get("nao_espera_texto")
+    texto_bruto = turn.text or ""
 
     if espera:
         ok = espera in chamadas
@@ -102,6 +109,12 @@ async def rodar_caso(agente, caso: dict, prompt_override: str | None = None) -> 
     elif nao_espera:
         ok = nao_espera not in chamadas
         criterio = f"NÃO pode chamar {nao_espera}"
+    elif espera_texto:
+        ok = bool(re.search(espera_texto, texto_bruto, re.I))
+        criterio = f"texto casa /{espera_texto}/"
+    elif nao_espera_texto:
+        ok = not re.search(nao_espera_texto, texto_bruto, re.I)
+        criterio = f"texto NÃO casa /{nao_espera_texto}/"
     else:
         ok, criterio = True, "(sem critério)"
 
