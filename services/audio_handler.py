@@ -267,6 +267,11 @@ async def synthesize_speech_fishaudio(
                     save_usage_log,
                     location_id=location_id,
                     service="fishaudio",
+                    # Sem a engine na linha, s1 e s2-pro somam no mesmo balde e a
+                    # conta fica impossível: medido na conta do tenant em
+                    # 2026-08-19, s2-pro custa $30/1M caracteres e s1 não consumiu
+                    # crédito nenhum. Uma diferença dessas não pode ficar invisível.
+                    model=model or "s1",
                     characters=len(text),
                 )
             except Exception as e_log:

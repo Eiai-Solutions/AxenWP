@@ -108,6 +108,38 @@ def test_velocidade_fica_na_faixa_da_api(monkeypatch, entrada, esperado):
     assert visto["json"]["prosody"]["speed"] == esperado
 
 
+def test_o_log_de_uso_grava_QUAL_engine_falou(monkeypatch):
+    """
+    Sem a engine na linha, s1 e s2-pro somam no mesmo balde e a conta some.
+
+    Medido na conta do tenant em 2026-08-19: s2-pro custa $30 por 1M de
+    caracteres e s1 não consumiu crédito nenhum. Uma diferença dessas não pode
+    depender de alguém lembrar qual engine estava ligada naquele dia.
+    """
+    _espiao(monkeypatch)
+    registrado = {}
+
+    def _log(**kw):
+        registrado.update(kw)
+
+    monkeypatch.setattr(ah, "save_usage_log", _log, raising=True)
+    _gerar(text="frase de teste", model="s2-pro", location_id="loc1")
+
+    assert registrado.get("service") == "fishaudio"
+    assert registrado.get("model") == "s2-pro", "log sem a engine: s1 e s2-pro viram um número só"
+    assert registrado.get("characters") == len("frase de teste")
+    assert registrado.get("location_id") == "loc1"
+
+
+def test_sem_location_id_nao_grava_uso(monkeypatch):
+    """Sem tenant não há onde pendurar — a FK exige `tenants.location_id`."""
+    _espiao(monkeypatch)
+    chamou = []
+    monkeypatch.setattr(ah, "save_usage_log", lambda **kw: chamou.append(kw), raising=True)
+    _gerar()
+    assert chamou == []
+
+
 def test_timeout_cabe_no_audio_longo(monkeypatch):
     """
     Uma frase de 300 chars leva ~20s para gerar. Com o timeout de 30s antigo, a

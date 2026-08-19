@@ -59,6 +59,23 @@ PROMOCOES: dict[str, tuple[tuple[float, float], date]] = {
     "claude-sonnet-5": ((2.0, 10.0), date(2026, 8, 31)),
 }
 
+# TTS do Fish Audio, em USD por 1M de CARACTERES.
+#
+# MEDIDO, não copiado de página de preço: li o crédito da conta antes e depois de
+# uma síntese, esperando a cobrança assentar (ela não é instantânea — sem esperar,
+# o gasto de uma chamada é atribuído à seguinte, e foi assim que a primeira
+# medição saiu errada). 4.000 caracteres em s2-pro derrubaram o crédito em
+# exatamente $0,12.
+#
+# `s1` fica DE FORA de propósito: 8.000 caracteres não moveram o crédito nesta
+# conta, mas "não cobrou aqui" não é o mesmo que "é grátis para todo mundo" —
+# plano diferente cobra diferente. Sem preço, o painel diz "sem preço"; com 0.0
+# ele diria "de graça", que é o defeito que este módulo existe para não repetir.
+# Quem souber a própria tarifa preenche via PRECOS_EXTRA_JSON.
+PRECOS_FISHAUDIO_POR_1M_CARACTERES: dict[str, float] = {
+    "s2-pro": 30.0,
+}
+
 MULT_CACHE_LEITURA = 0.10   # ~10% do preço de entrada
 MULT_CACHE_ESCRITA = 1.25   # 125% — TTL 5min (o de 1h seria 2.00; não usamos)
 
@@ -111,6 +128,10 @@ def _tarifa(
             float(achado.get("saida") or 0.0),
             float(achado.get("caractere") or 0.0),
         )
+
+    if svc == "fishaudio":
+        por_1m = PRECOS_FISHAUDIO_POR_1M_CARACTERES.get(nome)
+        return None if por_1m is None else (0.0, 0.0, por_1m)
 
     if svc != "anthropic":
         return None

@@ -33,6 +33,35 @@ def test_servico_sem_tabela_devolve_None():
     assert custo("openrouter", "openai/gpt-4o", input_tokens=1000) is None
 
 
+# ── TTS do Fish: as duas engines têm preços muito diferentes ───────────────
+
+def test_s2pro_e_precificado_pela_medicao_na_conta():
+    """4.000 caracteres derrubaram o crédito em exatamente $0,12 → $30/1M."""
+    assert custo("fishaudio", "s2-pro", characters=4_000) == pytest.approx(0.12)
+    assert custo("fishaudio", "s2-pro", characters=1_000_000) == pytest.approx(30.0)
+
+
+def test_s1_fica_SEM_PRECO_e_nao_como_gratuito():
+    """
+    8.000 caracteres não moveram o crédito nesta conta — mas plano diferente cobra
+    diferente. Gravar 0.0 diria "de graça" para todo tenant; `None` diz "não sei",
+    que é a verdade e é o que a tela mostra em ocre.
+    """
+    assert custo("fishaudio", "s1", characters=1_000_000) is None
+
+
+def test_as_duas_engines_do_fish_nao_somam_no_mesmo_balde():
+    """
+    Sem a engine na linha de uso, s1 e s2-pro viram um numero so. A diferenca
+    medida e grande demais para ficar invisivel: uma nao consumiu credito, a outra
+    custa $30/1M.
+    """
+    assert custo("fishaudio", "s2-pro", characters=10_000) is not None
+    assert custo("fishaudio", "s1", characters=10_000) is None
+    assert custo("fishaudio", None, characters=10_000) is None, \
+        "linha sem engine nao pode herdar o preco da cara"
+
+
 def test_chamada_de_verdade_nunca_custa_zero():
     """Guarda direta contra o sintoma que o Luiz viu: tokens > 0 e custo 0."""
     v = custo("anthropic", "claude-opus-5", input_tokens=1000, output_tokens=500)
