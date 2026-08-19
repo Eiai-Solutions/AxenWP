@@ -188,6 +188,21 @@ async def synthesize_speech(
 # TTS — Fish Audio
 # ─────────────────────────────────────────────────────────────────────
 
+# `latency` tem três valores: low, balanced e normal. `normal` é o de melhor
+# qualidade E é o default do servidor — mandar explícito não muda o áudio de hoje,
+# muda quem decide: um default alterado do lado deles degradaria a voz aqui sem
+# nenhum sinal. Medido em 2026-08-19: `balanced` entrega 18,5s onde `normal`
+# entrega 20,0s na mesma frase, ou seja, corre mais e perde prosódia.
+FISH_LATENCY = "normal"
+
+# Teto de tokens de áudio POR TRECHO de texto (default da API: 1024). É teto, não
+# meta: subir não gera áudio mais longo nem custa a mais, só remove um limite que
+# pode morder numa frase longa. Medido: com 4096 a duração não mudou (19,1s contra
+# 19,7s), então HOJE não é ele que corta — mas o corte existe (~8% das gerações) e
+# esta é a única causa documentada de parada dura. Custa nada deixar folga.
+FISH_MAX_NEW_TOKENS = 2048
+
+
 async def synthesize_speech_fishaudio(
     text: str,
     api_key: str,
@@ -209,12 +224,16 @@ async def synthesize_speech_fishaudio(
     Parâmetros de qualidade:
     - temperature/top_p baixos (~0.5) → voz mais consistente entre runs
     - normalize_loudness → equaliza volume entre frases
+
+    `latency` e `max_new_tokens` são fixos aqui e não viram controle de painel:
+    não é decisão de operador, é o que a spec da Fish manda pedir. Ver as duas
+    constantes abaixo.
     """
     try:
         clamped_speed = max(0.5, min(float(speed or 1.0), 2.0))
         clamped_temp = max(0.0, min(float(temperature if temperature is not None else 0.7), 1.0))
         clamped_top_p = max(0.0, min(float(top_p if top_p is not None else 0.7), 1.0))
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 "https://api.fish.audio/v1/tts",
                 headers={
@@ -228,6 +247,8 @@ async def synthesize_speech_fishaudio(
                     "format": "opus",
                     "temperature": clamped_temp,
                     "top_p": clamped_top_p,
+                    "latency": FISH_LATENCY,
+                    "max_new_tokens": FISH_MAX_NEW_TOKENS,
                     "prosody": {
                         "speed": clamped_speed,
                         "normalize_loudness": bool(normalize_loudness),
