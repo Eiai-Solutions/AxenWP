@@ -3438,24 +3438,48 @@
             }
         }
 
+        // O status do Fish trocava classe com `replace('text-gray-400', ...)`. Depois
+        // do primeiro erro a cor ficava presa em vermelho: a classe cinza não existia
+        // mais, o replace virava no-op, e o sucesso seguinte aparecia em vermelho.
+        function _fishStatus(el, texto, tom) {
+            if (!el) return;
+            el.textContent = texto;
+            el.classList.remove('text-gray-400', 'text-gray-500', 'text-green-400',
+                                'text-red-400', 'text-[#CE9433]');
+            el.classList.add({ ok: 'text-green-400', erro: 'text-red-400',
+                               aviso: 'text-[#CE9433]' }[tom] || 'text-gray-400');
+        }
+
+        function _fishRotuloDaVoz(v) {
+            const langs = (v.languages || []).join(',') || '?';
+            const estado = v.state && v.state !== 'trained' ? ` [${v.state}]` : '';
+            const autor = v.autor ? ` — ${v.autor}` : '';
+            return `${v.name} (${langs})${estado}${autor}`;
+        }
+
         async function fetchFishAudioVoices() {
             const apiKey = document.getElementById('ai_fishaudio_api_key').value;
             const btn = document.getElementById('btn_fetch_fish_voices');
             const selectInfo = document.getElementById('fish_voices_status_info');
             const voiceSelect = document.getElementById('ai_fishaudio_voice_id');
             const preselected = voiceSelect.dataset.preselected;
+            const escopo = (document.getElementById('fish_escopo') || {}).value || 'minhas';
+            const busca = (document.getElementById('fish_busca') || {}).value || '';
+            const idioma = (document.getElementById('fish_idioma') || {}).value || '';
 
             if (!apiKey) {
-                alert("Informe a API Key do Fish Audio primeiro.");
+                _fishStatus(selectInfo, 'Informe a API Key do Fish Audio primeiro.', 'erro');
+                document.getElementById('ai_fishaudio_api_key').focus();
                 return;
             }
 
             btn.disabled = true;
             btn.innerHTML = '<span class="animate-pulse">Loading...</span>';
-            selectInfo.innerText = "Buscando vozes...";
+            _fishStatus(selectInfo, 'Buscando vozes...', 'neutro');
 
             try {
-                const response = await fetch(`/admin/agents/fishaudio/voices?api_key=${encodeURIComponent(apiKey)}`);
+                const qs = new URLSearchParams({ api_key: apiKey, escopo, busca, idioma });
+                const response = await fetch(`/admin/agents/fishaudio/voices?${qs}`);
                 const data = await response.json();
 
                 if (response.ok && data.success) {
@@ -3463,24 +3487,93 @@
                     data.voices.forEach(v => {
                         const opt = document.createElement('option');
                         opt.value = v.voice_id;
-                        const langs = (v.languages || []).join(',') || '?';
-                        const stateTag = v.state && v.state !== 'trained' ? ` [${v.state}]` : '';
-                        opt.innerText = `${v.name} (${langs})${stateTag}`;
+                        opt.textContent = _fishRotuloDaVoz(v);
                         if (v.voice_id === preselected) opt.selected = true;
                         voiceSelect.appendChild(opt);
                     });
-                    selectInfo.innerText = `${data.voices.length} vozes carregadas.`;
-                    selectInfo.classList.replace('text-gray-400', 'text-green-400');
+                    if (data.voices.length === 0) {
+                        // Lista vazia não é erro, e chamar de erro mandaria o operador
+                        // conferir a chave. Diz o que fazer a seguir.
+                        _fishStatus(selectInfo, escopo === 'minhas'
+                            ? 'Nenhuma voz treinada nesta conta. Troque para "Acervo publico" ou cole um ID abaixo.'
+                            : 'Nada encontrado com esse filtro. Tente outro nome ou limpe o idioma.', 'aviso');
+                    } else {
+                        _fishStatus(selectInfo, `${data.voices.length} voz(es) carregada(s) — `
+                            + (escopo === 'minhas' ? 'sua conta.' : 'acervo publico.'), 'ok');
+                    }
                 } else {
-                    selectInfo.innerText = data.detail || "Erro ao carregar vozes.";
-                    selectInfo.classList.replace('text-gray-400', 'text-red-400');
+                    _fishStatus(selectInfo, data.detail || 'Erro ao carregar vozes.', 'erro');
                 }
             } catch (err) {
-                selectInfo.innerText = "Erro de conexão.";
-                selectInfo.classList.replace('text-gray-400', 'text-red-400');
+                _fishStatus(selectInfo, 'Erro de conexao.', 'erro');
             } finally {
                 btn.disabled = false;
                 btn.innerHTML = 'Buscar Vozes';
+            }
+        }
+
+        // Aceita tanto o id cru quanto a URL do modelo colada do site — colar a URL
+        // inteira é o erro óbvio de quem está com a página aberta do lado.
+        function _fishIdDaEntrada(bruto) {
+            const t = (bruto || '').trim();
+            const m = t.match(/[0-9a-f]{24}/i);
+            return m ? m[0] : t;
+        }
+
+        async function usarFishModelPorId() {
+            const apiKey = document.getElementById('ai_fishaudio_api_key').value;
+            const entrada = document.getElementById('fish_model_id');
+            const btn = document.getElementById('btn_fish_model_id');
+            const status = document.getElementById('fish_model_id_status');
+            const voiceSelect = document.getElementById('ai_fishaudio_voice_id');
+
+            if (!apiKey) {
+                _fishStatus(status, 'Informe a API Key do Fish Audio primeiro.', 'erro');
+                document.getElementById('ai_fishaudio_api_key').focus();
+                return;
+            }
+            const modelId = _fishIdDaEntrada(entrada.value);
+            if (!modelId) {
+                _fishStatus(status, 'Cole o ID do modelo.', 'erro');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '<span class="animate-pulse">...</span>';
+            _fishStatus(status, 'Conferindo no Fish Audio...', 'neutro');
+
+            try {
+                const r = await fetch('/admin/agents/fishaudio/model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ api_key: apiKey, model_id: modelId }),
+                });
+                const data = await r.json();
+
+                if (r.ok && data.success) {
+                    const v = data.voice;
+                    // Entra como opção selecionada do MESMO select que o form envia —
+                    // assim o caminho de salvar não muda em nada.
+                    [...voiceSelect.options].forEach(o => {
+                        if (o.value === v.voice_id) o.remove();
+                    });
+                    const opt = document.createElement('option');
+                    opt.value = v.voice_id;
+                    opt.textContent = `${_fishRotuloDaVoz(v)} — por ID`;
+                    opt.selected = true;
+                    voiceSelect.insertBefore(opt, voiceSelect.firstChild);
+                    voiceSelect.value = v.voice_id;
+                    voiceSelect.dataset.preselected = v.voice_id;
+                    entrada.value = '';
+                    _fishStatus(status, `Voz "${v.name}" selecionada. Clique em SALVAR para valer.`, 'ok');
+                } else {
+                    _fishStatus(status, data.detail || 'Nao consegui conferir esse ID.', 'erro');
+                }
+            } catch (err) {
+                _fishStatus(status, 'Erro de conexao.', 'erro');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = 'Conferir e Usar';
             }
         }
 

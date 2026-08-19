@@ -1678,10 +1678,13 @@
                                 </label>
                                 <div class="flex gap-3">
                                     <input type="password" id="ai_fishaudio_api_key" name="fishaudio_api_key"
+                                        autocomplete="off" data-1p-ignore data-lpignore="true"
                                         class="input-dark flex-1 py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
-                                        placeholder="32+ caracteres">
+                                        placeholder="32+ caracteres"
+                                        title="Chave da sua conta Fish Audio. Precisa ser salva para o agente usar.">
                                     <button type="button" id="btn_fetch_fish_voices" onclick="fetchFishAudioVoices()"
-                                        class="bg-gray-800 hover:bg-gray-700 text-white font-mono uppercase tracking-widest text-[10px] px-4 rounded-lg font-bold border border-gray-700 transition-colors">
+                                        class="bg-gray-800 hover:bg-gray-700 text-white font-mono uppercase tracking-widest text-[10px] px-4 rounded-lg font-bold border border-gray-700 transition-colors"
+                                        title="Listar vozes conforme o escopo escolhido abaixo">
                                         Buscar Vozes
                                     </button>
                                 </div>
@@ -1690,14 +1693,59 @@
                             <div class="group">
                                 <label
                                     class="block text-gray-400 text-[10px] font-bold mb-1.5 uppercase tracking-widest group-focus-within:text-white transition-colors">Voice
-                                    (Modelo Treinado)</label>
+                                    (Modelo de Voz)</label>
+
+                                <!-- Escopo + busca: sem isto a lista era só `self=true`, e quem nunca
+                                     treinou uma voz via "0 vozes carregadas" sem saber que o acervo
+                                     público existia. -->
+                                <div class="flex gap-2 mb-2">
+                                    <select id="fish_escopo" onchange="fetchFishAudioVoices()"
+                                        class="input-dark py-2 px-2.5 rounded-lg text-[11px] font-mono"
+                                        title="Minhas = vozes que voce treinou/clonou. Acervo publico = biblioteca do Fish Audio.">
+                                        <option value="minhas">Minhas vozes</option>
+                                        <option value="publicas">Acervo publico</option>
+                                    </select>
+                                    <input type="text" id="fish_busca" placeholder="buscar por nome..."
+                                        onkeydown="if(event.key==='Enter'){event.preventDefault();fetchFishAudioVoices();}"
+                                        class="input-dark flex-1 py-2 px-2.5 rounded-lg text-[11px] font-mono placeholder-gray-700"
+                                        title="Filtra pelo titulo do modelo. Enter para buscar.">
+                                    <input type="text" id="fish_idioma" placeholder="idioma (pt)" maxlength="5"
+                                        onkeydown="if(event.key==='Enter'){event.preventDefault();fetchFishAudioVoices();}"
+                                        class="input-dark w-24 py-2 px-2.5 rounded-lg text-[11px] font-mono placeholder-gray-700"
+                                        title="Codigo do idioma, ex.: pt, en, es. Vazio = todos.">
+                                </div>
+
                                 <select id="ai_fishaudio_voice_id" name="fishaudio_voice_id"
-                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" data-preselected="">
+                                    class="input-dark w-full py-2.5 px-3 rounded-lg text-sm font-mono" data-preselected=""
+                                    title="Voz que o agente vai usar. Escolha da lista ou cole um ID abaixo.">
                                     <option value="">-- Busque as Vozes Primeiro --</option>
                                 </select>
                                 <p id="fish_voices_status_info" class="text-[10px] text-gray-400 mt-2 font-mono">
-                                    Lista as vozes da sua conta Fish Audio (modelos treinados/cloned).
+                                    Liste as vozes da sua conta ou do acervo publico do Fish Audio.
                                 </p>
+
+                                <!-- Colar ID direto: o runtime sempre aceitou qualquer id (vai como
+                                     `reference_id` para a API), mas a tela so oferecia o select. -->
+                                <div class="mt-3 pt-3 border-t border-gray-800">
+                                    <label class="block text-gray-500 text-[10px] font-bold mb-1.5 uppercase tracking-widest">
+                                        Ou cole o ID do modelo
+                                    </label>
+                                    <div class="flex gap-2">
+                                        <input type="text" id="fish_model_id" maxlength="120"
+                                            placeholder="24 caracteres, ou cole a URL do modelo"
+                                            onkeydown="if(event.key==='Enter'){event.preventDefault();usarFishModelPorId();}"
+                                            class="input-dark flex-1 py-2.5 px-3 rounded-lg text-sm font-mono placeholder-gray-700"
+                                            title="ID do modelo no Fish Audio (o trecho final da URL). Enter para conferir.">
+                                        <button type="button" id="btn_fish_model_id" onclick="usarFishModelPorId()"
+                                            class="bg-gray-800 hover:bg-gray-700 text-white font-mono uppercase tracking-widest text-[10px] px-4 rounded-lg font-bold border border-gray-700 transition-colors"
+                                            title="Confere o ID no Fish Audio e usa essa voz">
+                                            Conferir e Usar
+                                        </button>
+                                    </div>
+                                    <p id="fish_model_id_status" class="text-[10px] text-gray-500 mt-2 font-mono">
+                                        Confere o ID no Fish Audio antes de salvar, para o agente nao ficar mudo depois.
+                                    </p>
+                                </div>
                             </div>
 
                             <div class="bg-[#211C17] border border-gray-800 p-4 rounded-xl space-y-4 mt-2">

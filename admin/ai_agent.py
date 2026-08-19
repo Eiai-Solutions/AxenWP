@@ -719,21 +719,60 @@ async def get_elevenlabs_voices(api_key: str):
         raise HTTPException(status_code=500, detail="Erro interno ao consultar serviço de voz.")
 
 
+FISH_API = "https://api.fish.audio"
+
+
+def _fish_voz(item: dict) -> dict:
+    """Um modelo do Fish Audio no formato que a tela consome."""
+    return {
+        "voice_id": item.get("_id"),
+        "name": item.get("title") or "Sem título",
+        "languages": item.get("languages") or [],
+        "state": item.get("state"),
+        "autor": ((item.get("author") or {}).get("nickname")
+                  if isinstance(item.get("author"), dict) else None),
+    }
+
+
 @router.get("/fishaudio/voices")
-async def get_fishaudio_voices(api_key: str):
+async def get_fishaudio_voices(
+    api_key: str,
+    escopo: str = "minhas",
+    busca: str = "",
+    idioma: str = "",
+):
     """
-    Lista as vozes (modelos) da conta Fish Audio.
-    Por padrão retorna só as do usuário (self=true) — vozes treinadas/cloned.
+    Lista modelos de voz do Fish Audio.
+
+    `escopo="minhas"` manda `self=true` e traz só o que a conta treinou/clonou —
+    era o único comportamento possível até 2026-08-19, e é por isso que a tela
+    mostrava "0 vozes carregadas" para quem nunca treinou nada: as vozes públicas
+    (a maior parte do que se usa de fato) ficavam invisíveis, sem nenhuma pista de
+    que existiam.
+
+    `escopo="publicas"` omite o `self` — o default da própria API é `false`.
     """
     if not api_key:
         raise HTTPException(status_code=400, detail="API Key do Fish Audio é obrigatória.")
 
+    params: dict = {"page_size": 100}
+    if escopo != "publicas":
+        params["self"] = "true"
+    else:
+        # No acervo público a ordem importa: sem isto vem o que a API achar
+        # "relevante" para busca vazia, que não é o que o operador espera ver.
+        params["sort_by"] = "task_count"
+    if busca.strip():
+        params["title"] = busca.strip()
+    if idioma.strip():
+        params["language"] = idioma.strip()
+
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.get(
-                "https://api.fish.audio/model",
+                f"{FISH_API}/model",
                 headers={"Authorization": f"Bearer {api_key}"},
-                params={"self": "true", "page_size": 100},
+                params=params,
             )
             if response.status_code != 200:
                 raise HTTPException(
@@ -741,23 +780,89 @@ async def get_fishaudio_voices(api_key: str):
                     detail=f"Fish Audio retornou {response.status_code}: {response.text[:200]}",
                 )
             data = response.json()
-            voices = [
-                {
-                    "voice_id": item.get("_id"),
-                    "name": item.get("title") or "Sem título",
-                    "languages": item.get("languages") or [],
-                    "state": item.get("state"),
-                }
-                for item in data.get("items", [])
-                if item.get("_id")
-            ]
-            return {"success": True, "voices": voices, "total": data.get("total", len(voices))}
+            voices = [_fish_voz(i) for i in data.get("items", []) if i.get("_id")]
+            return {
+                "success": True,
+                "voices": voices,
+                "total": data.get("total", len(voices)),
+                "escopo": escopo,
+            }
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Erro ao buscar vozes no Fish Audio: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao consultar Fish Audio.")
+
+
+class _FishModeloPayload(BaseModel):
+    api_key: str
+    model_id: str
+
+
+@router.post("/fishaudio/model")
+async def resolve_fishaudio_model(payload: _FishModeloPayload):
+    """
+    Confere UM modelo do Fish Audio pelo id e devolve o nome.
+
+    Existe porque a tela só oferecia um `<select>` montado a partir da lista da
+    própria conta: um id colado do site do Fish Audio não tinha por onde entrar,
+    mesmo o runtime aceitando qualquer string (`reference_id` em audio_handler).
+
+    Validar antes de salvar é o ponto. Sem isto o operador grava um id errado e só
+    descobre quando o lead recebe silêncio no lugar do áudio — falha que aparece
+    longe, em produção, e não na tela onde foi cometida.
+
+    **POST, e não GET como a rota irmã de listagem, porque a chave vai no corpo.**
+    Em query string ela entra no log de acesso do proxy e no histórico do
+    navegador. (A rota de listagem continua GET; trocá-la é mudança à parte.)
+    """
+    api_key = (payload.api_key or "").strip()
+    model_id = (payload.model_id or "").strip()
+    if not api_key:
+        raise HTTPException(status_code=400, detail="API Key do Fish Audio é obrigatória.")
+    if not model_id:
+        raise HTTPException(status_code=400, detail="Informe o ID do modelo.")
+    # O id da Fish é um ObjectId de 24 hex. Barrar aqui evita mandar para fora
+    # coisa que obviamente não é id — inclusive URL inteira colada por engano.
+    if not re.fullmatch(r"[0-9a-f]{24}", model_id, re.I):
+        raise HTTPException(
+            status_code=400,
+            detail=("ID inválido. Esperado 24 caracteres hexadecimais — é o trecho "
+                    "final da URL do modelo no site do Fish Audio."),
+        )
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.get(
+                f"{FISH_API}/model/{model_id}",
+                headers={"Authorization": f"Bearer {api_key}"},
+            )
+    except Exception as e:
+        logger.error(f"Erro ao consultar modelo Fish Audio: {e}")
+        raise HTTPException(status_code=500, detail="Não consegui falar com o Fish Audio.")
+
+    # Os três casos são distinguíveis na API e merecem mensagens distintas: dizer
+    # "erro" para os três faria o operador conferir a chave quando o problema é o
+    # id, e vice-versa.
+    if r.status_code == 404:
+        raise HTTPException(status_code=404, detail="Nenhum modelo com esse ID.")
+    if r.status_code in (401, 403):
+        raise HTTPException(
+            status_code=403,
+            detail="Sua chave não tem acesso a esse modelo (ele é privado de outra conta?).",
+        )
+    if r.status_code != 200:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Fish Audio retornou {r.status_code}: {r.text[:160]}",
+        )
+
+    voz = _fish_voz(r.json() or {})
+    # A API pode responder 200 sem `_id` se mudar de formato; assumir o id pedido
+    # seria gravar no banco algo que nunca foi confirmado.
+    voz["voice_id"] = voz.get("voice_id") or model_id
+    return {"success": True, "voice": voz}
 
 
 # ── Helpers para chamadas OpenRouter ──
