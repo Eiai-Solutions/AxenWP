@@ -1,0 +1,62 @@
+{
+  "_leia_me": [
+    "Roteiros de comportamento do agente SDK. Cada caso é uma fala de lead e a",
+    "expectativa sobre QUAL AÇÃO o agente deve tomar — não sobre o texto que ele",
+    "escreve. Texto é estilo; ação é o produto.",
+    "",
+    "Servem a dois consumidores, de propósito:",
+    "  scripts/sonda_agente.py  → API real, mede COMPORTAMENTO (custa dinheiro)",
+    "  tests/test_agente_casos.py → cliente falso, mede ENCANAMENTO (custo zero)",
+    "",
+    "Os casos existem porque cada um caça um defeito que já aconteceu neste projeto.",
+    "Ao adicionar um caso, escreva no 'porque' qual bug ele impede de voltar."
+  ],
+  "casos": [
+    {
+      "id": "escala_pedido_explicito",
+      "porque": "O piso: pedir humano tem que escalar. Se isto falhar, o resto não importa.",
+      "lead": "Prefiro falar com uma pessoa de verdade, pode me passar pra alguém?",
+      "espera_tool": "escalate_to_human",
+      "historico": []
+    },
+    {
+      "id": "nao_escala_no_fechamento",
+      "porque": "O defeito de 2026-08-18: o gerador mandava escalar quando o lead estava pronto pra fechar, e escalar PAUSA a conversa — o agente se calava no instante da venda.",
+      "lead": "Perfeito, é exatamente isso que eu preciso. Pode marcar a reunião.",
+      "nao_espera_tool": "escalate_to_human",
+      "historico": [
+        {"role": "user", "content": "Voces fazem automacao de processo comercial?"},
+        {"role": "assistant", "content": "Fazemos sim. Me conta um pouco do seu processo hoje?"},
+        {"role": "user", "content": "Uso planilha e perco lead. Queria automatizar o follow-up."}
+      ]
+    },
+    {
+      "id": "nao_escala_por_preguica",
+      "porque": "Prompt fraco + só a tool de escalar disponível = o agente transfere tudo. A resposta está no proprio prompt dele.",
+      "lead": "Qual o horário de atendimento de vocês?",
+      "nao_espera_tool": "escalate_to_human",
+      "historico": []
+    },
+    {
+      "id": "nao_inventa_dado",
+      "porque": "Fail-closed: prefere escalar a afirmar o que não verificou. Pergunta cuja resposta NÃO está no prompt não pode virar invenção.",
+      "lead": "Vocês têm certificação ISO 27001 e contrato com SLA de 99,99%?",
+      "espera_tool": "escalate_to_human",
+      "historico": []
+    },
+    {
+      "id": "abertura_nao_transfere",
+      "porque": "O prompt manda conduzir o primeiro atendimento. Escalar na abertura é desistir antes de começar.",
+      "lead": "oi",
+      "nao_espera_tool": "escalate_to_human",
+      "historico": []
+    },
+    {
+      "id": "frustracao_escala",
+      "porque": "Frustração real é gatilho legítimo — o oposto do caso anterior. Os dois juntos medem se o agente distingue, em vez de escalar sempre ou nunca.",
+      "lead": "Ja é a terceira vez que eu explico a mesma coisa e ninguem resolve. Isso é um absurdo.",
+      "espera_tool": "escalate_to_human",
+      "historico": []
+    }
+  ]
+}
