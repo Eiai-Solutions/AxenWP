@@ -40,6 +40,11 @@ from utils.logger import logger
 # testes, a rodada fica cara e o sinal se dilui.
 MAX_CASOS_NOVOS = 2
 
+# Quantas amostras confirmam um caso que MUDOU de veredito. Ímpar de propósito:
+# maioria simples sem empate. 3 é o menor número que distingue sinal de ruído sem
+# triplicar a conta — só os casos que discordaram são reamostrados.
+CONFIRMACOES = 3
+
 
 _SYSTEM = """Você é a IA Mestre do MilloChat. Um operador vai te dar UM pedido sobre o comportamento do agente de atendimento dele, e você faz duas coisas.
 
@@ -277,6 +282,39 @@ async def verificar(agente, prompt_novo: str, casos_novos: list[dict],
     antes = await rodada(None)             # None = o prompt que está no agente
     depois = await rodada(prompt_novo)
 
+    # ── Confirmação por amostra: o que MUDOU precisa se repetir ──
+    #
+    # Uma amostra por caso não distingue "a mudança causou isso" de "o modelo
+    # variou". Medido em 2026-08-19: `nao_inventa_dado` acerta ~1 em 6 no MESMO
+    # prompt, e num ciclo real ele apareceu como `QUEBROU` — regressão fantasma,
+    # veredito `revisar`, num candidato que não havia quebrado nada.
+    #
+    # Um alarme falso é pior que nenhum alarme: o operador aprende a ignorar.
+    #
+    # Só os casos que DISCORDARAM entre antes e depois são reamostrados — o que
+    # ficou igual dos dois lados não tem o que confirmar. Custa poucas chamadas.
+    mudou = [c for c in casos
+             if bool(antes.get(c["id"], {}).get("ok")) != bool(depois.get(c["id"], {}).get("ok"))]
+    amostras: dict[str, dict] = {}
+    if mudou:
+        logger.info(f"[CICLO] {len(mudou)} caso(s) mudaram; confirmando com "
+                    f"{CONFIRMACOES} amostras cada.")
+        for caso in mudou:
+            cid = caso["id"]
+            votos_a = [bool(antes[cid].get("ok"))]
+            votos_d = [bool(depois[cid].get("ok"))]
+            for _ in range(CONFIRMACOES - 1):
+                for prompt, votos in ((None, votos_a), (prompt_novo, votos_d)):
+                    try:
+                        votos.append(bool((await rodar_caso(agente, caso, prompt))["ok"]))
+                    except Exception as e:
+                        logger.warning(f"[CICLO] reamostra de {cid} falhou: {e}")
+                        votos.append(False)
+            amostras[cid] = {"antes": votos_a, "depois": votos_d}
+            # Maioria simples: o lado vence se acertar na maior parte das amostras.
+            antes[cid]["ok"] = sum(votos_a) * 2 > len(votos_a)
+            depois[cid]["ok"] = sum(votos_d) * 2 > len(votos_d)
+
     linhas = []
     for caso in casos:
         cid = caso["id"]
@@ -290,7 +328,15 @@ async def verificar(agente, prompt_novo: str, casos_novos: list[dict],
             veredito = "seguia ok"
         else:
             veredito = "segue falhando"
+        amostra = amostras.get(cid)
         linhas.append({
+            # Quantas amostras sustentam este veredito, e como cada lado votou.
+            # Sem isso, "QUEBROU" de 1 amostra e "QUEBROU" de 3 têm o mesmo peso na
+            # tela — e não têm o mesmo peso na realidade.
+            "amostras": (
+                f"{sum(amostra['depois'])}/{len(amostra['depois'])} depois, "
+                f"{sum(amostra['antes'])}/{len(amostra['antes'])} antes"
+            ) if amostra else "1/1",
             "id": cid,
             "origem": caso.get("origem", "regressao"),
             "porque": caso.get("porque", ""),
