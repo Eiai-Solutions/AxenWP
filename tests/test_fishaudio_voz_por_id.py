@@ -85,13 +85,17 @@ def _fish_falso(monkeypatch, resposta, registro=None):
 
 
 MODELO = {
-    "_id": "aabbccddeeff00112233445566",
+    "_id": "d13f84b987ad4f22b56d2b47f4eb838e",
     "title": "Ellen PT-BR",
     "languages": ["pt"],
     "state": "trained",
     "author": {"nickname": "Eiai"},
 }
-ID_VALIDO = "a1b2c3d4e5f60718293a4b5c"
+# ID REAL da API do Fish (medido 2026-08-19): 32 hex, não 24. A primeira versão
+# deste arquivo usava um id inventado de 24 e por isso aprovou uma validação que
+# teria recusado todo id de verdade.
+ID_VALIDO = "90e65eaaf50e4470b8e6d43ee6afd7d5"
+ID_INEXISTENTE = "ffffffffffffffffffffffffffffffff"
 
 
 # ── colar o ID: o que não existia ──────────────────────────────────────────
@@ -108,6 +112,45 @@ def test_id_valido_devolve_o_NOME_da_voz(cliente, monkeypatch):
     assert v["languages"] == ["pt"]
 
 
+def test_o_formato_ACEITO_e_o_que_a_api_realmente_devolve(cliente, monkeypatch):
+    """
+    REGRESSÃO de um defeito meu, 2026-08-19.
+
+    A primeira versão desta rota exigia `[0-9a-f]{24}` — eu supus ObjectId do
+    Mongo e escrevi a regra sem medir. Os testes concordaram porque o id falso
+    deles tinha 24 caracteres: dado inventado a partir da mesma suposição não
+    checa nada, só a repete.
+
+    Medido depois contra a API: **60 de 60 modelos têm 32 hex**. A validação
+    recusaria todo id de verdade, no campo criado justamente para colar id.
+
+    Estes são ids reais colhidos da API. Se alguém reapertar a faixa, quebra aqui.
+    """
+    reais = [
+        "90e65eaaf50e4470b8e6d43ee6afd7d5",
+        "d13f84b987ad4f22b56d2b47f4eb838e",
+        "2368250f3e6c46f691956f0523425b72",
+    ]
+    for mid in reais:
+        assert len(mid) == 32, "amostra do teste deixou de refletir a API"
+        _fish_falso(monkeypatch, _Resposta(200, dict(MODELO, _id=mid)))
+        r = cliente.post("/admin/agents/fishaudio/model",
+                         json={"api_key": "k" * 32, "model_id": mid})
+        assert r.status_code == 200, f"recusou um id REAL da Fish: {mid} -> {r.text}"
+        assert r.json()["voice"]["voice_id"] == mid
+
+
+def test_uuid_com_hifen_e_normalizado(cliente, monkeypatch):
+    """O id é um UUID sem hífen; copiado de outro lugar pode vir com."""
+    com_hifen = "90e65eaa-f50e-4470-b8e6-d43ee6afd7d5"
+    sem = com_hifen.replace("-", "")
+    _fish_falso(monkeypatch, _Resposta(200, dict(MODELO, _id=sem)))
+    r = cliente.post("/admin/agents/fishaudio/model",
+                     json={"api_key": "k" * 32, "model_id": com_hifen})
+    assert r.status_code == 200, r.text
+    assert r.json()["voice"]["voice_id"] == sem
+
+
 def test_id_com_formato_errado_nem_chega_a_chamar_o_fish(cliente, monkeypatch):
     """
     Mandar lixo para fora leva a chave junto e devolve o erro genérico deles.
@@ -118,7 +161,7 @@ def test_id_com_formato_errado_nem_chega_a_chamar_o_fish(cliente, monkeypatch):
     r = cliente.post("/admin/agents/fishaudio/model",
                      json={"api_key": "k" * 32, "model_id": "voz da ellen"})
     assert r.status_code == 400
-    assert "hexadecimais" in r.json()["detail"]
+    assert "hexadecimal" in r.json()["detail"].lower()
     assert chamadas == [], "mandou entrada obviamente inválida para o Fish Audio"
 
 

@@ -823,13 +823,20 @@ async def resolve_fishaudio_model(payload: _FishModeloPayload):
         raise HTTPException(status_code=400, detail="API Key do Fish Audio é obrigatória.")
     if not model_id:
         raise HTTPException(status_code=400, detail="Informe o ID do modelo.")
-    # O id da Fish é um ObjectId de 24 hex. Barrar aqui evita mandar para fora
-    # coisa que obviamente não é id — inclusive URL inteira colada por engano.
-    if not re.fullmatch(r"[0-9a-f]{24}", model_id, re.I):
+    # Formato MEDIDO contra a API, não suposto: 60 de 60 modelos amostrados em
+    # 2026-08-19 têm 32 hex (UUID sem hífen). A primeira versão desta linha exigia
+    # 24 — eu assumi ObjectId do Mongo — e teria recusado TODO id real; os testes
+    # concordaram porque o dado falso deles nasceu da mesma suposição.
+    #
+    # A faixa 24-36 é folga deliberada: o objetivo aqui é só não mandar para fora
+    # coisa que obviamente não é id (uma frase, uma URL quebrada), levando a chave
+    # junto. Quem decide se o id existe é a Fish, logo abaixo.
+    model_id = model_id.replace("-", "").strip()
+    if not re.fullmatch(r"[0-9a-f]{24,36}", model_id, re.I):
         raise HTTPException(
             status_code=400,
-            detail=("ID inválido. Esperado 24 caracteres hexadecimais — é o trecho "
-                    "final da URL do modelo no site do Fish Audio."),
+            detail=("ID inválido. É a sequência hexadecimal no fim da URL do modelo "
+                    "no site do Fish Audio (32 caracteres)."),
         )
 
     try:

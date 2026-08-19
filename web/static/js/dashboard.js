@@ -3514,9 +3514,14 @@
 
         // Aceita tanto o id cru quanto a URL do modelo colada do site — colar a URL
         // inteira é o erro óbvio de quem está com a página aberta do lado.
+        //
+        // A faixa {24,36} não é folga estética: o id da Fish tem 32 hex (medido,
+        // 60 de 60). Com `{24}` fixo, o match pegava os PRIMEIROS 24 de um id de 32
+        // e devolvia um id truncado — que a API então recusava como inexistente,
+        // apontando para o lugar errado.
         function _fishIdDaEntrada(bruto) {
-            const t = (bruto || '').trim();
-            const m = t.match(/[0-9a-f]{24}/i);
+            const t = (bruto || '').trim().replace(/-/g, '');
+            const m = t.match(/[0-9a-f]{24,36}/i);
             return m ? m[0] : t;
         }
 
