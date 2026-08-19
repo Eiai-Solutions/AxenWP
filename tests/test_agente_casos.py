@@ -20,7 +20,7 @@ import pytest
 from services.agent_engine.tools import ESCALATE, QUALIFY, build_tool_specs
 from services.prompt_builder import build_system_prompt
 
-ROTEIRO = pathlib.Path(__file__).parent / "roteiros" / "comportamento_sdr.json"
+from services.sonda import ROTEIRO_PADRAO as ROTEIRO
 
 
 def carregar():

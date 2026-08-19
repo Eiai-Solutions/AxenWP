@@ -250,19 +250,12 @@ async def verificar(agente, prompt_novo: str, casos_novos: list[dict],
     `incluir_regressao` traz o roteiro fixo junto: uma mudança que faz o agente
     cumprimentar e passa a escalar tudo não é melhoria.
     """
-    import pathlib
-    import sys
-
-    raiz = pathlib.Path(__file__).resolve().parent.parent
-    if str(raiz) not in sys.path:
-        sys.path.insert(0, str(raiz))
-    from scripts.sonda_agente import carregar_roteiros, rodar_caso  # noqa: E402
+    from services.sonda import ROTEIRO_PADRAO, carregar_roteiros, rodar_caso
 
     casos = list(casos_novos)
     if incluir_regressao:
         try:
-            roteiro = raiz / "tests" / "roteiros" / "comportamento_sdr.json"
-            casos += [dict(c, origem="regressao") for c in carregar_roteiros(roteiro)]
+            casos += [dict(c, origem="regressao") for c in carregar_roteiros(ROTEIRO_PADRAO)]
         except Exception as e:
             logger.warning(f"[CICLO] roteiro de regressão indisponível: {e}")
 
