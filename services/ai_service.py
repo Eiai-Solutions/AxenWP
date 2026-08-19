@@ -46,7 +46,7 @@ from services.qualification_engine import (
     generate_summary,
     is_already_qualified_sync,
 )
-from services.usage_logger import save_usage_log
+from services.usage_logger import ATENDIMENTO, save_usage_log
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -544,13 +544,20 @@ class AIEngine:
     async def _log_claude_usage(self, usage: dict) -> None:
         """Persiste tokens do turno Claude (cache-aware) em usage_logs."""
         try:
+            u = usage or {}
             await asyncio.to_thread(
                 save_usage_log,
                 location_id=self.agent_config.location_id,
                 service="anthropic",
                 model=(getattr(self.agent_config, "anthropic_model", None) or "claude-sonnet-5"),
-                input_tokens=(usage or {}).get("input_tokens", 0),
-                output_tokens=(usage or {}).get("output_tokens", 0),
+                input_tokens=u.get("input_tokens", 0),
+                output_tokens=u.get("output_tokens", 0),
+                # O engine já acumulava os dois e o log jogava fora. É o grosso da
+                # conta: o prefixo (system + tools) é cacheado e reaparece em todo
+                # turno da conversa — como leitura a 10%, não como entrada cheia.
+                cache_read_tokens=u.get("cache_read_input_tokens", 0),
+                cache_write_tokens=u.get("cache_creation_input_tokens", 0),
+                origem=ATENDIMENTO,
             )
         except Exception as e:
             logger.warning(f"Falha usage log Claude: {e}")

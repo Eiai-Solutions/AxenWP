@@ -164,7 +164,7 @@ async def conversar(token: str, mensagem: Optional[str],
         }
 
     try:
-        estado = await avancar(estado, mensagem)
+        estado = await avancar(estado, mensagem, location_id=location_id)
     except EntrevistaIndisponivel:
         # `avancar` muta o estado NO LUGAR, então aqui ele já tem os contadores do
         # que foi gasto antes de estourar — inclusive buscas na web, que a Anthropic

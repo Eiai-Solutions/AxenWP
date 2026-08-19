@@ -1510,7 +1510,7 @@ async def save_form_data(location_id: str, request: Request):
             try:
                 # Mesmo gate do onboarding: Anthropic-Spec quando há chave, senão
                 # OpenRouter legado. No caminho Spec, os campos vêm da Mestre.
-                generated_prompt, fields_override = await _run_master(settings, form_data)
+                generated_prompt, fields_override = await _run_master(settings, form_data, location_id)
             except _MasterError as e:
                 db.commit()
                 logger.error(f"IA Mestre falhou ao regenerar ({location_id}): {e}")
@@ -1598,7 +1598,9 @@ class _MasterError(Exception):
     """Falha da IA Mestre — o chamador mantém a submissão pending, sem criar meia-boca."""
 
 
-async def _run_master(settings, form_data: dict) -> tuple[str, Optional[list]]:
+async def _run_master(
+    settings, form_data: dict, location_id: Optional[str] = None
+) -> tuple[str, Optional[list]]:
     """
     Roda a IA Mestre e devolve (system_prompt, fields_override).
 
@@ -1607,12 +1609,15 @@ async def _run_master(settings, form_data: dict) -> tuple[str, Optional[list]]:
     OpenRouter (prosa), e os campos vêm do parser do texto livre (fields=None).
     Assim a migração é opt-in por configuração e reversível — sem regredir os
     tenants atuais até o admin configurar a chave.
+
+    `location_id` é só para o gasto da Mestre cair no painel do tenant certo
+    (aba Métricas, linha "Mestre"). Não muda o que é gerado.
     """
     from services import master_engine
 
     if master_engine.is_configured():
         try:
-            spec = await master_engine.generate_agent_spec(form_data)
+            spec = await master_engine.generate_agent_spec(form_data, location_id=location_id)
         except Exception as e:
             raise _MasterError(f"IA Mestre (Anthropic) falhou: {e}")
         from utils.agent_spec import spec_fields_as_intent
@@ -1679,7 +1684,7 @@ async def create_agent_from_submission(submission_id: int, request: Request):
         form_data.setdefault("qualification_questions", "")
 
         try:
-            generated_prompt, fields_override = await _run_master(settings, form_data)
+            generated_prompt, fields_override = await _run_master(settings, form_data, location_id)
         except _MasterError as e:
             # Submissão permanece 'pending' — dado preservado, não cria meia-boca.
             logger.error(f"IA Mestre falhou na submissão {submission_id}: {e}")
@@ -1933,7 +1938,7 @@ async def wizard_importar(location_id: str, draft_id: int):
     form_data.setdefault("qualification_questions", "")
 
     try:
-        prompt_gerado, campos = await _run_master(settings, form_data)
+        prompt_gerado, campos = await _run_master(settings, form_data, location_id)
     except _MasterError as e:
         # A submissão continua 'pending' — o dado do cliente não se perde porque a
         # Mestre falhou.

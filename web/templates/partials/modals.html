@@ -1915,9 +1915,12 @@
                                     <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total de Chamadas</p>
                                     <p id="costs_total_calls" class="text-2xl font-display font-extrabold text-white">0</p>
                                 </div>
-                                <div class="bg-[#211C17] border border-gray-800 rounded-xl p-4 text-center">
+                                <div class="bg-[#211C17] border border-gray-800 rounded-xl p-4 text-center"
+                                     title="Soma do que foi cobrado no periodo. Cache de leitura entra a 10% e escrita a 125%.">
                                     <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Custo Total</p>
-                                    <p id="costs_total_cost" class="text-2xl font-display font-extrabold text-brand-primary">$0.00</p>
+                                    <p id="costs_total_cost" class="text-2xl font-display font-extrabold text-brand-primary tabular-nums">$0.00</p>
+                                    <p id="costs_sem_preco" class="hidden text-[9px] font-mono mt-1 text-[#CE9433]"
+                                       title="Chamadas de modelo/servico que nao esta na tabela de precos. Nao entram no total — nao sao gratis, sao desconhecidas."></p>
                                 </div>
                                 <div class="bg-[#211C17] border border-gray-800 rounded-xl p-4 text-center">
                                     <p class="text-[10px] text-gray-500 uppercase tracking-widest font-mono mb-1">Total de Tokens</p>
@@ -1929,25 +1932,37 @@
                                 </div>
                             </div>
 
+                            <!-- Atendimento x Mestre -->
+                            <div class="bg-[#211C17] border border-gray-800 rounded-xl overflow-hidden">
+                                <div class="px-4 py-3 border-b border-gray-800">
+                                    <p class="text-[10px] text-gray-400 uppercase tracking-widest font-mono font-bold">De Onde Vem o Gasto</p>
+                                </div>
+                                <div id="costs_origem_cards" class="grid grid-cols-1 sm:grid-cols-2 gap-px bg-gray-800"></div>
+                            </div>
+
                             <!-- Per-service breakdown -->
                             <div class="bg-[#211C17] border border-gray-800 rounded-xl overflow-hidden">
                                 <div class="px-4 py-3 border-b border-gray-800">
                                     <p class="text-[10px] text-gray-400 uppercase tracking-widest font-mono font-bold">Detalhamento por Servico</p>
                                 </div>
+                                <div class="overflow-x-auto">
                                 <table class="w-full text-left text-xs">
                                     <thead>
                                         <tr class="text-[10px] text-gray-500 uppercase font-mono border-b border-gray-800/50">
                                             <th class="px-4 py-2.5">Servico</th>
-                                            <th class="px-4 py-2.5 text-right">Chamadas</th>
-                                            <th class="px-4 py-2.5 text-right">Tokens de Entrada</th>
-                                            <th class="px-4 py-2.5 text-right">Tokens de Saida</th>
-                                            <th class="px-4 py-2.5 text-right">Caracteres</th>
-                                            <th class="px-4 py-2.5 text-right">Custo (USD)</th>
+                                            <th class="px-4 py-2.5 text-right" title="Numero de chamadas de API no periodo">Chamadas</th>
+                                            <th class="px-4 py-2.5 text-right" title="Entrada NAO cacheada — preco cheio">Entrada</th>
+                                            <th class="px-4 py-2.5 text-right" title="Prefixo reaproveitado do cache — cobrado a 10% da entrada">Cache Lido</th>
+                                            <th class="px-4 py-2.5 text-right" title="Prefixo gravado no cache — cobrado a 125% da entrada">Cache Escrito</th>
+                                            <th class="px-4 py-2.5 text-right" title="Tokens gerados pelo modelo">Saida</th>
+                                            <th class="px-4 py-2.5 text-right" title="Caracteres sintetizados em voz (TTS)">Caracteres</th>
+                                            <th class="px-4 py-2.5 text-right" title="Custo do periodo em dolares">Custo (USD)</th>
                                         </tr>
                                     </thead>
                                     <tbody id="costs_service_rows" class="divide-y divide-gray-800/40">
                                     </tbody>
                                 </table>
+                                </div>
                             </div>
 
                             <!-- Daily breakdown -->

@@ -229,18 +229,27 @@ class MessageMapping(Base):
 class UsageLog(Base):
     """
     Registra cada chamada de API para rastrear custos por tenant.
-    Serviços: openrouter, elevenlabs, groq
+    Serviços: anthropic, openrouter, elevenlabs, groq
     """
     __tablename__ = "usage_logs"
 
     id = Column(Integer, primary_key=True, index=True)
     location_id = Column(String, ForeignKey("tenants.location_id", ondelete="CASCADE"), nullable=False, index=True)
-    service = Column(String(50), nullable=False, index=True)  # openrouter, elevenlabs, groq
-    model = Column(String(100), nullable=True)  # ex: openai/gpt-4o
-    input_tokens = Column(Integer, default=0)
+    service = Column(String(50), nullable=False, index=True)  # anthropic, openrouter, elevenlabs, groq
+    model = Column(String(100), nullable=True)  # ex: claude-sonnet-5
+    input_tokens = Column(Integer, default=0)   # entrada NÃO cacheada (a API já desconta)
     output_tokens = Column(Integer, default=0)
-    characters = Column(Integer, default=0)  # para ElevenLabs (TTS)
-    cost_usd = Column(Float, default=0.0)
+    # Cache tem preço próprio (leitura ~10%, escrita 125%). Somar em input_tokens
+    # apagaria a diferença entre o turno que escreve o prefixo e os que o reusam.
+    cache_read_tokens = Column(Integer, default=0)
+    cache_write_tokens = Column(Integer, default=0)
+    characters = Column(Integer, default=0)     # para ElevenLabs (TTS)
+    buscas_web = Column(Integer, default=0)     # `web_search`: cobrado por requisição
+    # `atendimento` (agente falando com lead) | `mestre` (gerar/melhorar/testar agente).
+    # Sem esta coluna as duas contas viram uma só e "quanto custa a Mestre" não tem resposta.
+    origem = Column(String(20), default="atendimento", index=True)
+    # NULL = não precificado (modelo fora da tabela). Diferente de 0.0 = não gastou.
+    cost_usd = Column(Float, nullable=True, default=None)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 

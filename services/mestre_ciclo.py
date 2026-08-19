@@ -33,6 +33,7 @@ import json
 import re
 from typing import Any, Optional
 
+from services.usage_logger import registrar_gasto_mestre
 from utils.logger import logger
 
 # Teto de casos por rodada. O operador pede uma coisa; se a Mestre inventar dez
@@ -212,6 +213,8 @@ async def propor_ajuste(agente, pedido: str) -> dict:
         tool_choice={"type": "tool", "name": ferramenta["name"]},
         messages=[{"role": "user", "content": corpo}],
     )
+
+    await registrar_gasto_mestre(agente.location_id, modelo, getattr(resp, "usage", None))
 
     bloco = next((b for b in resp.content if getattr(b, "type", None) == "tool_use"), None)
     if bloco is None:

@@ -18,6 +18,7 @@ quem chama mantém a submissão `pending` e não cria agente meia-boca.
 import os
 from typing import Optional
 
+from services.usage_logger import registrar_gasto_mestre
 from utils.agent_spec import AgentSpec
 from utils.logger import logger
 from utils.master_prompt import build_company_context
@@ -113,10 +114,14 @@ def _build_user_message(form_data: dict) -> str:
     return f"{_SPEC_INSTRUCTION}\n\n---\n\nCONTEXTO DO CLIENTE:\n\n{build_company_context(form_data)}"
 
 
-async def generate_agent_spec(form_data: dict) -> AgentSpec:
+async def generate_agent_spec(form_data: dict, location_id: Optional[str] = None) -> AgentSpec:
     """
     Roda a Mestre e devolve o AgentSpec validado. Levanta em qualquer falha —
     o chamador trata como fail-closed (submissão fica pending).
+
+    `location_id` só serve para o custo aparecer no painel do tenant certo, na
+    coluna `mestre`. Opcional porque nenhum teste tem tenant e a geração não
+    depende dele; sem ele, o gasto simplesmente não é registrado (e o log avisa).
     """
     key = _resolve_master_key()
     if not key:
@@ -139,6 +144,8 @@ async def generate_agent_spec(form_data: dict) -> AgentSpec:
         messages=[{"role": "user", "content": _build_user_message(form_data)}],
         output_format=AgentSpec,
     )
+
+    await registrar_gasto_mestre(location_id, model, getattr(resp, "usage", None))
 
     spec = getattr(resp, "parsed_output", None)
     if spec is None:

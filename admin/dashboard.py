@@ -677,34 +677,61 @@ async def get_usage_data(
             UsageLog.created_at >= since,
         ).all()
 
-        # Resumo por serviço
-        by_service = {}
-        daily = {}
+        def _zerado() -> dict:
+            return {
+                "calls": 0, "input_tokens": 0, "output_tokens": 0,
+                "cache_read_tokens": 0, "cache_write_tokens": 0,
+                "characters": 0, "buscas_web": 0,
+                "cost_usd": 0.0, "sem_preco": 0,
+            }
+
+        def _somar(alvo: dict, log) -> None:
+            alvo["calls"] += 1
+            alvo["input_tokens"] += log.input_tokens or 0
+            alvo["output_tokens"] += log.output_tokens or 0
+            alvo["cache_read_tokens"] += getattr(log, "cache_read_tokens", 0) or 0
+            alvo["cache_write_tokens"] += getattr(log, "cache_write_tokens", 0) or 0
+            alvo["characters"] += log.characters or 0
+            alvo["buscas_web"] += getattr(log, "buscas_web", 0) or 0
+            # `cost_usd` NULL = não precificado (modelo fora da tabela de preços).
+            # Somar como zero seria repetir o defeito que este painel tinha: um
+            # total que parece de graça quando na verdade é desconhecido.
+            if log.cost_usd is None:
+                alvo["sem_preco"] += 1
+            else:
+                alvo["cost_usd"] += log.cost_usd
+
+        by_service: dict = {}
+        by_origem: dict = {}
+        daily: dict = {}
         for log in logs:
-            svc = log.service
-            if svc not in by_service:
-                by_service[svc] = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "characters": 0, "cost_usd": 0.0}
-            by_service[svc]["calls"] += 1
-            by_service[svc]["input_tokens"] += log.input_tokens or 0
-            by_service[svc]["output_tokens"] += log.output_tokens or 0
-            by_service[svc]["characters"] += log.characters or 0
-            by_service[svc]["cost_usd"] += log.cost_usd or 0.0
+            _somar(by_service.setdefault(log.service, _zerado()), log)
+            origem = getattr(log, "origem", None) or "atendimento"
+            _somar(by_origem.setdefault(origem, _zerado()), log)
 
             day_key = log.created_at.strftime("%Y-%m-%d") if log.created_at else "unknown"
-            if day_key not in daily:
-                daily[day_key] = {"calls": 0, "cost_usd": 0.0}
-            daily[day_key]["calls"] += 1
-            daily[day_key]["cost_usd"] += log.cost_usd or 0.0
+            dia = daily.setdefault(day_key, {"calls": 0, "cost_usd": 0.0})
+            dia["calls"] += 1
+            dia["cost_usd"] += log.cost_usd or 0.0
 
         total_calls = sum(s["calls"] for s in by_service.values())
         total_cost = sum(s["cost_usd"] for s in by_service.values())
+        sem_preco = sum(s["sem_preco"] for s in by_service.values())
+
+        for bloco in list(by_service.values()) + list(by_origem.values()):
+            bloco["cost_usd"] = round(bloco["cost_usd"], 6)
 
         return JSONResponse({
             "location_id": location_id,
             "period_days": days,
             "total_calls": total_calls,
-            "total_cost_usd": round(total_cost, 4),
+            "total_cost_usd": round(total_cost, 6),
+            # Quantas chamadas entraram no período sem preço tabelado. A tela
+            # mostra este número junto do total — sem ele, "$0,12" pareceria a
+            # conta inteira mesmo quando metade das chamadas não foi precificada.
+            "chamadas_sem_preco": sem_preco,
             "by_service": by_service,
+            "by_origem": by_origem,
             "daily": dict(sorted(daily.items())),
         })
     finally:

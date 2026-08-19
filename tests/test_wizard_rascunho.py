@@ -507,7 +507,7 @@ def mestre_falsa(monkeypatch):
     """A Mestre de verdade custa dinheiro; o que testamos aqui é o encanamento."""
     import admin.ai_agent as aa
 
-    async def _fake(settings, form_data):
+    async def _fake(settings, form_data, location_id=None):
         form_data["agent_name"] = "Sofia"
         return (
             f"Voce e a Sofia, atendente da {form_data.get('company_name')}.",
@@ -714,10 +714,10 @@ def test_reimportar_sem_qualificacao_limpa_os_campos_da_importacao_anterior(ambi
 
     campos = [{"label": "Qual o seu bairro?", "description": "", "type": "text"}]
 
-    async def _com(settings, form_data):
+    async def _com(settings, form_data, location_id=None):
         return "prompt A", campos
 
-    async def _sem(settings, form_data):
+    async def _sem(settings, form_data, location_id=None):
         return "prompt B", []
 
     _submissao(ambiente)
@@ -738,7 +738,7 @@ def test_importar_para_rascunho_de_outro_tenant_nao_gasta_a_mestre(ambiente, mon
 
     chamadas = []
 
-    async def _conta(settings, form_data):
+    async def _conta(settings, form_data, location_id=None):
         chamadas.append(1)
         return "prompt", []
 
@@ -759,7 +759,7 @@ def test_o_resumo_de_qualificacao_que_a_mestre_escreveu_chega_no_agente(ambiente
     """
     import admin.ai_agent as aa
 
-    async def _com_resumo(settings, form_data):
+    async def _com_resumo(settings, form_data, location_id=None):
         form_data["_spec_summary_prompt"] = "Resuma em 3 linhas: bairro, urgencia e orcamento."
         return "prompt da Sofia", [{"label": "Qual o seu bairro?", "description": "", "type": "text"}]
 

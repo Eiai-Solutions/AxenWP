@@ -2443,6 +2443,86 @@
             _openCardPhone = null;
         }
 
+        // Quatro casas escondem o gasto real: uma conversa inteira do agente sai
+        // por centavos de centavo, e "$0.0000" na tela foi lido como "de graça"
+        // durante semanas. Abaixo de um centavo mostra seis casas.
+        function _fmtUSD(v) {
+            if (v === null || v === undefined) return '—';
+            if (v === 0) return '$0.00';
+            return '$' + v.toFixed(v < 0.01 ? 6 : 4);
+        }
+
+        // Atendimento x Mestre — a divisão que o painel não tinha. Sem ela, o custo
+        // de TREINAR um agente (entrevista, ciclo, sonda) entrava misturado no
+        // custo de ATENDER e não dava para responder "quanto custa cada um".
+        function _renderCustosPorOrigem(porOrigem) {
+            const alvo = document.getElementById('costs_origem_cards');
+            if (!alvo) return;
+            alvo.innerHTML = '';
+
+            const rotulos = {
+                atendimento: {
+                    titulo: 'Atendimento',
+                    desc: 'O agente conversando com leads',
+                    dica: 'Cada turno de conversa com um lead: WhatsApp, Telegram, audio.',
+                },
+                mestre: {
+                    titulo: 'IA Mestre',
+                    desc: 'Gerar, melhorar e testar o agente',
+                    dica: 'Entrevista de onboarding, geracao de prompt, ciclo de treino e sonda de comportamento.',
+                },
+            };
+
+            // Sempre as duas, mesmo zeradas: a ausencia de gasto da Mestre e
+            // informacao ("ainda nao treinei"), nao motivo para sumir a linha.
+            for (const chave of ['atendimento', 'mestre']) {
+                const info = porOrigem[chave] || { calls: 0, cost_usd: 0, sem_preco: 0,
+                                                   input_tokens: 0, output_tokens: 0,
+                                                   cache_read_tokens: 0, cache_write_tokens: 0,
+                                                   buscas_web: 0 };
+                const meta = rotulos[chave];
+                const card = document.createElement('div');
+                card.className = 'bg-[#211C17] p-4';
+                card.title = meta.dica;
+
+                const topo = document.createElement('div');
+                topo.className = 'flex items-baseline justify-between gap-2';
+                const titulo = document.createElement('p');
+                titulo.className = 'text-[10px] text-gray-400 uppercase tracking-widest font-mono font-bold';
+                titulo.textContent = meta.titulo;
+                const valor = document.createElement('p');
+                valor.className = 'text-xl font-display font-extrabold tabular-nums '
+                                + (info.cost_usd > 0 ? 'text-brand-primary' : 'text-gray-600');
+                valor.textContent = _fmtUSD(info.cost_usd);
+                topo.appendChild(titulo);
+                topo.appendChild(valor);
+                card.appendChild(topo);
+
+                const desc = document.createElement('p');
+                desc.className = 'text-[10px] text-gray-600 font-mono mt-0.5';
+                desc.textContent = meta.desc;
+                card.appendChild(desc);
+
+                const tokens = (info.input_tokens || 0) + (info.output_tokens || 0)
+                             + (info.cache_read_tokens || 0) + (info.cache_write_tokens || 0);
+                const partes = [
+                    `${(info.calls || 0).toLocaleString()} chamada${info.calls === 1 ? '' : 's'}`,
+                    `${tokens.toLocaleString()} tokens`,
+                ];
+                if (info.buscas_web) {
+                    partes.push(`${info.buscas_web} busca${info.buscas_web > 1 ? 's' : ''} web`);
+                }
+                if (info.sem_preco) partes.push(`${info.sem_preco} sem preco`);
+
+                const rodape = document.createElement('p');
+                rodape.className = 'text-[10px] text-gray-500 font-mono mt-2 tabular-nums';
+                rodape.textContent = partes.join(' · ');
+                card.appendChild(rodape);
+
+                alvo.appendChild(card);
+            }
+        }
+
         async function loadUsageData() {
             const locationId = document.getElementById('ai_location_id').value;
             const period = document.getElementById('costs_period').value;
@@ -2468,33 +2548,83 @@
 
                 // Summary cards
                 document.getElementById('costs_total_calls').textContent = data.total_calls.toLocaleString();
-                document.getElementById('costs_total_cost').textContent = '$' + data.total_cost_usd.toFixed(4);
+                document.getElementById('costs_total_cost').textContent = _fmtUSD(data.total_cost_usd);
+
+                // Chamadas sem preco tabelado. Ficam FORA do total de propósito —
+                // o defeito que esta tela tinha era exatamente somar desconhecido
+                // como zero e exibir "$0,0000" com 2.650 tokens gastos.
+                const semPrecoEl = document.getElementById('costs_sem_preco');
+                const semPreco = data.chamadas_sem_preco || 0;
+                if (semPreco > 0) {
+                    semPrecoEl.textContent = `+ ${semPreco} chamada${semPreco > 1 ? 's' : ''} sem preco tabelado`;
+                    semPrecoEl.classList.remove('hidden');
+                } else {
+                    semPrecoEl.classList.add('hidden');
+                }
 
                 let totalTokens = 0;
                 let totalChars = 0;
-                for (const [svc, info] of Object.entries(data.by_service)) {
-                    totalTokens += (info.input_tokens || 0) + (info.output_tokens || 0);
+                for (const info of Object.values(data.by_service)) {
+                    totalTokens += (info.input_tokens || 0) + (info.output_tokens || 0)
+                                 + (info.cache_read_tokens || 0) + (info.cache_write_tokens || 0);
                     totalChars += info.characters || 0;
                 }
                 document.getElementById('costs_total_tokens').textContent = totalTokens.toLocaleString();
                 document.getElementById('costs_total_chars').textContent = totalChars.toLocaleString();
 
+                _renderCustosPorOrigem(data.by_origem || {});
+
                 // Service breakdown table
-                const serviceColors = { openrouter: 'text-blue-400', elevenlabs: 'text-purple-400', groq: 'text-green-400' };
-                const serviceIcons = { openrouter: '🤖', elevenlabs: '🗣️', groq: '🎙️' };
+                const serviceColors = {
+                    anthropic: 'text-brand-primary', openrouter: 'text-blue-400',
+                    elevenlabs: 'text-purple-400', groq: 'text-green-400',
+                };
+                const serviceIcons = {
+                    anthropic: '🧠', openrouter: '🤖', elevenlabs: '🗣️', groq: '🎙️',
+                };
                 const tbody = document.getElementById('costs_service_rows');
                 tbody.innerHTML = '';
                 for (const [svc, info] of Object.entries(data.by_service)) {
-                    const color = serviceColors[svc] || 'text-gray-300';
-                    const icon = serviceIcons[svc] || '⚡';
-                    tbody.innerHTML += `<tr class="hover:bg-gray-800/30 transition-colors">
-                        <td class="px-4 py-3 font-mono font-bold ${color}">${icon} ${svc.charAt(0).toUpperCase() + svc.slice(1)}</td>
-                        <td class="px-4 py-3 text-right text-gray-300 font-mono">${info.calls.toLocaleString()}</td>
-                        <td class="px-4 py-3 text-right text-gray-400 font-mono">${(info.input_tokens || 0).toLocaleString()}</td>
-                        <td class="px-4 py-3 text-right text-gray-400 font-mono">${(info.output_tokens || 0).toLocaleString()}</td>
-                        <td class="px-4 py-3 text-right text-gray-400 font-mono">${(info.characters || 0).toLocaleString()}</td>
-                        <td class="px-4 py-3 text-right text-brand-primary font-mono font-bold">$${info.cost_usd.toFixed(4)}</td>
-                    </tr>`;
+                    const tr = document.createElement('tr');
+                    tr.className = 'hover:bg-gray-800/30 transition-colors';
+                    const nome = document.createElement('td');
+                    nome.className = `px-4 py-3 font-mono font-bold ${serviceColors[svc] || 'text-gray-300'}`;
+                    nome.textContent = `${serviceIcons[svc] || '⚡'} ${svc.charAt(0).toUpperCase() + svc.slice(1)}`;
+                    tr.appendChild(nome);
+                    const numeros = [
+                        [info.calls, 'text-gray-300'],
+                        [info.input_tokens, 'text-gray-400'],
+                        [info.cache_read_tokens, 'text-gray-500'],
+                        [info.cache_write_tokens, 'text-gray-500'],
+                        [info.output_tokens, 'text-gray-400'],
+                        [info.characters, 'text-gray-400'],
+                    ];
+                    for (const [valor, cor] of numeros) {
+                        const td = document.createElement('td');
+                        td.className = `px-4 py-3 text-right font-mono tabular-nums ${cor}`;
+                        td.textContent = (valor || 0).toLocaleString();
+                        tr.appendChild(td);
+                    }
+                    const custo = document.createElement('td');
+                    custo.className = 'px-4 py-3 text-right font-mono font-bold tabular-nums';
+                    // Servico 100% nao tabelado nao mostra "$0.00": esse zero foi
+                    // lido como "de graca" por semanas. Mostra o que ele e — um
+                    // buraco na tabela de precos, em ocre, com como consertar.
+                    if (info.sem_preco === info.calls) {
+                        custo.textContent = 'sem preco';
+                        custo.classList.add('text-[#CE9433]', 'font-normal');
+                        custo.title = `${info.calls} chamada(s) sem preco tabelado. `
+                                    + 'Defina em PRECOS_EXTRA_JSON para entrar na conta.';
+                    } else {
+                        custo.textContent = _fmtUSD(info.cost_usd);
+                        custo.classList.add('text-brand-primary');
+                        if (info.sem_preco) {
+                            custo.title = `${info.sem_preco} chamada(s) deste servico sem preco tabelado — fora deste valor.`;
+                            custo.classList.add('border-b', 'border-dashed', 'border-[#CE9433]');
+                        }
+                    }
+                    tr.appendChild(custo);
+                    tbody.appendChild(tr);
                 }
 
                 // Daily bar chart

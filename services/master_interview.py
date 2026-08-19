@@ -49,6 +49,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from services.master_engine import _read_settings, _resolve_master_key
+from services.usage_logger import registrar_gasto_mestre
 from services.pesquisa_empresa import (
     PesquisaRecusada,
     consultar_cnpj,
@@ -471,7 +472,11 @@ async def _pesquisar(
         }
 
 
-async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) -> EstadoEntrevista:
+async def avancar(
+    estado: EstadoEntrevista,
+    mensagem_do_usuario: Optional[str],
+    location_id: Optional[str] = None,
+) -> EstadoEntrevista:
     """
     Um turno da entrevista.
 
@@ -551,6 +556,12 @@ async def avancar(estado: EstadoEntrevista, mensagem_do_usuario: Optional[str]) 
             servidor = getattr(uso, "server_tool_use", None)
             if servidor:
                 estado.buscas_web += getattr(servidor, "web_search_requests", 0) or 0
+
+        # Registrado AQUI, por chamada, e não no fim da entrevista: a entrevista
+        # pode nunca concluir (aba fechada, teto estourado, erro), e o que já foi
+        # gasto já foi cobrado. Contador que só grava no final é contador que
+        # perde justamente a conversa que deu errado.
+        await registrar_gasto_mestre(location_id, modelo, uso)
 
         # O turno do assistant entra INTEIRO (com o tool_use), e o tool_result vem
         # encostado logo depois — é o invariante que evita `tool_use` órfão virar

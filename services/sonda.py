@@ -75,6 +75,16 @@ async def rodar_caso(agente, caso: dict, prompt_override: str | None = None) -> 
     )
     turn = await engine.run(ctx)
 
+    # A sonda é gasto da MESTRE, não do atendimento: nenhum lead foi atendido
+    # aqui, o que se está pagando é medição de agente. Contar como atendimento
+    # inflaria o custo por conversa e esconderia o preço de treinar.
+    from services.usage_logger import registrar_gasto_mestre
+    await registrar_gasto_mestre(
+        agente.location_id,
+        (getattr(agente, "anthropic_model", None) or "").strip() or "claude-sonnet-5",
+        turn.usage,
+    )
+
     chamadas = [c.name for c in (turn.tool_calls or [])]
     espera = caso.get("espera_tool")
     nao_espera = caso.get("nao_espera_tool")
