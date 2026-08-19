@@ -151,6 +151,22 @@ def test_uuid_com_hifen_e_normalizado(cliente, monkeypatch):
     assert r.json()["voice"]["voice_id"] == sem
 
 
+def test_a_url_do_modelo_colada_inteira_funciona_TAMBEM_no_backend(cliente, monkeypatch):
+    """
+    A tela extrai o id antes de enviar, mas o backend tem que aceitar a URL também.
+
+    Se só o JS souber extrair, qualquer falha nele devolve "ID inválido" para uma
+    entrada que o operador vê como certa — e o erro aponta para o lugar errado.
+    Foi assim que o truncamento de 32→24 se disfarçou de "id não existe".
+    """
+    _fish_falso(monkeypatch, _Resposta(200, dict(MODELO, _id=ID_VALIDO)))
+    r = cliente.post("/admin/agents/fishaudio/model",
+                     json={"api_key": "k" * 32,
+                           "model_id": f"https://fish.audio/m/{ID_VALIDO}/"})
+    assert r.status_code == 200, r.text
+    assert r.json()["voice"]["voice_id"] == ID_VALIDO
+
+
 def test_id_com_formato_errado_nem_chega_a_chamar_o_fish(cliente, monkeypatch):
     """
     Mandar lixo para fora leva a chave junto e devolve o erro genérico deles.

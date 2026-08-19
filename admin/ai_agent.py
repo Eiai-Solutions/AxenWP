@@ -800,6 +800,20 @@ class _FishModeloPayload(BaseModel):
     model_id: str
 
 
+def _fish_id_da_entrada(bruto: str) -> str:
+    """
+    Extrai o id do modelo de um id cru, de um UUID com hífen, ou da URL colada.
+
+    O id do Fish tem 32 hex (medido: 60 de 60 modelos amostrados em 2026-08-19).
+    A faixa 24-36 é folga — a versão anterior fixava 24, por eu ter suposto
+    ObjectId do Mongo, e o `match` recortava os primeiros 24 de um id de 32,
+    devolvendo um id truncado que a API então recusava como inexistente.
+    """
+    t = (bruto or "").strip().replace("-", "")
+    achado = re.search(r"[0-9a-f]{24,36}", t, re.I)
+    return achado.group(0) if achado else t
+
+
 @router.post("/fishaudio/model")
 async def resolve_fishaudio_model(payload: _FishModeloPayload):
     """
@@ -831,7 +845,12 @@ async def resolve_fishaudio_model(payload: _FishModeloPayload):
     # A faixa 24-36 é folga deliberada: o objetivo aqui é só não mandar para fora
     # coisa que obviamente não é id (uma frase, uma URL quebrada), levando a chave
     # junto. Quem decide se o id existe é a Fish, logo abaixo.
-    model_id = model_id.replace("-", "").strip()
+    # A extração também mora aqui, e não só no JS, para as duas camadas concordarem:
+    # a tela aceita a URL do modelo colada inteira, e um backend que a recusasse
+    # devolveria "ID inválido" para uma entrada que o operador vê como correta —
+    # sempre que a extração do JS falhasse. Foi exatamente o que aconteceu quando o
+    # extrator truncava ids de 32 em 24: o erro apontava para o lugar errado.
+    model_id = _fish_id_da_entrada(model_id)
     if not re.fullmatch(r"[0-9a-f]{24,36}", model_id, re.I):
         raise HTTPException(
             status_code=400,
