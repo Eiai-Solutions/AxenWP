@@ -1280,13 +1280,29 @@ async def improve_prompt(location_id: str, request: Request):
         except Exception as e:
             logger.warning(f"Falha ao ler chat_histories: {e}")
 
-        # Se não tiver histórico real, usa o do simulador
-        history = real_history if real_history else [
+        # O simulador entra SEMPRE, no fim — não como plano B.
+        #
+        # Era `real_history if real_history else [simulador]`: bastava existir uma
+        # conversa no banco para a conversa que o operador acabou de conduzir ser
+        # DESCARTADA INTEIRA. E é justamente ela o sinal mais deliberado que existe:
+        # ele testou aquilo de propósito, para expor um comportamento. O operador
+        # clicava em Diagnosticar logo depois de reproduzir o problema e recebia um
+        # diagnóstico sobre outras conversas — parecia que a Mestre "testava sozinha".
+        #
+        # O comentário acima do bloco já dizia "combina" e "complementa"; o código
+        # substituía. Agora combina de verdade, com o teste POR ÚLTIMO: é o mais
+        # recente e é o que o operador quer discutir.
+        simulado = [
             {"role": ("human" if (h.get("from") == "me" or h.get("role") == "user") else "ai"),
              "content": h.get("text") or h.get("content") or ""}
             for h in test_history
             if (h.get("text") or h.get("content"))
         ]
+        history = real_history + simulado
+        logger.info(
+            f"[MESTRE] improve-prompt {location_id}/{channel} mode={mode}: "
+            f"{len(real_history)} msgs reais + {len(simulado)} do simulador"
+        )
 
         from utils.master_prompt import build_improve_messages
         messages = build_improve_messages(
