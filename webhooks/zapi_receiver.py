@@ -418,10 +418,24 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
                     )
 
         if not resp or resp.get("error"):
-            logger.error(f"Falha ao transferir inbound ({phone}) para GHL no tenant {location_id}.")
-            return
-
-        logger.info(f"Sucesso ao registrar inbound ({phone}) no GHL para tenant {location_id}.")
+            # NÃO retorna. Falha de espelho é problema de REGISTRO, não motivo para
+            # deixar o lead sem resposta — o CRM perde a linha, a conversa continua.
+            #
+            # Este `return` existia e era a divergência entre os dois caminhos de
+            # entrada: o do WAHA (`inbound_pipeline.py`) já seguia em frente, com o
+            # motivo escrito; o da Z-API abortava o turno inteiro. Duas cópias da
+            # mesma ideia que só continuam iguais por sorte — e estas já tinham
+            # divergido. Abortar aqui custava três coisas de uma vez: o cliente
+            # ficava sem resposta, a IA nem rodava, e a mensagem nem chegava ao
+            # `msglog_persist` logo abaixo (o painel próprio perdia o registro
+            # também, justamente quando o CRM já tinha perdido).
+            logger.error(
+                f"Falha ao espelhar inbound ({phone}) no CRM do tenant {location_id}; "
+                f"seguindo com a IA mesmo assim."
+            )
+            metrics.inc("millochat_crm_mirror_failed_total", labels={"channel": "whatsapp"})
+        else:
+            logger.info(f"Sucesso ao registrar inbound ({phone}) no GHL para tenant {location_id}.")
 
     # Log completo (base do painel próprio) — Z-API serve mídia por CDN público,
     # então o anexo já é uma URL utilizável; sem media_filename (não há blob local).
