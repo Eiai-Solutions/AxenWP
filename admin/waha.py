@@ -223,8 +223,11 @@ async def waha_reregistrar_webhook(location_id: str, _: bool = Depends(require_a
 
     É a operação do rollout de assinatura. `connect` também atualizaria o webhook,
     mas ele faz mais: garante sessão iniciada e, em certos estados, leva a um novo
-    QR. Numa instância atendendo agora, "mais" é risco — aqui a sessão não é tocada,
-    só a config de webhook.
+    QR. Numa instância atendendo agora, "mais" é risco.
+
+    **Não é de graça:** aplicar a config faz o WAHA reciclar a sessão — medido em
+    produção em 2026-08-24, o status foi de `WORKING` para `STARTING` e voltou em
+    segundos, sem novo QR. É uma janela curta, não zero. Não rode isto no pico.
 
     Depois disto o WAHA passa a assinar. Confira em `GET /admin/health` que
     `millochat_webhook_assinatura_total{resultado="ok"}` sobe e o `falhou` para,

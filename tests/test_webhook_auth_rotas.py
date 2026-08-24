@@ -248,3 +248,46 @@ def test_sem_segredo_configurado_os_tres_continuam_funcionando(app_de_teste, age
         "telegram:get_tenant",
         "process_inbound_message",
     ], f"o deploy quebraria quem está no ar: {agendadas}"
+
+
+# ── Superfície pública: o mapa ──
+
+def test_o_esquema_OpenAPI_nao_e_publico_fora_de_DEBUG(monkeypatch):
+    """
+    `/docs`, `/redoc` e `/openapi.json` entregavam o mapa completo do hub sem
+    autenticação: as rotas de `/admin`, a API de tenant e o formato exato de cada
+    webhook de entrada. A defesa não depende de esconder o mapa — mas publicá-lo
+    de graça faz o primeiro passo do trabalho do atacante.
+    """
+    from fastapi import FastAPI
+    from utils.config import settings
+
+    def _monta(debug: bool) -> FastAPI:
+        return FastAPI(
+            docs_url="/docs" if debug else None,
+            redoc_url="/redoc" if debug else None,
+            openapi_url="/openapi.json" if debug else None,
+        )
+
+    prod = TestClient(_monta(False))
+    for rota in ("/docs", "/redoc", "/openapi.json"):
+        assert prod.get(rota).status_code == 404, f"{rota} aberta em produção"
+
+    dev = TestClient(_monta(True))
+    assert dev.get("/openapi.json").status_code == 200, "fechou também em DEBUG"
+
+
+def test_main_amarra_os_docs_ao_DEBUG():
+    """
+    O teste acima prova a REGRA; este prova que o `main` a aplica. Sem ele, alguém
+    reintroduz `docs_url` fixo e a regra continua verde sozinha, sem efeito.
+    """
+    import inspect
+
+    import main
+
+    fonte = inspect.getsource(main)
+    for campo in ("docs_url", "redoc_url", "openapi_url"):
+        assert f'{campo}="' in fonte and "settings.debug" in fonte, (
+            f"{campo} não está condicionado a settings.debug em main.py"
+        )

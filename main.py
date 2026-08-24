@@ -156,7 +156,18 @@ app = FastAPI(
     title="MilloChat - WhatsApp Automation",
     description="Hub de integração GHL Custom Conversation Provider e Z-API",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
+    # `/docs`, `/redoc` e `/openapi.json` só em DEBUG.
+    #
+    # Em produção eles entregavam, sem autenticação, o mapa completo do hub: as
+    # ~90 rotas de `/admin`, a API de tenant, e o formato exato de cada webhook de
+    # entrada. Não vaza credencial nem location_id, mas poupa ao atacante todo o
+    # trabalho de descobrir onde bater — e o resto da defesa depende de segredo,
+    # não de obscuridade, justamente porque o mapa nunca é garantido. Ainda assim,
+    # publicá-lo de graça é dar o primeiro passo do trabalho dele.
+    docs_url="/docs" if settings.debug else None,
+    redoc_url="/redoc" if settings.debug else None,
+    openapi_url="/openapi.json" if settings.debug else None,
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
