@@ -108,6 +108,7 @@ async def test_connect_waha_com_force_prossegue():
 
     with patch("admin.waha.token_manager") as tm, \
          patch("admin.waha._global_cfg", return_value=("https://waha.example", "key")), \
+         patch("admin.waha.app_settings.public_base_url", "https://hub.example"), \
          patch("admin.waha.waha_service") as svc, \
          patch("admin.waha.SessionLocal") as session_local:
         tm.get_tenant.return_value = tenant_zapi()
@@ -133,6 +134,7 @@ async def test_connect_nao_marca_waha_se_a_sessao_nao_foi_criada():
 
     with patch("admin.waha.token_manager") as tm, \
          patch("admin.waha._global_cfg", return_value=("https://waha.example", "key")), \
+         patch("admin.waha.app_settings.public_base_url", "https://hub.example"), \
          patch("admin.waha.waha_service") as svc, \
          patch("admin.waha.SessionLocal") as session_local:
         tm.get_tenant.return_value = tenant_zapi()
@@ -142,6 +144,30 @@ async def test_connect_nao_marca_waha_se_a_sessao_nao_foi_criada():
 
     assert "error" in out
     session_local.assert_not_called()   # nada foi gravado no tenant
+
+
+@pytest.mark.asyncio
+async def test_connect_recusa_sem_PUBLIC_BASE_URL():
+    """
+    Sem URL pública não há webhook registrado — nem endereço, nem assinatura — e
+    o connect respondia `{"success": True}` assim mesmo. O operador via
+    "Conectado", virava o `WEBHOOK_AUTH_MODE` para `enforce` no deploy seguinte e
+    só então descobria que nada tinha sido registrado, com o atendimento parado.
+    """
+    from admin.waha import waha_connect
+
+    with patch("admin.waha.token_manager") as tm, \
+         patch("admin.waha._global_cfg", return_value=("https://waha.example", "key")), \
+         patch("admin.waha.app_settings.public_base_url", ""), \
+         patch("admin.waha.waha_service") as svc:
+        tm.get_tenant.return_value = tenant_zapi()
+        svc.create_session = AsyncMock(return_value=True)
+
+        out = await waha_connect(location_id="loc2", force=True, authenticated=True)
+
+    assert "PUBLIC_BASE_URL" in out.get("error", "")
+    assert "success" not in out
+    svc.create_session.assert_not_awaited()   # não cria sessão que não dá para ouvir
 
 
 @pytest.mark.asyncio
@@ -171,6 +197,7 @@ async def test_disconnect_libera_o_provedor():
 
     with patch("admin.waha.token_manager") as tm, \
          patch("admin.waha._global_cfg", return_value=("https://waha.example", "key")), \
+         patch("admin.waha.app_settings.public_base_url", "https://hub.example"), \
          patch("admin.waha.waha_service") as svc, \
          patch("admin.waha.SessionLocal") as session_local:
         tm.get_tenant.return_value = tenant_waha()
@@ -195,6 +222,7 @@ async def test_logout_nao_libera_o_provedor():
 
     with patch("admin.waha.token_manager") as tm, \
          patch("admin.waha._global_cfg", return_value=("https://waha.example", "key")), \
+         patch("admin.waha.app_settings.public_base_url", "https://hub.example"), \
          patch("admin.waha.waha_service") as svc, \
          patch("admin.waha.SessionLocal") as session_local:
         tm.get_tenant.return_value = tenant_waha()

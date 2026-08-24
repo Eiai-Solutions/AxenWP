@@ -48,14 +48,38 @@ class Settings(BaseSettings):
         default="", description="Senha do painel admin. OBRIGATORIA em producao."
     )
     zapi_webhook_secret: str = Field(
-        default="", description="Token para validar webhooks do Z-API"
+        default="",
+        description=(
+            "Segredo dos webhooks da Z-API. Vai no header `x-chat-secret` ou no fim "
+            "do caminho. Ficou DECLARADO E NUNCA LIDO até 2026-08-20 — quem o "
+            "configurou achou que estava protegido e não estava."
+        ),
     )
     waha_webhook_hmac_key: str = Field(
         default="",
         description=(
             "Chave HMAC dos webhooks do WAHA. Vazio = sem assinatura (as sessões já "
             "criadas foram registradas assim). Ao definir, re-registre o webhook das "
-            "sessões existentes, senão elas passam a ser rejeitadas."
+            "sessões existentes — e deixe WEBHOOK_AUTH_MODE em 'observe' até a "
+            "métrica mostrar que o provedor está mesmo assinando."
+        ),
+    )
+    telegram_webhook_secret: str = Field(
+        default="",
+        description=(
+            "Segredo do webhook do Telegram. Mecanismo nativo: vai no `setWebhook` "
+            "e volta em `X-Telegram-Bot-Api-Secret-Token`. Ao definir, re-registre "
+            "o webhook do bot."
+        ),
+    )
+    webhook_auth_mode: str = Field(
+        default="observe",
+        description=(
+            "off | observe | enforce. `observe` (default) verifica, conta a métrica "
+            "e ACEITA mesmo assim — é o que deixa configurar o segredo sem derrubar "
+            "atendimento. Vire para `enforce` só quando "
+            "`millochat_webhook_assinatura_total{resultado=\"falhou\"}` parar de subir. "
+            "Canal sem segredo fica em `off` de qualquer jeito."
         ),
     )
     allowed_origins: str = Field(

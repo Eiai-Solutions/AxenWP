@@ -18,6 +18,7 @@ from auth.token_manager import token_manager
 from channels.whatsapp.zapi import ZAPIChannel
 from services.channel_accounts import resolver as _resolver_conta
 from services.channel_policy import WAHA, active_whatsapp_provider
+from services import webhook_auth
 from services.ghl_service import ghl_service
 from services.message_log import message_type_from_url as msglog_type_from_url
 from services.message_log import persist_message as msglog_persist
@@ -520,15 +521,53 @@ async def zapi_inbound_webhook(
     location_id: str = Path(..., description="O Location ID do GHL desta empresa"),
 ):
     """
-    URL de Webhook que você vai colar no painel administrativo do Z-API:
-    https://seu-servidor.com/webhook/zapi/inbound/{SEU_LOCATION_ID_DO_GHL}
+    URL de Webhook que você cola no painel da Z-API:
+    https://seu-servidor.com/webhook/zapi/inbound/{SEU_LOCATION_ID}
 
-    Ex: https://millochat.com/webhook/zapi/inbound/HjiMUOsCCHCjtxzEf8PR
+    O segredo, quando houver, vai no header `x-chat-secret`.
     """
+    return await _inbound(request, background_tasks, location_id, None)
+
+
+@router.post("/inbound/{location_id}/{segredo}")
+@limiter.limit("120/minute")
+async def zapi_inbound_webhook_com_segredo(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    location_id: str = Path(..., description="O Location ID do GHL desta empresa"),
+    segredo: str = Path(..., description="Segredo no caminho"),
+):
+    """
+    Mesma coisa, com o segredo no CAMINHO.
+
+    Existe porque o painel da Z-API pode não permitir header customizado, e um
+    segredo no path é melhor que webhook nenhum. É a segunda opção de propósito:
+    caminho aparece no log de acesso do proxy reverso, e log é copiado, mandado
+    para suporte e guardado por meses. Nunca por querystring — ela tem os mesmos
+    defeitos do path e ainda vaza em `Referer`.
+
+    Duas rotas em vez de um parâmetro opcional porque o FastAPI recusa default em
+    parâmetro de caminho, e torná-lo opcional o transformaria em QUERYSTRING —
+    exatamente o que não se quer.
+    """
+    return await _inbound(request, background_tasks, location_id, segredo)
+
+
+async def _inbound(request: Request, background_tasks: BackgroundTasks,
+                   location_id: str, segredo: Optional[str]):
     if not is_valid_location_id(location_id):
         logger.warning(f"Z-API inbound: location_id rejeitado por validação ({location_id!r})")
         metrics.inc("millochat_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_location_id"})
         return {"success": False, "error": "Invalid location_id"}
+
+    # A Z-API não assina o corpo, então o segredo vem por header (preferido) ou
+    # pelo fim do caminho, quando o painel dela não deixa mandar header. Até hoje
+    # `zapi_webhook_secret` estava CONFIGURADO no ambiente e o código nunca o lia:
+    # quem configurou achou que estava protegido e não estava.
+    if not webhook_auth.verificar_zapi(request.headers, segredo):
+        metrics.inc("millochat_webhook_rejected_total",
+                    labels={"channel": "whatsapp", "reason": "invalid_secret"})
+        return {"success": False, "error": "Invalid signature"}
 
     try:
         payload = await request.json()

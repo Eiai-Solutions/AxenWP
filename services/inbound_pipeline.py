@@ -68,12 +68,54 @@ def was_sent_by_us(provider_message_id: Optional[str]) -> bool:
     return bool(provider_message_id and provider_message_id in _sent_message_ids)
 
 
+# Ids de mensagens que JÁ PROCESSAMOS — o par do de cima, para a direção contrária.
+#
+# Assinatura de webhook prova QUEM mandou, não QUANDO nem QUANTAS VEZES. Um corpo
+# assinado capturado uma vez continua assinado para sempre: reenviá-lo N vezes faz
+# o agente responder N vezes, N chamadas de LLM na conta do cliente e N mensagens
+# saindo pelo número dele. Fechar o HMAC sem fechar isto troca "qualquer um" por
+# "qualquer um que tenha visto um request".
+#
+# Serve de quebra para a retentativa honesta: provedor que não recebeu nosso 200
+# reentrega, e sem isto a reentrega vira resposta duplicada.
+#
+# A janela é maior que a do eco: replay não acontece no mesmo segundo.
+_INBOUND_IDS_MAX_AGE = 900
+_INBOUND_IDS_HARD_CAP = 20000
+_inbound_message_ids: "OrderedDict[str, float]" = OrderedDict()
+
+
+def ja_processada(location_id: str, provider_message_id: Optional[str]) -> bool:
+    """
+    True se esta mensagem já passou por aqui. Marca a mensagem ao perguntar.
+
+    A chave leva o `location_id` junto: id de mensagem é único no provedor, não
+    entre tenants, e sem o escopo a mensagem de um cliente calaria a de outro.
+
+    Sem id não há como deduplicar — nesse caso passa. Deixar passar uma repetida
+    é melhor que engolir mensagem real de lead.
+    """
+    if not provider_message_id:
+        return False
+    chave = f"{location_id}:{provider_message_id}"
+    if chave in _inbound_message_ids:
+        return True
+    _inbound_message_ids[chave] = time.time()
+    while len(_inbound_message_ids) > _INBOUND_IDS_HARD_CAP:
+        _inbound_message_ids.popitem(last=False)
+    return False
+
+
 def cleanup_stale_entries() -> None:
     """Chamado pelo scheduler: expira ids antigos e buffers de tasks concluídas."""
     agora = time.time()
     velhos = [k for k, t in _sent_message_ids.items() if agora - t > _SENT_IDS_MAX_AGE]
     for k in velhos:
         _sent_message_ids.pop(k, None)
+
+    antigos = [k for k, t in _inbound_message_ids.items() if agora - t > _INBOUND_IDS_MAX_AGE]
+    for k in antigos:
+        _inbound_message_ids.pop(k, None)
 
     concluidas = [k for k, t in _pending_tasks.items() if t.done()]
     for k in concluidas:
@@ -575,6 +617,15 @@ async def handle_inbound(adapter, tenant, pm: ParsedMessage) -> None:
         return
     if was_sent_by_us(pm.provider_message_id):
         logger.debug(f"[{adapter.provider}] Ignorando eco da mensagem {pm.provider_message_id}.")
+        return
+    if ja_processada(pm.location_id, pm.provider_message_id):
+        # Reentrega do provedor ou replay de um corpo assinado capturado — nos dois
+        # casos, responder de novo é errado. Ver `ja_processada`.
+        logger.info(
+            f"[{adapter.provider}] Mensagem {pm.provider_message_id} já processada; "
+            f"ignorando repetição."
+        )
+        metrics.inc("millochat_inbound_repetida_total", labels={"channel": pm.channel})
         return
     if not (pm.text or pm.attachments):
         logger.debug(f"[{adapter.provider}] Mensagem sem conteúdo utilizável; ignorada.")

@@ -48,15 +48,33 @@ class TelegramService:
             return None
 
     async def set_webhook(self, bot_token: str, webhook_url: str) -> bool:
-        """Registra a URL de webhook no Telegram para receber updates."""
+        """
+        Registra a URL de webhook no Telegram.
+
+        Manda o `secret_token` junto quando ele está configurado: é o mecanismo
+        nativo do Telegram para o receptor saber que o POST veio dele mesmo — o
+        valor volta em `X-Telegram-Bot-Api-Secret-Token` em todo update. Sem isso,
+        qualquer um que soubesse a URL forjava update.
+
+        Só é mandado quando existe: um `secret_token` vazio é recusado pela API do
+        Telegram, e registrar com segredo antes de o receptor exigir é justamente a
+        ordem certa (o receptor aceita não-assinado enquanto o modo é `observe`).
+        """
+        from utils.config import settings
+
+        corpo = {
+            "url": webhook_url,
+            "allowed_updates": ["message", "edited_message", "callback_query"],
+            "drop_pending_updates": True,
+        }
+        segredo = (getattr(settings, "telegram_webhook_secret", "") or "").strip()
+        if segredo:
+            corpo["secret_token"] = segredo
+
         try:
             resp = await self.client.post(
                 self._api_url(bot_token, "setWebhook"),
-                json={
-                    "url": webhook_url,
-                    "allowed_updates": ["message", "edited_message", "callback_query"],
-                    "drop_pending_updates": True,
-                },
+                json=corpo,
             )
             if resp.status_code == 200 and resp.json().get("ok"):
                 logger.info(f"Webhook do Telegram registrado: {webhook_url}")

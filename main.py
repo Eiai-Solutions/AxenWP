@@ -281,9 +281,14 @@ async def health_check():
 @app.get("/admin/health", tags=["Health"], dependencies=[Depends(require_admin)])
 async def health_detalhado():
     """O que o /health devolvia — agora atrás do cookie do operador."""
+    from services import webhook_auth
     from utils.metrics import snapshot as metrics_snapshot
 
     return {
+        # Sem isto, "a assinatura dos webhooks está valendo?" só se responde lendo
+        # env var no servidor — e é exatamente a pergunta que decide se dá para
+        # virar o modo para `enforce` sem perder mensagem de lead.
+        "webhook_auth": webhook_auth.estado_para_o_painel(),
         "tenants": [{
             "company": t.company_name,
             "location_id": t.location_id,

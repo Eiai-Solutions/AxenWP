@@ -10,8 +10,6 @@ O WAHA entrega TODOS os eventos na mesma URL, então a rota despacha por
 vira log/métrica, `message.ack` é reconhecido e ignorado por ora.
 """
 
-import hashlib
-import hmac
 import json
 from dataclasses import replace
 
@@ -20,11 +18,11 @@ from fastapi import APIRouter, BackgroundTasks, Path, Request
 from auth.token_manager import token_manager
 from channels.whatsapp.waha import WAHAChannel
 from services import message_log
+from services import webhook_auth
 from services.channel_policy import WAHA, active_whatsapp_provider
 from services.inbound_pipeline import handle_inbound
 from services.waha_service import waha_service
 from utils import metrics
-from utils.config import settings
 from utils.limiter import limiter
 from utils.logger import logger
 from utils.validators import is_valid_location_id
@@ -34,18 +32,9 @@ router = APIRouter(prefix="/webhook/whatsapp", tags=["Webhooks WhatsApp (WAHA)"]
 _channel = WAHAChannel()
 
 
-def _hmac_ok(raw: bytes, headers) -> bool:
-    """
-    Só valida se houver chave configurada. Sessão registrada sem HMAC + validação
-    obrigatória = todo inbound rejeitado; preferimos não inventar segurança que a
-    sessão não tem.
-    """
-    key = (getattr(settings, "waha_webhook_hmac_key", "") or "").strip()
-    if not key:
-        return True
-    enviado = headers.get("x-webhook-hmac") or ""
-    esperado = hmac.new(key.encode(), raw, hashlib.sha512).hexdigest()
-    return hmac.compare_digest(enviado, esperado)
+# A verificação mudou de casa para `services/webhook_auth.py`: os três canais
+# precisavam da mesma regra e do mesmo modo de rollout, e uma cópia por receiver é
+# como o gate da IA acabou com três versões que discordavam.
 
 
 @router.post("/{location_id}")
@@ -61,9 +50,9 @@ async def waha_webhook(
         return {"success": False, "error": "Invalid location_id"}
 
     raw = await request.body()
-    if not _hmac_ok(raw, request.headers):
-        logger.warning(f"[WAHA] HMAC inválido para {location_id}")
-        metrics.inc("millochat_webhook_rejected_total", labels={"channel": "whatsapp", "reason": "invalid_hmac"})
+    if not webhook_auth.verificar_waha(raw, request.headers):
+        metrics.inc("millochat_webhook_rejected_total",
+                    labels={"channel": "whatsapp", "reason": "invalid_hmac"})
         return {"success": False, "error": "Invalid signature"}
 
     try:

@@ -27,3 +27,6 @@ Thumbs.db
 
 # Banco efêmero da suíte de testes
 test.db
+# SQLite de dev: DEBUG=true cria isto na raiz do projeto.
+*.db-journal
+data/*.db

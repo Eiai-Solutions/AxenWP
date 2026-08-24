@@ -13,7 +13,7 @@ Fluxo de conexão:
 from fastapi import APIRouter, Depends, Form, Response
 from typing import Optional
 
-from admin.dashboard import verify_admin
+from admin.dashboard import require_admin, verify_admin
 from auth.token_manager import token_manager
 from data.database import SessionLocal
 from data.models import SystemSettings, Tenant
@@ -152,8 +152,19 @@ async def waha_connect(location_id: str, force: bool = False, authenticated: boo
         return {"error": "Configure o servidor WAHA (URL + API key) primeiro."}
 
     public_base = (app_settings.public_base_url or "").rstrip("/")
-    webhook_url = f"{public_base}/webhook/whatsapp/{location_id}" if public_base else None
-    hmac_key = getattr(app_settings, "waha_webhook_hmac_key", None) or None
+    if not public_base:
+        # Recusa em vez de seguir com `webhook_url=None`. Sem URL, o
+        # `create_session` não monta o bloco de config e NUNCA registra webhook
+        # nenhum — nem endereço, nem HMAC — e a rota ainda respondia
+        # `{"success": True}`. O operador via "Conectado", virava o
+        # `WEBHOOK_AUTH_MODE` para `enforce` no deploy seguinte e só então
+        # descobria que assinatura nenhuma tinha sido registrada, com o
+        # atendimento já bloqueado. É o modo de falha mais provável da própria
+        # operação de fechar a porta.
+        return {"error": "Configure PUBLIC_BASE_URL antes de conectar — sem ela o "
+                         "webhook (e a assinatura) não são registrados."}
+    webhook_url = f"{public_base}/webhook/whatsapp/{location_id}"
+    hmac_key = (getattr(app_settings, "waha_webhook_hmac_key", "") or "").strip() or None
 
     created = await waha_service.create_session(
         base, key, session, webhook_url=webhook_url,
@@ -196,6 +207,66 @@ async def waha_connect(location_id: str, force: bool = False, authenticated: boo
 
     info = await waha_service.get_session(base, key, session)
     return {"success": True, "session": session, "status": (info or {}).get("status", "STARTING")}
+
+
+@router.post("/tenant/{location_id}/reregistrar-webhook")
+async def waha_reregistrar_webhook(location_id: str, _: bool = Depends(require_admin)):
+    """
+    Re-registra SÓ o webhook da sessão, com a chave HMAC atual.
+
+    `require_admin` e não `verify_admin`: o segundo só INFORMA (devolve bool) e
+    depende de cada handler lembrar de checar. Esta rota nasceu sem o
+    `if not authenticated` que os vizinhos têm e, com isso, um cookie de CLIENTE
+    re-registrava o webhook de qualquer tenant — o inventário de
+    `tests/test_barreira_operador.py` pegou. `require_admin` levanta 403 antes de
+    o corpo rodar, então esquecer a checagem deixa de ser possível.
+
+    É a operação do rollout de assinatura. `connect` também atualizaria o webhook,
+    mas ele faz mais: garante sessão iniciada e, em certos estados, leva a um novo
+    QR. Numa instância atendendo agora, "mais" é risco — aqui a sessão não é tocada,
+    só a config de webhook.
+
+    Depois disto o WAHA passa a assinar. Confira em `GET /admin/health` que
+    `millochat_webhook_assinatura_total{resultado="ok"}` sobe e o `falhou` para,
+    e só então vire `WEBHOOK_AUTH_MODE` para `enforce`.
+    """
+    tenant = token_manager.get_tenant(location_id)
+    if not tenant:
+        return {"error": "Instância não encontrada."}
+
+    base, key, session = _resolve(tenant)
+    if not (base and key and session):
+        return {"error": "Configure o servidor WAHA (URL + API key) e a sessão primeiro."}
+
+    public_base = (app_settings.public_base_url or "").rstrip("/")
+    if not public_base:
+        return {"error": "PUBLIC_BASE_URL não configurada — sem ela não há URL para registrar."}
+
+    hmac_key = (getattr(app_settings, "waha_webhook_hmac_key", "") or "").strip() or None
+    ok = await waha_service.set_session_webhook(
+        base, key, session,
+        f"{public_base}/webhook/whatsapp/{location_id}",
+        ["message", "session.status"],
+        hmac_key=hmac_key,
+    )
+    if not ok:
+        return {"error": "O servidor WAHA recusou a atualização do webhook."}
+
+    logger.info(
+        f"[WAHA] Webhook re-registrado para {location_id} "
+        f"({'COM' if hmac_key else 'SEM'} assinatura)."
+    )
+    return {
+        "success": True,
+        "assinatura": bool(hmac_key),
+        "aviso": (
+            "Sem WAHA_WEBHOOK_HMAC_KEY no ambiente, o webhook foi registrado SEM "
+            "assinatura — o canal segue aberto."
+        ) if not hmac_key else (
+            "O WAHA passa a assinar. Confira em /admin/health que as assinaturas "
+            "estão dando 'ok' antes de virar WEBHOOK_AUTH_MODE para 'enforce'."
+        ),
+    }
 
 
 @router.get("/tenant/{location_id}/qr")

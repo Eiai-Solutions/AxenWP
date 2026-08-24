@@ -66,6 +66,19 @@ async def receive_telegram_update(
         )
         return {"ok": False, "error": "Invalid location_id"}
 
+    # Mecanismo NATIVO do Telegram: o `secret_token` do `setWebhook` volta em
+    # `X-Telegram-Bot-Api-Secret-Token`. Este canal não tinha verificação nenhuma —
+    # bastava o location_id, que o `/health` público entregava, para injetar update
+    # forjado e fazer o agente responder pelo bot do cliente.
+    from services import webhook_auth
+
+    if not webhook_auth.verificar_telegram(request.headers):
+        metrics.inc(
+            "millochat_webhook_rejected_total",
+            labels={"channel": "telegram", "reason": "invalid_secret"},
+        )
+        return {"ok": False, "error": "Invalid signature"}
+
     try:
         payload = await request.json()
     except Exception as e:
