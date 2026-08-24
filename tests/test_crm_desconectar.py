@@ -295,3 +295,44 @@ def test_o_JS_esconde_o_botao_quando_nao_ha_CRM():
     assert "!(pitToken || clientId)" in js[i:i + 400], (
         "a visibilidade não está amarrada a ter credencial"
     )
+
+
+# ── Credencial no HTML ──
+
+def test_o_HTML_do_painel_nao_carrega_o_PIT_nem_o_token_do_Telegram(ambiente):
+    """
+    O template joga os campos do tenant dentro do `onclick` de cada card, então o
+    valor real ia em texto claro para o HTML de TODO tenant — e o JS nunca
+    precisou dele: todo consumo é `if (pitToken)`, e os modais de edição abrem
+    com o campo vazio. Era credencial exposta em troca de nada.
+
+    O PIT é o pior dos dois: não expira. O do Telegram dá controle total do bot.
+    Ficavam legíveis para extensão de navegador, "salvar página como", captura de
+    tela e qualquer XSS na sessão do operador.
+
+    Os da Z-API continuam indo — eles PREENCHEM o formulário de edição, então
+    tirá-los é decisão de produto, não faxina. Este teste não os cobre de
+    propósito, para não fingir uma proteção que não existe.
+    """
+    r = ambiente["client"].get("/admin/dashboard",
+                               cookies={"admin_session": ambiente["cookie_operador"]})
+    assert r.status_code == 200
+    assert "pit-secreto" not in r.text, "o PIT foi para o HTML"
+    assert "tg-token" not in r.text, "o token do bot do Telegram foi para o HTML"
+
+
+def test_o_painel_ainda_SABE_que_ha_PIT_e_Telegram(ambiente):
+    """
+    A outra metade: trocar o token por booleano não pode apagar o estado. Se o
+    card perdesse a informação, a aba CRM voltaria a dizer "Nenhum CRM conectado"
+    para quem tem PIT — e o botão de desconectar sumiria junto.
+    """
+    r = ambiente["client"].get("/admin/dashboard",
+                               cookies={"admin_session": ambiente["cookie_operador"]})
+    i = r.text.find("openInstanceSettings(")
+    assert i > 0
+    chamada = r.text[i:i + 500]
+    # 8o e 9o argumentos (pit, telegram) precisam chegar como verdadeiros.
+    args = chamada[chamada.find("(") + 1:chamada.find(")")].split(",")
+    assert args[7].strip().strip("'") == "1", f"o painel perdeu o estado do PIT: {args[7]}"
+    assert args[8].strip().strip("'") == "1", f"o painel perdeu o estado do Telegram: {args[8]}"

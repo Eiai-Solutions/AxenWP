@@ -360,8 +360,18 @@ async def dashboard_page(
             "zapi_token": t.zapi_token,
             "zapi_client_token": t.zapi_client_token,
             "client_id": t.client_id,
-            "pit_token": t.pit_token,
-            "telegram_bot_token": t.telegram_bot_token,
+            # BOOLEANOS, não os tokens. O template joga estes campos dentro do
+            # `onclick` de cada card, então o valor real ia em texto claro para o
+            # HTML de todo tenant — e o JS nunca precisou dele: todo consumo é
+            # `if (pitToken)`, e os modais de edição abrem com o campo VAZIO
+            # (`value = ''`). Era credencial exposta em troca de nada.
+            #
+            # O PIT é o pior dos dois: não expira (ver CLAUDE.md). O do Telegram dá
+            # controle total do bot. Ambos ficavam legíveis para qualquer extensão
+            # de navegador, "salvar página como", captura de tela ou XSS na sessão
+            # do operador.
+            "pit_token": bool(t.pit_token),
+            "telegram_bot_token": bool(t.telegram_bot_token),
             "telegram_bot_username": t.telegram_bot_username,
             "pending_onboarding": int(pending_onboarding_map.get(t.location_id, 0)),
             # Provedor real de WhatsApp (zapi | waha) — a UI não deve assumir Z-API.
