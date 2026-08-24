@@ -2,7 +2,7 @@
 Ponto de entrada do servidor FastAPI do MilloChat.
 """
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -29,6 +29,7 @@ from webhooks.ghl_provider import router as ghl_webhook_router
 from webhooks.zapi_receiver import router as zapi_webhook_router
 from webhooks.telegram_receiver import router as telegram_webhook_router
 from webhooks.waha_receiver import router as waha_webhook_router
+from admin.dashboard import require_admin
 from admin.dashboard import router as admin_router
 from admin.dashboard import router_publico as admin_router_publico
 from admin.ai_agent import router as admin_ai_agent_router
@@ -219,7 +220,20 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """Retorna estado do servidor, conectividade do DB e os tenants ativos."""
+    """
+    Sinal de vida para o orquestrador. **Público — e por isso anônimo.**
+
+    Até 2026-08-20 esta rota devolvia, sem autenticação nenhuma, a lista de
+    tenants com `company_name` e `location_id`. E o `location_id` não é um id
+    qualquer: ele é o caminho do webhook de entrada
+    (`/webhook/waha/{location_id}`, `/webhook/zapi/inbound/{location_id}`,
+    `/webhook/telegram/{location_id}`). Quem varre a internet ganhava o mapa
+    completo de graça, e a única coisa entre o mapa e injetar mensagem na IA de um
+    cliente é a assinatura do webhook — que hoje é opt-in e está desligada.
+
+    O healthcheck do EasyPanel/Traefik só olha o código HTTP. Quem precisa da
+    lista é o operador, e ele tem `GET /admin/health` atrás do cookie.
+    """
     import asyncio
     from sqlalchemy import text
 
@@ -240,19 +254,8 @@ async def health_check():
     if not db_ok:
         return {"status": "unhealthy", "database": "unreachable"}
 
-    tenants = token_manager.get_all_tenants()
-    active_tenants = []
-
-    for t in tenants:
-        active_tenants.append({
-            "company": t.company_name,
-            "location_id": t.location_id,
-            "token_valid": not t.is_token_expired,
-            "zapi_configured": bool(t.zapi_instance_id and t.zapi_token),
-            "zapi_instance_id": t.zapi_instance_id
-        })
-
-    # Resumo agregado por canal — útil pra dashboards rápidos
+    # Contagens agregadas ficam: são números, não identificadores. O que saiu foi
+    # a LISTA — nome da empresa e location_id, que é o caminho do webhook dela.
     from data.models import AIAgent, QualifiedLead
     db = SessionLocal()
     try:
@@ -265,16 +268,30 @@ async def health_check():
     finally:
         db.close()
 
-    from utils.metrics import snapshot as metrics_snapshot
     return {
         "status": "healthy",
         "database": "connected",
-        "tenants_loaded": len(tenants),
+        "tenants_loaded": len(token_manager.get_all_tenants()),
         "agents_active": agents_active,
         "agents_total": agents_total,
         "qualified_leads_total": qualified_total,
+    }
+
+
+@app.get("/admin/health", tags=["Health"], dependencies=[Depends(require_admin)])
+async def health_detalhado():
+    """O que o /health devolvia — agora atrás do cookie do operador."""
+    from utils.metrics import snapshot as metrics_snapshot
+
+    return {
+        "tenants": [{
+            "company": t.company_name,
+            "location_id": t.location_id,
+            "token_valid": not t.is_token_expired,
+            "zapi_configured": bool(t.zapi_instance_id and t.zapi_token),
+            "zapi_instance_id": t.zapi_instance_id,
+        } for t in token_manager.get_all_tenants()],
         "metrics_summary": metrics_snapshot(),
-        "tenants": active_tenants,
     }
 
 

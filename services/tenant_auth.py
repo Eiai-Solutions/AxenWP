@@ -23,10 +23,12 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import time
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 
 from utils.logger import logger
 
@@ -118,7 +120,64 @@ def resolver_sync(chave: str) -> Optional[str]:
         db.close()
 
 
+# ── Freio para quem NÃO autenticou ──
+#
+# O `@limiter.limit` das rotas envolve a FUNÇÃO da rota, e as dependências do
+# FastAPI rodam ANTES dela. Ou seja: uma requisição com chave inválida levanta 401
+# aqui dentro e o limiter nunca chega a contar — medido, 300 tentativas inválidas
+# e zero 429. O risco não é adivinhar a chave (são 256 bits), é cada tentativa
+# custar uma query e esvaziar o pool de conexões de graça.
+#
+# Janela fixa, em memória, contando só FALHAS: chave boa nunca acumula, e o
+# atacante para de custar banco depois de _MAX_FALHAS. É piso, não substituto do
+# limite por rota.
+_JANELA_FALHAS = 60.0
+_MAX_FALHAS = 30
+_CAP_BALDES = 5_000
+_falhas: "OrderedDict[str, tuple[int, float]]" = OrderedDict()
+
+
+def _origem_da_falha(request) -> str:
+    """
+    O balde de FALHAS é por IP, nunca pela chave apresentada.
+
+    Parece natural balizar pela chave — e é inútil: a chave é escolhida por quem
+    está atacando. Basta variar um caractere por tentativa para ganhar um balde
+    novo a cada vez, e o freio nunca fecha. (Foi exatamente o que o teste pegou
+    aqui: 35 tentativas com chaves diferentes, 35 baldes, zero 429.)
+
+    Chave legítima nunca acumula falha, então um IP compartilhado — atrás do
+    Traefik, ou de um NAT de nuvem — não penaliza cliente que está autenticando
+    direito: só quem já está errando divide o balde com quem está errando.
+    """
+    from slowapi.util import get_remote_address
+
+    return "ip:" + (get_remote_address(request) or "desconhecido")
+
+
+def _balde(origem: str) -> tuple[int, float]:
+    agora = time.monotonic()
+    n, inicio = _falhas.get(origem, (0, agora))
+    if agora - inicio > _JANELA_FALHAS:
+        n, inicio = 0, agora
+    return n, inicio
+
+
+def _registrar_falha(origem: str) -> None:
+    n, inicio = _balde(origem)
+    _falhas[origem] = (n + 1, inicio)
+    _falhas.move_to_end(origem)
+    # Teto de memória: sem isso, IPs aleatórios de um scan viram vazamento lento.
+    while len(_falhas) > _CAP_BALDES:
+        _falhas.popitem(last=False)
+
+
+def _bloqueado(origem: str) -> bool:
+    return _balde(origem)[0] >= _MAX_FALHAS
+
+
 async def tenant_da_chave(
+    request: Request,
     authorization: Optional[str] = Header(None),
     x_api_key: Optional[str] = Header(None),
 ) -> str:
@@ -131,8 +190,16 @@ async def tenant_da_chave(
     """
     import asyncio
 
+    origem = _origem_da_falha(request)
+    if _bloqueado(origem):
+        raise HTTPException(
+            status_code=429,
+            detail="Muitas tentativas de autenticação. Tente de novo em um minuto.",
+        )
+
     chave = _extrair(authorization, x_api_key)
     if not chave:
+        _registrar_falha(origem)
         raise HTTPException(
             status_code=401,
             detail="Informe a chave em 'Authorization: Bearer <chave>' ou 'X-API-Key'.",
@@ -141,6 +208,7 @@ async def tenant_da_chave(
 
     location_id = await asyncio.to_thread(resolver_sync, chave)
     if not location_id:
+        _registrar_falha(origem)
         # Mensagem única para chave inexistente, revogada e tenant inativo: a
         # diferença entre elas é informação que só serve para quem está tentando.
         raise HTTPException(

@@ -39,10 +39,17 @@ def ambiente(tmp_path, monkeypatch):
     Base.metadata.create_all(engine)
     Session = sessionmaker(bind=engine)
 
-    for mod in (dbmod, auth):
-        monkeypatch.setattr(mod, "SessionLocal", Session, raising=True)
+    # `SessionLocal` é importado no TOPO de vários módulos, então cada um guarda a
+    # própria referência e patchar só `data.database` não os alcança. Rodando este
+    # arquivo sozinho passava (o SQLite default existia); na suíte inteira, o
+    # /health caía em 500 com "no such table". Patch em todos os que a requisição
+    # atravessa.
     import admin.ai_agent as aa
-    monkeypatch.setattr(aa, "SessionLocal", Session, raising=True)
+    import auth.token_manager as tm
+    import main as mainmod
+
+    for mod in (dbmod, auth, aa, tm, mainmod):
+        monkeypatch.setattr(mod, "SessionLocal", Session, raising=True)
     monkeypatch.setattr(settings, "debug", True, raising=False)
     monkeypatch.setattr(limiter, "enabled", False, raising=False)
 
@@ -281,3 +288,99 @@ def test_o_rate_limit_nao_armazena_a_chave_em_claro(ambiente):
     valor = chave_do_rate_limit(req)
     assert chave not in valor
     assert valor.startswith("k:")
+
+
+# ── O freio de quem não autenticou ──
+
+def test_tentativa_invalida_em_massa_leva_429(ambiente, monkeypatch):
+    """
+    REGRESSÃO que a revisão de segurança pegou: o `@limiter.limit` envolve a
+    FUNÇÃO da rota, e as dependências do FastAPI rodam ANTES dela. Chave inválida
+    levantava 401 na dependência e o limiter nunca contava — medido, 300
+    tentativas e zero 429.
+
+    O risco não é adivinhar a chave (256 bits), é cada tentativa custar uma query
+    e esvaziar o pool de conexões de graça.
+    """
+    import services.tenant_auth as ta
+
+    ta._falhas.clear()
+    codigos = [
+        ambiente.c.get("/api/v1/me",
+                       headers={"Authorization": f"Bearer mc_live_errada_{i}"}).status_code
+        for i in range(ta._MAX_FALHAS + 5)
+    ]
+    assert codigos[0] == 401
+    assert 429 in codigos, "brute force ilimitado: nenhuma tentativa foi freada"
+    ta._falhas.clear()
+
+
+def test_chave_BOA_nao_acumula_falha(ambiente):
+    """Contamos só falhas — senão um cliente legítimo de alto volume se auto-bloqueia."""
+    import services.tenant_auth as ta
+
+    ta._falhas.clear()
+    chave = _criar_chave(ambiente)["chave"]
+    for _ in range(ta._MAX_FALHAS + 5):
+        assert _get(ambiente, "/api/v1/me", chave).status_code == 200
+    ta._falhas.clear()
+
+
+def test_o_balde_de_falhas_tem_teto_de_memoria(ambiente):
+    """IPs aleatórios de um scan não podem virar vazamento lento de memória."""
+    import services.tenant_auth as ta
+
+    ta._falhas.clear()
+    for i in range(ta._CAP_BALDES + 50):
+        ta._registrar_falha(f"origem-{i}")
+    assert len(ta._falhas) <= ta._CAP_BALDES
+    ta._falhas.clear()
+
+
+# ── /health não entrega o mapa ──
+
+def test_health_publico_NAO_devolve_location_id(ambiente):
+    """
+    O `location_id` é o caminho do webhook de entrada
+    (`/webhook/waha/{location_id}`). Entregá-lo sem autenticação dá a quem varre a
+    internet o mapa completo — e a única coisa entre o mapa e injetar mensagem na
+    IA de um cliente é a assinatura do webhook, que é opt-in.
+    """
+    r = ambiente.c.get("/health")
+    assert r.status_code == 200
+    corpo = r.json()
+    assert corpo["status"] == "healthy"
+    assert "tenants" not in corpo, "voltou a publicar a lista de tenants"
+    assert LOC_A not in str(corpo) and LOC_B not in str(corpo)
+    assert "Cliente A" not in str(corpo)
+
+
+def test_o_detalhe_continua_disponivel_para_o_OPERADOR(ambiente):
+    """Tirar do público não pode ser tirar de quem precisa."""
+    r = ambiente.c.get("/admin/health", cookies={"admin_session": ambiente.cookie})
+    assert r.status_code == 200
+    locs = {t["location_id"] for t in r.json()["tenants"]}
+    assert {LOC_A, LOC_B} <= locs
+
+
+def test_o_detalhe_do_health_exige_login(ambiente):
+    assert ambiente.c.get("/admin/health").status_code == 401
+
+
+def test_variar_a_chave_NAO_da_balde_novo(ambiente):
+    """
+    O erro que o freio quase teve: balizar pela chave apresentada. Ela é escolhida
+    por quem ataca — um caractere diferente por tentativa e o balde nunca fecha.
+    Por isso a falha conta por IP.
+    """
+    import services.tenant_auth as ta
+
+    ta._falhas.clear()
+    for i in range(ta._MAX_FALHAS + 5):
+        ambiente.c.get("/api/v1/me",
+                       headers={"Authorization": f"Bearer mc_live_variando_{i}"})
+    assert len(ta._falhas) == 1, (
+        f"{len(ta._falhas)} baldes para o mesmo atacante — o freio está indexado "
+        "por valor que ele controla"
+    )
+    ta._falhas.clear()
