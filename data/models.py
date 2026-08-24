@@ -276,6 +276,50 @@ class QualifiedLead(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class TenantApiKey(Base):
+    """
+    Chave de API de um tenant — como um CRM de terceiro fala com o hub.
+
+    Antes disto, TODA rota administrativa exigia o cookie `admin_session`, que é
+    autenticação de humano com navegador (`admin/dashboard.py`, `require_admin`).
+    Não havia API key, bearer de tenant nem HMAC de entrada em lugar nenhum do
+    projeto — ou seja: "o controle é do CRM" não tinha por onde entrar.
+
+    Três decisões que valem registro:
+
+    1. **O `location_id` vem da CHAVE, nunca da URL.** É o que torna impossível,
+       por construção, uma chave do tenant A agir sobre o tenant B — a classe de
+       bug some em vez de virar checagem que alguém esquece numa rota nova.
+    2. **Guardamos só o SHA-256.** Não é preguiça de KDF: uma chave nossa tem 256
+       bits de entropia sortida, então não há dicionário a atacar, e um KDF lento
+       (o `scrypt` que o login usa) custaria caro em TODA requisição de API. Para
+       senha humana, scrypt; para segredo de máquina, hash rápido.
+    3. **A chave é mostrada UMA vez.** O `prefixo` fica em claro só para o operador
+       saber qual é qual na tela ("mc_live_a1b2…"). Perdeu, gera outra.
+
+    Sem escopos por enquanto, de propósito: hoje a superfície é o interruptor da
+    IA e a leitura da conversa, e a mesma integração usa as duas. Quando houver
+    razão real para separar leitura de escrita, entra uma coluna — não muda o
+    desenho.
+    """
+
+    __tablename__ = "tenant_api_keys"
+
+    id = Column(Integer, primary_key=True, index=True)
+    location_id = Column(String, ForeignKey("tenants.location_id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    nome = Column(String(80), nullable=False)          # "Manager", "n8n produção"
+    prefixo = Column(String(32), nullable=False)       # visível: mc_live_a1b2…
+    key_hash = Column(String(64), nullable=False, unique=True, index=True)
+
+    criado_por = Column(String(64), nullable=True)     # usuário do painel
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    # Gravado com folga (não a cada request): serve para o operador saber se a
+    # integração está viva, não para auditoria fina.
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+
+
 class ConversationAIState(Base):
     """
     O interruptor da IA por conversa. **A única fonte da verdade.**

@@ -751,6 +751,115 @@ async def definir_estado_da_ia(location_id: str, phone: str, payload: dict = Bod
     return {"success": ok, "enabled": enabled, "channel": channel}
 
 
+@router.get("/{location_id}/api-keys")
+async def listar_chaves_de_api(location_id: str):
+    """As chaves deste tenant. Nunca devolve a chave — ela não existe mais aqui."""
+    from data.models import TenantApiKey
+
+    if not is_valid_location_id(location_id):
+        return {"success": False, "error": "location_id inválido."}
+
+    db = SessionLocal()
+    try:
+        linhas = (
+            db.query(TenantApiKey)
+            .filter(TenantApiKey.location_id == location_id)
+            .order_by(TenantApiKey.id.desc())
+            .all()
+        )
+        return {"success": True, "chaves": [{
+            "id": k.id,
+            "nome": k.nome,
+            "prefixo": k.prefixo,
+            "criada_em": k.created_at.isoformat() if k.created_at else None,
+            "ultimo_uso": k.last_used_at.isoformat() if k.last_used_at else None,
+            "revogada_em": k.revoked_at.isoformat() if k.revoked_at else None,
+            "ativa": k.revoked_at is None,
+        } for k in linhas]}
+    finally:
+        db.close()
+
+
+@router.post("/{location_id}/api-keys")
+async def criar_chave_de_api(location_id: str, payload: dict = Body(...)):
+    """
+    Cria uma chave. **A chave em claro volta AQUI e nunca mais.**
+
+    Não é rigor decorativo: guardamos só o SHA-256, então nem nós conseguimos
+    recuperá-la depois. Perdeu, revoga e gera outra — que é o comportamento certo,
+    porque uma chave recuperável é uma chave que vaza duas vezes.
+    """
+    from data.models import Tenant, TenantApiKey
+    from services import tenant_auth
+
+    if not is_valid_location_id(location_id):
+        return {"success": False, "error": "location_id inválido."}
+
+    nome = (payload.get("nome") or "").strip()[:80]
+    if not nome:
+        return {"success": False, "error": "Dê um nome à chave (ex.: 'Manager', 'n8n')."}
+
+    db = SessionLocal()
+    try:
+        if not db.query(Tenant).filter(Tenant.location_id == location_id).first():
+            return {"success": False, "error": "Instância não encontrada."}
+
+        chave, prefixo, key_hash = tenant_auth.gerar()
+        db.add(TenantApiKey(
+            location_id=location_id, nome=nome, prefixo=prefixo, key_hash=key_hash,
+            criado_por="painel",
+        ))
+        db.commit()
+        logger.info(f"[API-KEY] Chave {prefixo}… criada para {location_id} ({nome}).")
+        return {
+            "success": True, "nome": nome, "prefixo": prefixo,
+            "chave": chave,
+            "aviso": "Guarde agora: esta é a única vez que a chave aparece.",
+        }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[API-KEY] Falha ao criar chave para {location_id}: {e}")
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
+@router.delete("/{location_id}/api-keys/{key_id}")
+async def revogar_chave_de_api(location_id: str, key_id: int):
+    """
+    Revoga, não apaga. A linha fica para o operador conseguir responder "quem
+    tinha acesso e até quando" — apagar destruiria justamente essa resposta.
+    """
+    from datetime import datetime as _dt
+
+    from data.models import TenantApiKey
+
+    if not is_valid_location_id(location_id):
+        return {"success": False, "error": "location_id inválido."}
+
+    db = SessionLocal()
+    try:
+        # O `location_id` entra no filtro: sem ele, um id sequencial de outro
+        # tenant seria revogável por quem abriu a tela errada.
+        k = (
+            db.query(TenantApiKey)
+            .filter(TenantApiKey.id == key_id, TenantApiKey.location_id == location_id)
+            .first()
+        )
+        if k is None:
+            return {"success": False, "error": "Chave não encontrada nesta instância."}
+        if k.revoked_at is None:
+            k.revoked_at = _dt.utcnow()
+            db.commit()
+            logger.info(f"[API-KEY] Chave {k.prefixo}… revogada em {location_id}.")
+        return {"success": True, "prefixo": k.prefixo}
+    except Exception as e:
+        db.rollback()
+        return {"success": False, "error": str(e)}
+    finally:
+        db.close()
+
+
 @router.get("/elevenlabs/voices")
 async def get_elevenlabs_voices(api_key: str):
     """

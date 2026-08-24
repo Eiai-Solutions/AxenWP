@@ -197,6 +197,10 @@ app.include_router(waha_router)
 app.include_router(channels_router)
 app.include_router(media_router)
 app.include_router(onboarding_router)
+# API pública do hub: autenticada por CHAVE DE TENANT, não pelo cookie do painel.
+# É por aqui que um CRM de terceiro comanda a IA.
+from api.v1 import router as api_v1_router  # noqa: E402
+app.include_router(api_v1_router)
 
 
 # Montagem de arquivos estáticos
