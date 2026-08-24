@@ -919,8 +919,24 @@
                         </div>
                     </button>
 
+                    <!-- Desconectar: so aparece quando ha CRM conectado (openInstanceSettings decide). -->
+                    <button id="instance_card_crm_desconectar" onclick="desconectarCRM()"
+                        title="Soltar esta instancia do CRM — o WhatsApp e a IA continuam"
+                        class="w-full flex items-center gap-4 p-4 bg-[#211C17] border border-red-500/25 hover:border-red-500/50 rounded-xl transition-all group text-left hidden">
+                        <div class="w-10 h-10 rounded-lg bg-red-500/10 border border-red-500/25 flex items-center justify-center flex-shrink-0">
+                            <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 010 5.656m-3.656 0a4 4 0 010-5.656M8 21l-1-1m9-16l1-1M3 3l18 18"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1">
+                            <p class="text-sm font-bold text-red-300 transition-colors">Desconectar CRM</p>
+                            <p class="text-[10px] text-gray-500 font-mono uppercase tracking-widest">Leads passam a ficar so no painel</p>
+                        </div>
+                    </button>
+
                     <p class="text-[10px] text-gray-600 font-mono leading-relaxed pt-1">
-                        Hoje o CRM suportado e o <span class="text-gray-400">Axen / GoHighLevel</span>. A integracao e plugavel — novos CRMs entram aqui sem mexer no resto.
+                        Hoje o unico CRM suportado e o <span class="text-gray-400">Axen / GoHighLevel</span> — para trocar de CRM,
+                        desconecte e conecte o novo quando ele existir. Desconectar nao apaga leads, conversas nem o agente.
                     </p>
                 </div>
 

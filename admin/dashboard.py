@@ -807,6 +807,84 @@ async def update_tenant_pit(
     )
 
 
+@router.post("/tenant/{location_id}/crm/desconectar")
+async def desconectar_crm(location_id: str, _: bool = Depends(require_admin)):
+    """
+    Solta a instância do CRM: apaga a credencial e volta para `whatsapp_only`.
+
+    Até agora só existia caminho de ida. O painel já sabia DESENHAR o estado
+    "Nenhum CRM conectado — leads ficam no painel" (`dashboard.js`), e o backend
+    inteiro já sabia OPERAR nele: `handle_inbound` pula o espelho, `ai_gate` não
+    consulta o portão do CRM, `qualification_handler` grava o lead localmente,
+    `agent_wizard.tem_crm` para de exigir funil. Faltava só o botão que leva até lá.
+
+    O que apaga e por quê:
+
+    · `pit_token`, `access_token`, `refresh_token`, `token_expires_at` — a
+      credencial em si. Sem isto, "desconectado" seria só um rótulo: o token
+      continuaria no banco e `get_valid_token` continuaria devolvendo ele.
+    · `mode` volta a `whatsapp_only` — é a chave que o resto do código lê. Apagar
+      a credencial sem mudar o modo deixaria o sistema tentando falar com um CRM
+      que não tem mais como autenticar, falhando de fininho em cada mensagem.
+    · `contact_mappings` e `message_mappings` — são apontadores para IDs DENTRO do
+      CRM antigo. Guardá-los faria a próxima conexão espelhar mensagem em contato
+      de outra conta. Apagar é seguro porque `resolve_contact_id` procura o
+      contato pelo telefone antes de criar: reconectar o MESMO CRM reencontra
+      todo mundo, e conectar outro cria do zero, que é o certo.
+
+    O que NÃO apaga:
+
+    · `qualified_leads`, `chat_histories`, os agentes e o prompt — isso é dado
+      NOSSO, não do CRM. Desconectar o CRM não é apagar o trabalho da instância.
+    · As credenciais de canal (WAHA/Z-API/Telegram). O WhatsApp continua no ar e
+      a IA continua respondendo; só param de existir o espelho e o funil.
+    """
+    from data.database import SessionLocal
+    from data.models import ContactMapping, MessageMapping, Tenant
+
+    db = SessionLocal()
+    try:
+        tenant = db.query(Tenant).filter(Tenant.location_id == location_id).first()
+        if not tenant:
+            return JSONResponse({"success": False, "error": "Instância não encontrada."},
+                                status_code=404)
+
+        tinha = bool((tenant.pit_token or "").strip() or (tenant.access_token or "").strip())
+
+        tenant.pit_token = None
+        tenant.access_token = None
+        tenant.refresh_token = None
+        tenant.token_expires_at = None
+        tenant.mode = "whatsapp_only"
+
+        contatos = db.query(ContactMapping).filter(
+            ContactMapping.location_id == location_id).delete(synchronize_session=False)
+        mensagens = db.query(MessageMapping).filter(
+            MessageMapping.location_id == location_id).delete(synchronize_session=False)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[CRM] Falha ao desconectar {location_id}: {e}", exc_info=True)
+        return JSONResponse({"success": False, "error": f"Falha ao desconectar: {e}"},
+                            status_code=500)
+    finally:
+        db.close()
+
+    # Sem invalidação de cache aqui de propósito: `token_manager.get_tenant` lê do
+    # banco a cada chamada (não há cache de tenant em memória), então o commit
+    # acima já é a fonte da verdade para o próximo inbound.
+    logger.info(
+        f"[CRM] Desconectado de {location_id} (tinha credencial: {tinha}); "
+        f"{contatos} contact_mappings e {mensagens} message_mappings removidos."
+    )
+    return JSONResponse({
+        "success": True,
+        "tinha_credencial": tinha,
+        "contatos_removidos": contatos,
+        "mensagens_removidas": mensagens,
+    })
+
+
 @router.post("/test-pit")
 async def test_pit_connection(
     request: Request,

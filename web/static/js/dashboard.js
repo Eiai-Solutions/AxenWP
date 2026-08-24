@@ -108,6 +108,13 @@
                 }
             }
 
+            // Desconectar só faz sentido com algo conectado. Mostrar sempre daria um
+            // botão destrutivo que não faz nada — pior que não ter botão.
+            const desconectarCard = document.getElementById('instance_card_crm_desconectar');
+            if (desconectarCard) {
+                desconectarCard.classList.toggle('hidden', !(pitToken || clientId));
+            }
+
             const pitTitle = document.getElementById('instance_card_pit_title');
             const pitDesc = document.getElementById('instance_card_pit_desc');
             if (pitTitle && pitDesc) {
@@ -410,6 +417,37 @@
             // nome novo e o formulario abria com o prompt velho — e salvar por cima
             // desfazia a alteracao sem aviso.
             if (channel) await switchChannel(channel);
+        }
+
+        // Desconectar o CRM. O confirm é longo de propósito: o operador precisa
+        // saber o que SOBREVIVE, senão hesita achando que vai perder a instância.
+        async function desconectarCRM() {
+            const d = window._instanceSettingsData;
+            if (!d) return;
+            const ok = confirm(
+                'Desconectar o CRM de "' + d.companyName + '"?\n\n'
+                + 'O que continua: WhatsApp no ar, a IA respondendo, os leads qualificados, '
+                + 'as conversas e o agente com o prompt dele.\n\n'
+                + 'O que para: espelho das mensagens no CRM e criacao de oportunidade no funil. '
+                + 'Os leads passam a ficar so no painel.\n\n'
+                + 'A credencial (Token PIT / OAuth) sera apagada — para voltar, e so conectar de novo.'
+            );
+            if (!ok) return;
+
+            try {
+                const r = await fetch('/admin/tenant/' + encodeURIComponent(d.locationId) + '/crm/desconectar',
+                                      { method: 'POST' });
+                const j = await r.json();
+                if (!r.ok || !j.success) {
+                    alert('Nao deu para desconectar: ' + (j.error || r.status));
+                    return;
+                }
+                window.location.href = '/admin/dashboard?msg='
+                    + encodeURIComponent('CRM desconectado. Os leads agora ficam no painel.')
+                    + '&instance=' + encodeURIComponent(d.locationId) + '&tab=crm';
+            } catch (e) {
+                alert('Nao deu para desconectar: ' + e);
+            }
         }
 
         function instanceAction(action) {

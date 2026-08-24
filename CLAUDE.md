@@ -182,7 +182,15 @@ docker-compose up -d
 
 - **Sempre scoped por location_id**. `session_id = location_id + "_" + phone`.
 - **Não armazenar tokens em plain text fora do banco**. SystemSettings só admite chaves globais (Groq STT, OpenRouter Mestre).
-- **PIT vs OAuth**: PIT no `tenant.pit_token` (não expira); OAuth normal usa `access_token`+`refresh_token`. `get_valid_token` prioriza PIT se houver.
+- **PIT vs OAuth**: PIT no `tenant.pit_token` (não expira); OAuth normal usa `access_token`+`refresh_token`.
+  **`get_valid_token` prioriza o OAuth, não o PIT** — o inverso do que este arquivo dizia até 2026-08-24.
+  Não é preferência estética: `PUT /conversations/messages/{id}/status` é recusado com 401
+  `CONVERSATIONS_MSG_PROVIDER_NO_ACCESS` para qualquer token que não pertença ao app dono do provider,
+  então com o PIT na frente todo status de entrega falhava calado. O PIT é o token de quem nunca
+  instalou o app, e vira fallback quando o refresh do OAuth falha.
+- **Desconectar CRM**: `POST /admin/tenant/{location_id}/crm/desconectar` limpa PIT+OAuth, volta o
+  `mode` para `whatsapp_only` e apaga `contact_mappings`/`message_mappings` (são ponteiros para IDs
+  dentro do CRM antigo). Não toca em `qualified_leads`, `chat_histories`, agentes nem canais.
 - **Migrations idempotentes**: usam helpers `_column_exists`/`_table_exists`/`_index_exists`. Rodam no startup; testar localmente antes.
   **Migration que falha agora DERRUBA o boot** (era engolida — o app subia com schema parcial e morria na
   primeira query, com o erro apontando o sintoma e não a causa).
