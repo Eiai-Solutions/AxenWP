@@ -142,6 +142,11 @@ class AIAgent(Base):
     qualification_stage_id = Column(String, nullable=True)
     qualification_fields = Column(JSON, nullable=True)  # [{label, key, ghl_field_id}]
     qualification_summary_prompt = Column(Text, nullable=True)
+    # Qualificar PAUSA a IA? Era implícito e obrigatório; virou política.
+    # Default True preserva o comportamento de hoje. Vira False quando o CRM
+    # integrado passa a mandar o comando de pausar — antes disso, desligar aqui
+    # deixaria uma janela em que nada pausa a conversa de um lead já entregue.
+    pausar_ao_qualificar = Column(Boolean, default=True, nullable=True)
 
     # Dados preenchidos pelo cliente no formulário de onboarding
     form_data = Column(JSON, nullable=True)
@@ -269,6 +274,56 @@ class QualifiedLead(Base):
     qualified_data = Column(JSON, nullable=True)
     summary = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ConversationAIState(Base):
+    """
+    O interruptor da IA por conversa. **A única fonte da verdade.**
+
+    Existe porque, até 2026-08-20, "IA pausada" não era um estado — era um efeito
+    colateral de uma linha em `qualified_leads`. Para pausar quando o lead pedia um
+    humano, `escalation_handler` gravava um LEAD QUALIFICADO FALSO
+    (`qualified_data={"_handoff": True}`): a pessoa que só pediu atendente entrava
+    na tabela de qualificados, aparecia como "Qualificado" no painel e contava na
+    métrica. E religar a IA exigia APAGAR o registro de qualificação do lead.
+
+    Três consequências que esta tabela resolve:
+
+    1. **Qualificar deixa de implicar pausar.** `qualified_leads` volta a ser só
+       registro e trava de idempotência; a pausa mora aqui. Quem decide se
+       qualificar pausa é a política do agente (`pausar_ao_qualificar`).
+    2. **`channel` entra na chave.** `qualified_leads` é `(location_id, phone)` sem
+       canal — pausar o WhatsApp de um número pausava o Telegram do mesmo número,
+       sem nada no log.
+    3. **`until` existe.** Handoff é um evento em curso, não um estado eterno. Sem
+       prazo, o default do sistema vira "mudo para sempre" e o lead que volta três
+       semanas depois nunca mais é atendido.
+
+    `enabled=True` explícito também é dado: é o CRM (ou o operador) dizendo "pode
+    voltar a falar", e é o que distingue "religado de propósito" de "nunca pausado".
+    """
+
+    __tablename__ = "conversation_ai_state"
+    __table_args__ = (
+        UniqueConstraint("location_id", "channel", "contact_ref", name="uq_conv_ai_state"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    location_id = Column(String, ForeignKey("tenants.location_id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    channel = Column(String(20), nullable=False, default="whatsapp")
+    contact_ref = Column(String, nullable=False, index=True)   # telefone E.164, @lid, chat_id
+
+    enabled = Column(Boolean, nullable=False, default=True)
+    # `handoff` | `qualificado` | `operador` | `crm` | `sistema`
+    motivo = Column(String(40), nullable=True)
+    # Quando a pausa expira sozinha. NULL = até alguém religar.
+    until = Column(DateTime, nullable=True)
+    # `agente` | `operador` | `crm` | `sistema` — para o painel dizer QUEM calou a IA.
+    mudado_por = Column(String(20), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class SystemSettings(Base):

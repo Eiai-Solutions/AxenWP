@@ -1,7 +1,7 @@
 import logging
 import re
 from typing import Optional
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
 import httpx
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -656,11 +656,24 @@ async def get_qualification_progress(location_id: str, phone: str,
 @router.delete("/{location_id}/conversations/{phone}/qualification")
 async def reset_qualification(location_id: str, phone: str, clear_history: bool = False):
     """
-    Remove a qualificação de um lead e limpa o cache de progresso.
+    Remove a qualificação de um lead, RELIGA a IA e limpa o cache de progresso.
     Se clear_history=true, apaga também o histórico de conversa (necessário para
     evitar que a IA re-qualifique imediatamente ao ler as mensagens anteriores).
+
+    O religar virou explícito. Antes ele era efeito colateral de apagar a linha de
+    `qualified_leads` — que era o gate. Com o interruptor em tabela própria, apagar
+    a qualificação sozinho deixaria a conversa muda para sempre, e este endpoint
+    era o único caminho que o operador tinha.
     """
+    import asyncio as _asyncio
+
+    from services import ai_gate
     from services.qualification_engine import qual_progress_cache as _qual_progress_cache
+
+    religados = await _asyncio.to_thread(
+        ai_gate.religar_todos_os_canais, location_id, phone, "operador"
+    )
+
     db = SessionLocal()
     try:
         deleted_qual = db.query(QualifiedLead).filter(
@@ -681,15 +694,61 @@ async def reset_qualification(location_id: str, phone: str, clear_history: bool 
         _qual_progress_cache.pop(session_id, None)
 
         logger.info(
-            f"Reset para {phone} @ {location_id}: qual={deleted_qual}, history={deleted_history}"
+            f"Reset para {phone} @ {location_id}: qual={deleted_qual}, "
+            f"history={deleted_history}, canais religados={religados}"
         )
-        return {"success": True, "deleted_qual": deleted_qual, "deleted_history": deleted_history}
+        return {"success": True, "deleted_qual": deleted_qual,
+                "deleted_history": deleted_history, "ia_religada_em": religados}
     except Exception as e:
         db.rollback()
         logger.error(f"Erro ao resetar qualificação: {e}")
         return {"success": False, "error": str(e)}
     finally:
         db.close()
+
+
+@router.post("/{location_id}/conversations/{phone}/ai")
+async def definir_estado_da_ia(location_id: str, phone: str, payload: dict = Body(...)):
+    """
+    Liga ou desliga a IA numa conversa. O botão que não existia.
+
+    Até aqui, pausar uma conversa só era possível de dois jeitos torto: a IA se
+    pausar sozinha (qualificando ou escalando), ou o operador desligar o agente
+    INTEIRO daquele canal — o que cala os outros trezentos leads junto.
+
+    `channel` omitido vale para todos os canais da conversa: quem clica no painel
+    está falando da pessoa, não do WhatsApp dela.
+    """
+    import asyncio as _asyncio
+
+    from services import ai_gate
+
+    if not is_valid_location_id(location_id):
+        return {"success": False, "error": "location_id inválido."}
+
+    enabled = bool(payload.get("enabled"))
+    channel = (payload.get("channel") or "").strip() or None
+    motivo = (payload.get("motivo") or "").strip() or (None if enabled else ai_gate.OPERADOR)
+    minutos = payload.get("minutos")
+
+    if enabled and not channel:
+        n = await _asyncio.to_thread(
+            ai_gate.religar_todos_os_canais, location_id, phone, "operador"
+        )
+        return {"success": True, "enabled": True, "canais": n}
+
+    if not channel:
+        # Pausar sem canal precisaria adivinhar em quais canais criar linha. O
+        # painel sabe de qual conversa está falando; exigir é melhor que chutar.
+        return {"success": False, "error": "Informe o canal para pausar (whatsapp | telegram)."}
+
+    ok = await _asyncio.to_thread(
+        ai_gate.definir,
+        location_id=location_id, channel=channel, contact_ref=phone,
+        enabled=enabled, motivo=motivo, mudado_por="operador",
+        minutos=int(minutos) if minutos else None,
+    )
+    return {"success": ok, "enabled": enabled, "channel": channel}
 
 
 @router.get("/elevenlabs/voices")

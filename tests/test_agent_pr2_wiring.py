@@ -152,13 +152,23 @@ async def test_escalacao_ghl_pausa_ia_e_cria_nota(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_escalacao_whatsapp_only_pausa_via_qualified_lead(monkeypatch, tmp_path):
-    """Sem CRM, o kill-switch durável é uma linha em QualifiedLead (o gate da IA)."""
+async def test_escalacao_pausa_a_IA_sem_forjar_um_lead_qualificado(monkeypatch, tmp_path):
+    """
+    REGRESSÃO — o kill-switch era um lead qualificado FALSO.
+
+    Para conseguir pausar, `handle_escalation` gravava um `QualifiedLead` com
+    `qualified_data={"_handoff": True}`: quem só pediu um atendente entrava na
+    tabela de qualificados, aparecia como "Qualificado" no painel e contava na
+    métrica de leads. E religar a IA exigia APAGAR esse registro.
+
+    Agora a pausa é estado próprio. Este teste guarda as duas metades: a pausa
+    existe, E a tabela de negócio continua limpa.
+    """
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
     import data.database as dbmod
-    from data.models import Base, QualifiedLead
+    from data.models import Base, ConversationAIState, QualifiedLead
     from services import escalation_handler as eh
 
     engine = create_engine(f"sqlite:///{tmp_path}/q.db")
@@ -179,22 +189,59 @@ async def test_escalacao_whatsapp_only_pausa_via_qualified_lead(monkeypatch, tmp
     await eh.handle_escalation("loc1", "5547", None, tenant, "pediu humano", "whatsapp")
 
     assert tocou["crm"] is False  # sem CRM não toca no GHL
+
     s = Session()
     try:
-        rows = s.query(QualifiedLead).all()
-        assert len(rows) == 1  # pausa durável persistida
-        assert rows[0].qualified_data.get("_handoff") is True
+        assert s.query(QualifiedLead).count() == 0, (
+            "voltou a forjar lead qualificado para conseguir pausar"
+        )
+        (estado,) = s.query(ConversationAIState).all()
+        assert estado.enabled is False
+        assert estado.motivo == "handoff"
+        assert estado.channel == "whatsapp"
+        assert estado.contact_ref == "5547"
+        assert estado.until is not None, (
+            "pausa sem prazo: o lead que voltar em três semanas nunca mais é atendido"
+        )
     finally:
         s.close()
 
 
 @pytest.mark.asyncio
-async def test_escalacao_whatsapp_only_idempotente(monkeypatch, tmp_path):
+async def test_escalar_no_whatsapp_nao_cala_o_telegram_do_mesmo_numero(monkeypatch, tmp_path):
+    """
+    REGRESSÃO — a chave antiga era `(location_id, phone)`, sem canal.
+
+    Pausar um número no WhatsApp pausava o Telegram dele junto, sem nada no log.
+    """
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
     import data.database as dbmod
-    from data.models import Base, QualifiedLead
+    from data.models import Base
+    from services import ai_gate, escalation_handler as eh
+
+    engine = create_engine(f"sqlite:///{tmp_path}/q3.db")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    monkeypatch.setattr(dbmod, "SessionLocal", Session)
+
+    tenant = SimpleNamespace(mode="whatsapp_only")
+    await eh.handle_escalation("loc1", "5547", None, tenant, "x", "whatsapp")
+
+    assert ai_gate._estado_sync("loc1", "whatsapp", "5547")["enabled"] is False
+    assert ai_gate._estado_sync("loc1", "telegram", "5547") is None, (
+        "escalar num canal deixou estado no outro"
+    )
+
+
+@pytest.mark.asyncio
+async def test_escalar_tres_vezes_nao_duplica_nem_estende_para_sempre(monkeypatch, tmp_path):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import data.database as dbmod
+    from data.models import Base, ConversationAIState
     from services import escalation_handler as eh
 
     engine = create_engine(f"sqlite:///{tmp_path}/q2.db")
@@ -205,9 +252,10 @@ async def test_escalacao_whatsapp_only_idempotente(monkeypatch, tmp_path):
     tenant = SimpleNamespace(mode="whatsapp_only")
     for _ in range(3):
         await eh.handle_escalation("loc1", "5547", None, tenant, "x", "whatsapp")
+
     s = Session()
     try:
-        assert s.query(QualifiedLead).count() == 1  # não duplica
+        assert s.query(ConversationAIState).count() == 1  # não duplica
     finally:
         s.close()
 
@@ -230,3 +278,87 @@ async def test_escalacao_falha_no_crm_nao_propaga(monkeypatch):
     tenant = SimpleNamespace(mode="ghl")
     # não deve levantar
     await eh.handle_escalation("loc1", "5547", "C1", tenant, "x", "whatsapp")
+
+
+@pytest.mark.asyncio
+async def test_com_CRM_a_pausa_do_handoff_fica_NO_CRM_para_poder_ser_desfeita(monkeypatch, tmp_path):
+    """
+    REGRESSÃO que a revisão pegou antes de subir.
+
+    No modo com CRM, o interruptor que o operador VÊ e MEXE é o campo "Status IA"
+    do contato. Criar ALÉM dele uma pausa local de 24h tornaria o religar inócuo:
+    o operador marcaria "Ativada" e a IA seguiria muda, sem nada no log dizendo
+    por quê. A pausa local é o fallback de quando o CRM não pode segurar.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import data.database as dbmod
+    from data.models import Base, ConversationAIState
+    from services import escalation_handler as eh
+
+    engine = create_engine(f"sqlite:///{tmp_path}/crm.db")
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(dbmod, "SessionLocal", sessionmaker(bind=engine))
+
+    escreveu = {}
+
+    async def _field(loc, nome):
+        return "fld_status_ia"
+
+    async def _update(loc, cid, data):
+        escreveu["campo"] = data
+        return {"ok": True}
+
+    async def _nota(*a, **k):
+        return True
+
+    monkeypatch.setattr(eh.ghl_service, "_get_custom_field_id_by_name", _field)
+    monkeypatch.setattr(eh.ghl_service, "update_contact", _update)
+    monkeypatch.setattr(eh.ghl_service, "create_contact_note", _nota)
+
+    await eh.handle_escalation("loc1", "5547", "contato1",
+                               SimpleNamespace(mode="ghl"), "pediu humano", "whatsapp")
+
+    assert escreveu["campo"]["customFields"][0]["field_value"] == "Desativada"
+    s = sessionmaker(bind=engine)()
+    try:
+        assert s.query(ConversationAIState).count() == 0, (
+            "criou pausa local ALÉM do campo do CRM — religar pelo CRM deixaria de funcionar"
+        )
+    finally:
+        s.close()
+
+
+@pytest.mark.asyncio
+async def test_se_o_CRM_nao_segura_a_pausa_o_hub_segura(monkeypatch, tmp_path):
+    """O fallback: sem campo configurado, a promessa da tool só é verdade localmente."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    import data.database as dbmod
+    from data.models import Base, ConversationAIState
+    from services import escalation_handler as eh
+
+    engine = create_engine(f"sqlite:///{tmp_path}/crm2.db")
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(dbmod, "SessionLocal", sessionmaker(bind=engine))
+
+    async def _sem_campo(loc, nome):
+        return None            # o tenant nunca criou o custom field
+
+    async def _nota(*a, **k):
+        return True
+
+    monkeypatch.setattr(eh.ghl_service, "_get_custom_field_id_by_name", _sem_campo)
+    monkeypatch.setattr(eh.ghl_service, "create_contact_note", _nota)
+
+    await eh.handle_escalation("loc1", "5547", "contato1",
+                               SimpleNamespace(mode="ghl"), "x", "whatsapp")
+
+    s = sessionmaker(bind=engine)()
+    try:
+        (estado,) = s.query(ConversationAIState).all()
+        assert estado.enabled is False and estado.motivo == "handoff"
+    finally:
+        s.close()

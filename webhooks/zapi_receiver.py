@@ -166,6 +166,12 @@ async def _run_ai_response(location_id: str, phone: str, contact_id: str, tenant
         # mensagem: o debounce junta várias e todas vieram da mesma conta.
         conta_id = await _resolver_conta(location_id, "whatsapp", account_ref)
 
+        # O gate foi lido ANTES do sono do debounce; reler o estado local aqui é o
+        # que impede a IA de responder por cima do operador que assumiu no meio.
+        from services import ai_gate as _gate
+        if await _gate.pausado_durante_a_espera(location_id, "whatsapp", phone):
+            return
+
         ai_response = await ai_service.process_incoming_message(
             location_id, phone, combined_text, is_audio=is_audio, audio_url=audio_url,
             channel="whatsapp", channel_account_id=conta_id,
@@ -431,40 +437,16 @@ async def process_inbound_message(location_id: str, payload: Dict[str, Any]):
     # INTEGRAÇÃO AGENTE IA NATIVO — com debounce anti-duplicata
     # =========================================================================
     try:
-        # No modo WhatsApp-only, verifica se o agente IA está ativo diretamente
-        # No modo GHL, verifica pelo custom field "Status IA" do contato
-        if is_whatsapp_only:
-            from data.database import SessionLocal as _SL2
-            from data.models import AIAgent as _AIAgent2, QualifiedLead as _QL2
-            _db2 = _SL2()
-            try:
-                # FILTRA O CANAL. Este receiver é a cópia Z-API do caminho de
-                # entrada, e atende SÓ WhatsApp. Sem o filtro, `.first()` podia
-                # devolver o agente de Telegram: pausar o Telegram DESLIGAVA A IA
-                # DO WHATSAPP, sem um erro no log. O gêmeo deste bug foi corrigido
-                # em `inbound_pipeline.ai_is_enabled`; esta cópia ficou para trás.
-                _agent2 = (
-                    _db2.query(_AIAgent2)
-                    .filter(
-                        _AIAgent2.location_id == location_id,
-                        _AIAgent2.channel == "whatsapp",
-                    )
-                    .first()
-                )
-                is_ai_active = bool(_agent2 and _agent2.is_active)
-                # Se ativo, verificar se o lead já foi qualificado (desativa IA para este contato)
-                if is_ai_active:
-                    already_qualified = _db2.query(_QL2).filter(
-                        _QL2.location_id == location_id,
-                        _QL2.phone == phone,
-                    ).first()
-                    if already_qualified:
-                        is_ai_active = False
-                        logger.info(f"Lead {phone} já qualificado. IA desativada (whatsapp_only).")
-            finally:
-                _db2.close()
-        else:
-            is_ai_active = await ghl_service.is_ai_active_for_contact(location_id, contact_id)
+        # UM gate só, o mesmo do WAHA e do Telegram. Esta era a segunda cópia da
+        # regra, e as duas já haviam divergido: o filtro de canal foi corrigido na
+        # do `inbound_pipeline` e "ficou para trás" aqui, como o próprio comentário
+        # antigo registrava. Duas cópias da mesma ideia só continuam iguais por sorte.
+        from services import ai_gate
+
+        is_ai_active = await ai_gate.pode_responder(
+            location_id=location_id, channel="whatsapp", contact_ref=phone,
+            tenant=tenant, contact_id=contact_id,
+        )
 
         if is_ai_active:
             contact_key = f"{location_id}:{phone}"

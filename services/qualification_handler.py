@@ -5,6 +5,7 @@ após o agente extrair os dados completos do lead.
 Channel-agnostic — invocado tanto pelo Z-API quanto pelo Telegram receiver.
 """
 
+import asyncio
 from typing import Optional
 
 from auth.token_manager import token_manager
@@ -196,5 +197,42 @@ async def handle_qualification(
     except Exception as e:
         logger.error(f"Erro ao salvar lead qualificado: {e}")
         db.rollback()
+    finally:
+        db.close()
+
+    # Qualificar PAUSA a IA? Virou política, e deixou de ser efeito colateral.
+    #
+    # Antes a linha acima, sozinha, calava a IA — em todos os canais, para sempre,
+    # e a única forma de religar era APAGAR o registro de qualificação do lead.
+    # Agora `qualified_leads` é só registro e trava de idempotência; a pausa é um
+    # estado próprio, e quem manda é a configuração do agente.
+    #
+    # `pausar_ao_qualificar` nasce True (comportamento de hoje). Vira False quando
+    # o CRM integrado passar a mandar o comando de pausar — desligar antes disso
+    # deixaria uma janela em que nada segura a IA num lead já entregue ao humano.
+    if await asyncio.to_thread(_deve_pausar_ao_qualificar, location_id, channel):
+        from services import ai_gate
+
+        await asyncio.to_thread(
+            ai_gate.definir,
+            location_id=location_id, channel=channel, contact_ref=phone,
+            enabled=False, motivo=ai_gate.QUALIFICADO, mudado_por="agente",
+        )
+
+
+def _deve_pausar_ao_qualificar(location_id: str, channel: str) -> bool:
+    """Política do agente daquele canal. Ausente ou nula = pausa (o de hoje)."""
+    from data.models import AIAgent
+
+    db = SessionLocal()
+    try:
+        agente = (
+            db.query(AIAgent)
+            .filter(AIAgent.location_id == location_id, AIAgent.channel == channel)
+            .first()
+        )
+        if agente is None:
+            return True
+        return getattr(agente, "pausar_ao_qualificar", None) is not False
     finally:
         db.close()

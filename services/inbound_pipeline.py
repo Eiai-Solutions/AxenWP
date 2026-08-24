@@ -387,35 +387,20 @@ async def _log_outbound_ia(adapter, pm: ParsedMessage, contact_id: Optional[str]
 
 async def ai_is_enabled(tenant, location_id: str, sender_id: str, contact_id: Optional[str],
                         channel: str = "whatsapp") -> bool:
-    """whatsapp_only decide pelo agente + lead já qualificado; modo CRM decide pelo campo do contato."""
-    if getattr(tenant, "mode", "ghl") == "whatsapp_only":
-        from data.database import SessionLocal
-        from data.models import AIAgent, QualifiedLead
+    """
+    Delega para `services.ai_gate` — a política mora num lugar só.
 
-        db = SessionLocal()
-        try:
-            # FILTRA O CANAL. Este era o pior dos dois: sem canal, `is_active` vinha
-            # de um agente arbitrário da instância — pausar o agente do Telegram
-            # podia DESLIGAR A IA DO WHATSAPP, sem erro nenhum no log.
-            agent = (
-                db.query(AIAgent)
-                .filter(AIAgent.location_id == location_id, AIAgent.channel == channel)
-                .first()
-            )
-            if not (agent and agent.is_active):
-                return False
-            ja_qualificado = db.query(QualifiedLead).filter(
-                QualifiedLead.location_id == location_id,
-                QualifiedLead.phone == sender_id,
-            ).first()
-            if ja_qualificado:
-                logger.info(f"Lead {sender_id} já qualificado. IA desativada (whatsapp_only).")
-                return False
-            return True
-        finally:
-            db.close()
+    Esta função virou casca de propósito, em vez de sumir: ela é chamada de vários
+    pontos e o nome já é o vocabulário do projeto. O que saiu daqui foi a REGRA,
+    que existia em duas cópias divergentes (esta e a de `zapi_receiver`) e num
+    terceiro portão dentro do `ai_service` — e o Telegram não chamava nenhuma delas.
+    """
+    from services import ai_gate
 
-    return await ghl_service.is_ai_active_for_contact(location_id, contact_id)
+    return await ai_gate.pode_responder(
+        location_id=location_id, channel=channel, contact_ref=sender_id,
+        tenant=tenant, contact_id=contact_id,
+    )
 
 
 # ── Turno da IA ──
@@ -455,6 +440,12 @@ async def _run_ai(adapter, tenant, pm: ParsedMessage, contact_id: Optional[str],
         # o `ai_service` cai no caminho por canal — o de hoje.
         from services.channel_accounts import resolver as _resolver_conta
         conta_id = await _resolver_conta(pm.location_id, pm.channel, pm.account_ref)
+
+        # O gate foi lido lá atrás, ANTES do sono do debounce. Nesse intervalo o
+        # operador pode ter assumido a conversa. Reler o estado local aqui é barato.
+        from services import ai_gate as _gate
+        if await _gate.pausado_durante_a_espera(pm.location_id, pm.channel, pm.sender_id):
+            return
 
         resposta = await ai_service.process_incoming_message(
             pm.location_id, pm.sender_id, texto,

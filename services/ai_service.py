@@ -310,16 +310,16 @@ class AIEngine:
             logger.info("Agente IA inativo ou sem motor disponível. Ignorando.")
             return None
 
-        # Lead já qualificado? Não responde mais (libera pra o humano).
-        if self.qualification_enabled:
-            already = await asyncio.to_thread(
-                is_already_qualified_sync,
-                self.agent_config.location_id,
-                user_phone,
-            )
-            if already:
-                logger.info(f"Lead {user_phone} já qualificado. IA pausada.")
-                return None
+        # O portão "lead já qualificado ⇒ não responde" SAIU daqui.
+        #
+        # Ele era o terceiro de três gates que discordavam, e o único que o Telegram
+        # exercitava — o que fazia "qualificar" pausar canais que ninguém pediu para
+        # pausar, e amarrava a pausa a um registro de negócio. Agora a pergunta é
+        # feita uma vez só, na borda (`services/ai_gate.pode_responder`), pelos três
+        # receivers, e a pausa é um estado próprio em `conversation_ai_state`.
+        #
+        # Esta camada volta a ser o que o nome diz: gera a resposta. Quem decide se
+        # deve haver resposta é quem recebeu a mensagem.
 
         # 1. Transcreve áudio se for o caso (ou usa o texto recebido).
         actual_message = await self._maybe_transcribe_audio(

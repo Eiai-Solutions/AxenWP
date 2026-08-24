@@ -167,6 +167,20 @@ async def _run_ai_response(location_id: str, chat_id: int, contact_key: str) -> 
         if not tenant or not tenant.telegram_bot_token:
             return
 
+        # O Telegram não tinha gate por conversa. Nenhum. Só `tenant.is_active`, lá
+        # em cima, que é a instância inteira. Pausar um contato pelo CRM pausava o
+        # WhatsApp dele e o Telegram continuava respondendo — e escalar para humano
+        # aqui não pausava nada, porque este caminho nunca chamou `handle_escalation`.
+        # O único freio era o portão interno do `ai_service`, que saiu de lá.
+        from services import ai_gate
+
+        if not await ai_gate.pode_responder(
+            location_id=location_id, channel="telegram", contact_ref=str(chat_id),
+            tenant=tenant, contact_id=None,
+        ):
+            logger.info(f"Telegram: IA pausada para chat {chat_id}; ignorando.")
+            return
+
         result = await ai_service.process_incoming_message(
             location_id=location_id,
             remote_jid=str(chat_id),

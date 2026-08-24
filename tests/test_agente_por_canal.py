@@ -141,18 +141,37 @@ def test_zapi_le_o_agente_do_whatsapp_e_nao_o_primeiro_que_aparecer(dois_agentes
     finally:
         db.close()
 
-    import webhooks.zapi_receiver as zr
+    # O conserto de verdade não foi filtrar o canal nas duas cópias — foi PARAR DE
+    # TER duas cópias. Este caminho não pode ter gate próprio: a regra mora em
+    # `services.ai_gate`, chamada também pelo WAHA e pelo Telegram.
     import inspect
 
+    import webhooks.zapi_receiver as zr
+    from services import ai_gate
+
     fonte = inspect.getsource(zr.process_inbound_message)
-    # As duas queries de AIAgent deste caminho precisam declarar o canal.
-    consultas = fonte.count("_AIAgent2.location_id == location_id") + \
-        fonte.count("_AIAgent.location_id == location_id")
-    canais = fonte.count('_AIAgent2.channel == "whatsapp"') + \
-        fonte.count('_AIAgent.channel == "whatsapp"')
-    assert consultas == canais == 2, (
-        f"{consultas} consultas de agente, {canais} com filtro de canal — "
-        "toda consulta neste caminho tem que declarar o canal"
+    assert "ai_gate" in fonte, "o receiver Z-API não está chamando o gate único"
+    # `QualifiedLead` neste arquivo era a assinatura do gate duplicado: ele decidia
+    # por conta própria se a IA podia falar. A consulta de AIAgent que SOBRA aqui é
+    # de outra coisa — a janela de debounce — e continua legítima.
+    assert "QualifiedLead" not in fonte, (
+        "o receiver Z-API voltou a decidir o gate por conta própria — é assim que a "
+        "cópia divergente nasce, e foi assim que o filtro de canal ficou corrigido "
+        "num caminho e errado no outro"
+    )
+
+    # E a consulta que sobrou continua declarando o canal: sem isso, bastava existir
+    # um agente de Telegram para o WhatsApp passar a usar o debounce dele.
+    consultas = fonte.count("_AIAgent.location_id == location_id")
+    canais = fonte.count('_AIAgent.channel == "whatsapp"')
+    assert consultas == canais >= 1, (
+        f"{consultas} consultas de agente, {canais} com filtro de canal"
+    )
+
+    # E o gate único, que agora atende os três caminhos, filtra o canal.
+    gate = inspect.getsource(ai_gate._agente_ativo_sync)
+    assert "AIAgent.channel == channel" in gate, (
+        "o gate único não declara o canal — o bug volta para os três caminhos de uma vez"
     )
 
 
